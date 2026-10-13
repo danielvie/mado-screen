@@ -1,5 +1,9 @@
 # Windows annotation proof of concept
 
+## Current execution strategy
+
+Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
+
 ## Current increment: PoC 2 freehand pen
 
 Implemented and verified with build, 26 tests, formatting, Clippy and 22 desktop smoke checks using posted stroke messages. Physical mouse/focus/outside-release/latency validation remains manual; detailed results are in tasks/todo.md.
