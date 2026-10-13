@@ -4,7 +4,28 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
-## Current increment: PoC 2 freehand pen
+## Current increment: PoC 3 line and rectangle tools
+
+Approved scope: keep the freehand pen and add interactive straight line and outline rectangle. Bare P/L/R select tools only in drawing mode. Startup remains empty and click-through; default tool is Pen. Color and width remain fixed orange/5px. No toolbar, undo, fills, snapping, new dependencies or renderer rewrite.
+
+### Shared contracts
+
+- `strokes.rs` owns geometry and gesture state. Add `Tool::{Pen, Line, Rectangle}`, deriving Debug/Copy/Clone/Default/PartialEq/Eq with Pen default. Preserve `begin`, `append -> bool`, `finish`, `clear`, `is_active`, `paths`. Add `tool() -> Tool`, `select(tool: Tool) -> bool`, `cancel() -> bool`.
+- Existing path representation stays `Vec<Vec<(i32,i32)>>`; no renderer/surface API change is needed. Pen appends points. Line replaces its active path with anchor/end. Rectangle replaces it with a closed five-point axis-aligned path, preserving anchor/opposite corner in every drag direction. A zero-size gesture may render a dot.
+- `finish` commits any active gesture. `cancel` ends it, preserving pen ink but removing an active line/rectangle preview; return whether visible pixels changed. `begin` cancels an old unfinished shape before starting another. `select` only cancels when the tool actually changes; selecting the current tool is a no-op. `clear` discards all paths/preview but retains the selected tool.
+- `controls.rs` owns global registrations and mapping. Preserve permanent IDs 1/2/3 for Ctrl+Alt+D/C/Q. Add actions `Pen`, `Line`, `Rectangle` at IDs 4/5/6 respectively, and `Hotkeys::drawing_tools() -> Result<Self>` to register bare P/L/R with MOD_NOREPEAT only. Drop unregisters each guard's own IDs, including partial rollback. No dependency on strokes.rs.
+- Main registers tool keys before entering drawing mode and releases them on returning to click-through or exiting. A tool-key registration conflict leaves the app click-through with ink intact and reports the error; it must not discard work. Ignore stale tool-selection messages in click-through. Changing tool/mode cancels unfinished shape previews, ends drag capture and preserves completed annotations/freehand ink.
+- Pointer-up and detected physical release commit the last preview. Capture loss/cancellation cancels an unfinished shape. Main may add a small `DragCapture::has_capture() -> bool` helper in input.rs to distinguish lost ownership from ordinary release, retaining the active-only watchdog and resource ordering.
+
+### Work and verification
+
+Two independent workers own strokes.rs and controls.rs, run focused tests, and commit in isolated worktrees. The supervisor is the single persistent integrator/composer in integration/poc3, reusing its worktree and Cargo cache. Rebase finished worker branches onto that branch, resolve conflicts serially and fast-forward the integration branch. No per-delivery build/test/lint runs and no promotion of partial work to main.
+
+The supervisor composes main/input handling, updates README and smoke checks, then runs combined build, tests, formatting/Clippy and applicable app-local smoke. Failed validation creates focused worker fix tasks; integrate and revalidate. Main advances only to the validated HEAD. Record original/rebased delivery commits. At most four workers; no worker is rebased while active.
+
+Worker tests cover rectangle drag directions, preview replacement, release versus cancel, same-tool no-op, pen retention, hover/clear/separate annotations and hotkey mapping/modifiers. Combined tests and posted messages cover geometry and routing; actual keyboard/physical mouse/focus acceptance remains explicit manual evidence.
+
+## PoC 2 history
 
 Implemented and verified with build, 26 tests, formatting, Clippy and 22 desktop smoke checks using posted stroke messages. Physical mouse/focus/outside-release/latency validation remains manual; detailed results are in tasks/todo.md.
 

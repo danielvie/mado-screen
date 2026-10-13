@@ -1,5 +1,26 @@
 # Windows prototype tasks
 
+## PoC 3: tool selection and shape previews
+
+- [ ] P3-state: pen/line/rectangle gesture geometry in strokes.rs with focused regression tests. Independent worker.
+- [ ] P3-controls: drawing-only P/L/R registration guard and IDs/actions in controls.rs with focused tests. Independent worker.
+- [ ] P3-compose: main/input mode, tool selection, commit/cancel routing; README and smoke coverage. Supervisor in persistent integration worktree.
+- [ ] P3-validation: after all deliveries, build/test/check and applicable desktop smoke; worker fix loop if needed.
+- [ ] P3-promotion: record verified HEAD and fast-forward main only after gates pass.
+
+### PoC 3 acceptance
+
+- [ ] Drawing-only P/L/R select Pen/Line/Rectangle; click-through releases bare keys, leaves normal typing and ignores stale tool actions.
+- [ ] Click-drag previews line/rectangle; release commits; all rectangle drag directions work and previews leave no trails.
+- [ ] Changing tool/mode cancels active shape previews but preserves completed annotations and partial pen ink; same-tool selection leaves the gesture active.
+- [ ] Clear during drag removes all annotations and prevents held-button resumption; capture loss cancels a preview and release stops safely.
+- [ ] Tool-key conflicts roll back registration and preserve ink in click-through; permanent quit/toggle/clear remain available.
+- [ ] Real mouse and unmodified letter keys, focus, outside release and responsiveness are observed on the user's desktop, not inferred from posted messages.
+
+### PoC 3 results
+
+Pending. New strategy: main remains at fcbe14a during assembly; one integration worktree, serial rebases, no checks per delivery, full validation at the end.
+
 ## PoC 2: freehand drawing
 
 PoC 2 implemented. All 26 tests, build, formatting and Clippy pass. Desktop smoke passed 22 checks with a posted stroke. Physical mouse, focus, outside-release and responsiveness acceptance remain manual.
