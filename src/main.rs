@@ -122,17 +122,15 @@ fn main() -> Result<()> {
                     println!("Strokes cleared. Clear is undoable.");
                 }
                 Action::Quit => break,
-                Action::Picker if drawing => {
-                    if !ui.is_picker_open() {
-                        let changed = strokes.cancel();
-                        drop(drag.take());
-                        drop(tool_keys.take());
-                        if changed {
-                            surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
-                        }
-                        if let Err(error) = ui.open_picker(strokes.style().color) {
-                            eprintln!("Cannot open color picker: {error}. Ink preserved.");
-                        }
+                Action::Picker if drawing && !ui.is_picker_open() => {
+                    let changed = strokes.cancel();
+                    drop(drag.take());
+                    drop(tool_keys.take());
+                    if changed {
+                        surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
+                    }
+                    if let Err(error) = ui.open_picker(strokes.style().color) {
+                        eprintln!("Cannot open color picker: {error}. Ink preserved.");
                     }
                 }
                 action if drawing && !ui.is_picker_open() => {
