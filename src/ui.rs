@@ -1795,7 +1795,7 @@ mod tests {
     fn write_preview(ui: &DesktopUi) -> Result<()> {
         struct Surface {
             dc: HDC,
-            bitmap: GdiObject,
+            _bitmap: GdiObject,
             old: HGDIOBJ,
         }
         impl Drop for Surface {
@@ -1828,7 +1828,7 @@ mod tests {
             };
             let surface = Surface {
                 dc,
-                bitmap: GdiObject(bitmap.into()),
+                _bitmap: GdiObject(bitmap.into()),
                 old: SelectObject(dc, bitmap.into()),
             };
             SendMessageW(
