@@ -5,21 +5,29 @@
 - [x] P3-state: pen/line/rectangle gesture geometry in strokes.rs. Worker 21fbbe1, 15 focused tests passed; integrated unchanged via serial rebase/fast-forward.
 - [x] P3-controls: drawing-only P/L/R registration guard and IDs/actions. Worker 45f1e05, 3 focused tests and scoped Clippy passed; rebased to 19d2ef6 and integrated after state. Full old-main test lint was correctly reported blocked before composition.
 - [x] P3-compose: main/input mode, tool selection, commit/cancel routing, recoverable key conflicts; README and smoke coverage. Supervisor in the same persistent integration worktree.
-- [ ] P3-validation: after all deliveries, build/test/check and applicable desktop smoke; worker fix loop if needed.
-- [ ] P3-promotion: record verified HEAD and fast-forward main only after gates pass.
+- [x] P3-validation: build/test/check passed with 38 tests; posted desktop smoke passed 49 checks with zero skipped. One worker repair fixed stale background references and batched synthetic gestures; revalidated after serial integration.
+- [x] P3-promotion: code HEAD cbc79f1 verified before promotion; main fast-forwarded only after required gates passed. Final record is documentation-only.
 
 ### PoC 3 acceptance
 
-- [ ] Drawing-only P/L/R select Pen/Line/Rectangle; click-through releases bare keys, leaves normal typing and ignores stale tool actions.
-- [ ] Click-drag previews line/rectangle; release commits; all rectangle drag directions work and previews leave no trails.
-- [ ] Changing tool/mode cancels active shape previews but preserves completed annotations and partial pen ink; same-tool selection leaves the gesture active.
+- [x] Drawing-only P/L/R actions select Pen/Line/Rectangle; bare keys are owned only while drawing and released in click-through. Posted actions and actual registration scope passed; character typing remains manual.
+- [x] Posted gestures preview line/rectangle, release commits, all rectangle directions pass state tests and previews leave no trails in raster/desktop checks. Physical mouse behavior remains manual.
+- [x] Changing tool/mode cancels active shape previews but preserves completed annotations and partial pen ink; same-tool selection leaves the gesture active. State/routing tests and posted cancellation checks passed.
 - [ ] Clear during drag removes all annotations and prevents held-button resumption; capture loss cancels a preview and release stops safely.
-- [ ] Tool-key conflicts roll back registration and preserve ink in click-through; permanent quit/toggle/clear remain available.
+- [x] Tool-key conflicts roll back registration and preserve ink in click-through; permanent quit/toggle/clear remain available. Reserved-R and permanent-quit conflict checks passed.
 - [ ] Real mouse and unmodified letter keys, focus, outside release and responsiveness are observed on the user's desktop, not inferred from posted messages.
 
 ### PoC 3 results
 
-Assembly complete; combined validation pending. Main remains at fcbe14a. Exactly two independent worker tasks were used; the supervisor composed and integrated in one persistent worktree. State arrived first, then controls. Original/rebased deliveries: 21fbbe1 -> 21fbbe1; 45f1e05 -> 19d2ef6. No conflicts and no per-delivery build/test/lint commands. Worker checks remained isolated; final validation follows all assembled code.
+Validated code HEAD: cbc79f1. Main remained at fcbe14a throughout assembly and validation. Two independent feature workers were used; the supervisor composed and integrated in one persistent worktree. State arrived first, then controls. Original/rebased deliveries: 21fbbe1 -> 21fbbe1; 45f1e05 -> 19d2ef6. No conflicts and no per-delivery build/test/lint commands.
+
+Final gates: task build passed, task test 38 passed, task check formatting/Clippy passed. One cold dependency build occurred in the persistent worktree; the repair validation reused it.
+
+First smoke check failed on a stale prelaunch background comparison. Repair worker cbc79f1 changed only the smoke harness, with focused PowerShell parse/self-checks and no app launch. Fresh owned-window hide/restore references now classify moving samples as skipped, not passed; posted gestures/cancellation use fast native batches. After delivery, reran combined gates and desktop smoke.
+
+Desktop smoke: 49 passed, zero skipped, 3440x1440 primary display, 16 logical processors. Initial idle process CPU delta 0 seconds over 30 seconds. Verified committed pen/line/reverse rectangle, rectangle interior, no preview trails, tool/mode cancellation, P/L/R registration scope, recoverable bare-R conflict, ink retention, clear, quit and cleanup. Artifact: C:/Users/daniel/AppData/Local/Temp/mado-poc3-c30e8bec-6f93-4272-a087-a890c449bae9/results.json.
+
+No real keys/mouse events were injected and no cursor/focus was moved. These results do not establish physical letter typing, actual focus behavior, outside-display release or pointer latency. Live held-button scenarios and multi-monitor/sharing/fullscreen remain manual or deferred.
 
 ## PoC 2: freehand drawing
 

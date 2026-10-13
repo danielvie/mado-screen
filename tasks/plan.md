@@ -6,6 +6,8 @@ Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use
 
 ## Current increment: PoC 3 line and rectangle tools
 
+Implemented under the deferred-validation strategy. Validated code cbc79f1 passed build, 38 tests, formatting/Clippy and 49 posted-message desktop checks with zero skipped. Physical typing/mouse/focus/outside-release/latency evidence remains manual. Full results and delivery commits are in tasks/todo.md.
+
 Approved scope: keep the freehand pen and add interactive straight line and outline rectangle. Bare P/L/R select tools only in drawing mode. Startup remains empty and click-through; default tool is Pen. Color and width remain fixed orange/5px. No toolbar, undo, fills, snapping, new dependencies or renderer rewrite.
 
 ### Shared contracts
