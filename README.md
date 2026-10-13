@@ -33,6 +33,10 @@ Fully transparent layered-window pixels pass mouse input through, so drawing mod
 
 Button-up applies its final point and commits the gesture. Cancellation or capture loss removes an unfinished shape but preserves pen ink. A move without the primary button commits the last preview. The outside-release watchdog also commits that preview when capture is still owned; lost ownership cancels it. A 32ms watchdog runs only during an active drag, checking capture ownership and physical primary-button state, including swapped buttons. This covers capture-loss messages delivered synchronously to the window callback and outside-display releases that a nonactivating background window may not receive. Unavailable input state conservatively ends the stroke; stale timer messages do nothing. The interval is not a guaranteed release latency because a busy message loop can delay timers. Outside-release behavior still needs a physical desktop check.
 
+## Missing features and next steps
+
+The user reports PoC 3 worked. Missing capabilities and proposed improvements are recorded in docs/feature-roadmap.md. Multi-monitor work is deferred because hardware is unavailable. The recommended next increment is undo/redo, pending approval; no application behavior changes are included in that proposal.
+
 ## Scope and validation
 
 Only the primary display is covered. Restart after display-layout changes. Multiple monitors, mixed-DPI layouts, elevated applications, other topmost windows and screen-sharing compatibility are not validated. Secure desktop and lock screen are excluded; exclusive fullscreen coverage is not guaranteed.

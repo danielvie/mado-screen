@@ -1,5 +1,9 @@
 # Windows prototype tasks
 
+## Backlog and next increment
+
+Missing features and proposals: docs/feature-roadmap.md. Multi-monitor work is deferred because the user has no multi-monitor setup. Undo/redo is the recommended next single-monitor increment, pending approval. No implementation tasks are scheduled yet; sharing/recording validation remains open.
+
 ## PoC 3: tool selection and shape previews
 
 - [x] P3-state: pen/line/rectangle gesture geometry in strokes.rs. Worker 21fbbe1, 15 focused tests passed; integrated unchanged via serial rebase/fast-forward.
@@ -18,6 +22,8 @@
 - [ ] Real mouse and unmodified letter keys, focus, outside release and responsiveness are observed on the user's desktop, not inferred from posted messages.
 
 ### PoC 3 results
+
+User reports "poc 3 worked". This records general acceptance; individual untested hardware scenarios above remain open.
 
 Validated code HEAD: cbc79f1. Main remained at fcbe14a throughout assembly and validation. Two independent feature workers were used; the supervisor composed and integrated in one persistent worktree. State arrived first, then controls. Original/rebased deliveries: 21fbbe1 -> 21fbbe1; 45f1e05 -> 19d2ef6. No conflicts and no per-delivery build/test/lint commands.
 

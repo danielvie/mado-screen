@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## Next increment proposals
+
+The user reports PoC 3 worked and currently has no multi-monitor setup. Monitor/DPI work is deferred until hardware is available. Missing features, unverified compatibility and proposed single-monitor improvements are recorded in docs/feature-roadmap.md. The recommended next increment is undo/redo, pending approval; color/width presets and a nonactivating status indicator follow. No new implementation scope or PoC number is approved yet. Historical display/capture proofs below remain open.
+
 ## Current increment: PoC 3 line and rectangle tools
 
 Implemented under the deferred-validation strategy. Validated code cbc79f1 passed build, 38 tests, formatting/Clippy and 49 posted-message desktop checks with zero skipped. Physical typing/mouse/focus/outside-release/latency evidence remains manual. Full results and delivery commits are in tasks/todo.md.
