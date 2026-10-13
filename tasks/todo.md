@@ -1,5 +1,12 @@
 # Windows prototype tasks
 
+## Fixed recent-color positions
+
+- [x] Keep swatch slots unchanged on selection and highlight changes.
+- [x] Fill empty slots and replace only the oldest added slot when full.
+- [x] Focused UI checks, release build and formatting/Clippy. Evidence: tasks/fixed-colors.md.
+- [ ] User accepts stable swatch positions in the release app.
+
 ## Panel polish follow-up
 
 Contract and results: tasks/panel-polish.md.

@@ -129,6 +129,7 @@ struct State {
     panel_width: Cell<i32>,
     panel_pixels: RefCell<Vec<u32>>,
     recents: RefCell<Vec<u32>>,
+    next_recent: Cell<usize>,
     panel_scale: Cell<f64>,
     panel_monitor: Cell<RECT>,
     tracking: Cell<bool>,
@@ -164,6 +165,7 @@ impl State {
             panel_width: Cell::new(224),
             panel_pixels: RefCell::new(Vec::new()),
             recents: RefCell::new(vec![Style::default().color]),
+            next_recent: Cell::new(0),
             panel_scale: Cell::new(1.0),
             panel_monitor: Cell::new(RECT::default()),
             tracking: Cell::new(false),
@@ -260,9 +262,15 @@ impl DesktopUi {
         self.state.tool.set(tool_icon(tool));
         if self.state.color.replace(style.color) != style.color {
             let mut recents = self.state.recents.borrow_mut();
-            recents.retain(|color| *color != style.color);
-            recents.insert(0, style.color);
-            recents.truncate(5);
+            if !recents.contains(&style.color) {
+                if recents.len() < 5 {
+                    recents.push(style.color);
+                } else {
+                    let slot = self.state.next_recent.get();
+                    recents[slot] = style.color;
+                    self.state.next_recent.set((slot + 1) % 5);
+                }
+            }
             self.state.pressed.set(None);
         }
         unsafe {
@@ -568,9 +576,9 @@ impl PanelGeometry {
     fn current(&self) -> (i32, i32) {
         (self.width - scaled(24, self.scale), scaled(22, self.scale))
     }
-    fn recent(&self, index: usize, count: usize) -> (i32, i32) {
+    fn recent(&self, index: usize) -> (i32, i32) {
         (
-            self.width - scaled(24 + (count - 1 - index) as i32 * 36, self.scale),
+            self.width - scaled(24 + (4 - index) as i32 * 36, self.scale),
             scaled(66, self.scale),
         )
     }
@@ -594,7 +602,7 @@ impl PanelGeometry {
         }
         let recents = state.recents.borrow();
         for (i, color) in recents.iter().enumerate() {
-            if inside(self.recent(i, recents.len())) {
+            if inside(self.recent(i)) {
                 return Some(PanelHit::Recent(*color));
             }
         }
@@ -1321,7 +1329,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
             let _ = RestoreDC(dc, saved);
             let recents = state.recents.borrow();
             for (i, color) in recents.iter().enumerate() {
-                let (x, y) = geometry.recent(i, recents.len());
+                let (x, y) = geometry.recent(i);
                 ellipse(dc, x, y, scaled(9, s), *color, 1, true);
                 if *color == state.color.get() {
                     ellipse(dc, x, y, scaled(12, s), PANEL_BLUE, scaled(1, s), false);
@@ -2259,7 +2267,7 @@ mod tests {
             }
             assert_eq!(
                 &*ui.state.recents.borrow(),
-                &[0xff223344, 0xff556677, 0xff445566, 0xff334455, 0xff112233]
+                &[0xff445566, 0xff556677, 0xff112233, 0xff223344, 0xff334455]
             );
             panel_preview(&ui, "mado-panel-recents")?;
             let long_bounds = window_bounds(hwnd)?;
@@ -2285,7 +2293,7 @@ mod tests {
             ui.state.anchor_panel(96)?;
             for i in 0..5 {
                 let geometry = PanelGeometry::new(&ui.state);
-                let center = geometry.recent(i, 5);
+                let center = geometry.recent(i);
                 SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(center.0, center.1)));
                 assert!(ui.state.expanded.get());
                 let color = ui.state.recents.borrow()[i];
@@ -2301,7 +2309,7 @@ mod tests {
                 assert!(!ui.is_picker_open());
             }
             // Unpaired, off-panel and stale press/release messages do nothing.
-            let center = PanelGeometry::new(&ui.state).recent(0, 5);
+            let center = PanelGeometry::new(&ui.state).recent(0);
             SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
             panel_click(hwnd, (-1, -1));
             panel_click(hwnd, (1, 1));
@@ -2437,12 +2445,12 @@ mod tests {
             assert!(short < scaled(300, scale));
             let short_geometry = PanelGeometry::new(&state);
             for i in 0..5 {
-                let (x, y) = short_geometry.recent(i, 5);
+                let (x, y) = short_geometry.recent(i);
                 let radius = scaled(12, scale);
                 assert!(x - radius >= scaled(16, scale));
                 assert!(x + radius < short && y + radius < short_geometry.height);
                 if i != 0 {
-                    assert!(x - short_geometry.recent(i - 1, 5).0 > radius * 2);
+                    assert!(x - short_geometry.recent(i - 1).0 > radius * 2);
                 }
             }
             *state.text.borrow_mut() = "Click-through | Arrow tail-first | 31 px".into();
@@ -2452,12 +2460,12 @@ mod tests {
             let geometry = PanelGeometry::new(&state);
             assert_eq!(geometry.height, scaled(88, scale));
             for i in 0..5 {
-                let (x, y) = geometry.recent(i, 5);
+                let (x, y) = geometry.recent(i);
                 let radius = scaled(12, scale);
                 assert!(x - radius >= scaled(16, scale));
                 assert!(x + radius < geometry.width && y + radius < geometry.height);
                 if i != 0 {
-                    assert!(x - geometry.recent(i - 1, 5).0 > radius * 2);
+                    assert!(x - geometry.recent(i - 1).0 > radius * 2);
                 }
             }
             let surface = Bitmap::new(1, 1)?;
@@ -2472,6 +2480,80 @@ mod tests {
             }
             assert!(extent.cx <= (long - scaled(64, scale)) * PANEL_SAMPLES);
             state.expanded.set(false);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recent_colors_keep_slots_on_selection_and_replace_only_oldest() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FixedRecentRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        unsafe {
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
+        }
+        let choose = |color| {
+            ui.update(
+                true,
+                Tool::Pen,
+                Style {
+                    color,
+                    thickness: 5,
+                },
+            )
+        };
+        let initial = Style::default().color;
+        let centers: Vec<_> = (0..5)
+            .map(|i| PanelGeometry::new(&ui.state).recent(i))
+            .collect();
+        for color in [0xff112233, 0xff223344, 0xff334455, 0xff445566] {
+            choose(color)?;
+            assert_eq!(PanelGeometry::new(&ui.state).recent(0), centers[0]);
+        }
+        let slots = ui.state.recents.borrow().clone();
+        assert_eq!(
+            slots,
+            [initial, 0xff112233, 0xff223344, 0xff334455, 0xff445566]
+        );
+        // Dispatch and commit each selection twice, including the selected-color
+        // picker request. Every swatch keeps the same center and array index.
+        for (i, color) in slots.iter().copied().enumerate().cycle().take(10) {
+            let expected = if color == ui.state.color.get() {
+                UiEvent::OpenPicker
+            } else {
+                UiEvent::Color(color)
+            };
+            panel_click(hwnd, centers[i]);
+            assert_eq!(decoded(root.0), [expected]);
+            choose(color)?;
+            panel_click(hwnd, centers[i]);
+            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
+            assert_eq!(&*ui.state.recents.borrow(), &slots);
+            assert_eq!(PanelGeometry::new(&ui.state).recent(i), centers[i]);
+        }
+        choose(0xff556677)?;
+        assert_eq!(
+            &*ui.state.recents.borrow(),
+            &[0xff556677, slots[1], slots[2], slots[3], slots[4]]
+        );
+        choose(slots[3])?; // Reusing a color must not advance the replacement slot.
+        choose(0xff667788)?;
+        assert_eq!(
+            &*ui.state.recents.borrow(),
+            &[0xff556677, 0xff667788, slots[2], slots[3], slots[4]]
+        );
+        for color in [0xff778899, 0xff8899aa, 0xff99aabb, 0xffaabbcc] {
+            choose(color)?;
+        }
+        assert_eq!(
+            &*ui.state.recents.borrow(),
+            &[0xffaabbcc, 0xff667788, 0xff778899, 0xff8899aa, 0xff99aabb]
+        );
+        assert_eq!(ui.state.next_recent.get(), 1);
+        for (i, center) in centers.iter().enumerate() {
+            assert_eq!(PanelGeometry::new(&ui.state).recent(i), *center);
         }
         Ok(())
     }
@@ -2500,17 +2582,11 @@ mod tests {
             SendMessageW(status, WM_MOUSEMOVE, None, Some(point(22, 22)));
         }
         panel_click(status, PanelGeometry::new(&ui.state).current());
-        panel_click(
-            status,
-            PanelGeometry::new(&ui.state).recent(0, history.len()),
-        );
+        panel_click(status, PanelGeometry::new(&ui.state).recent(1));
         assert_eq!(decoded(root.0), [UiEvent::OpenPicker, UiEvent::OpenPicker]);
         assert_eq!(&*ui.state.recents.borrow(), &history);
         assert_eq!(ui.state.candidate.get(), candidate);
-        panel_click(
-            status,
-            PanelGeometry::new(&ui.state).recent(1, history.len()),
-        );
+        panel_click(status, PanelGeometry::new(&ui.state).recent(0));
         assert_eq!(decoded(root.0), [UiEvent::Color(initial)]);
         assert!(ui.is_picker_open());
         assert_eq!(ui.state.candidate.get(), candidate);
@@ -2540,7 +2616,7 @@ mod tests {
         )?;
         assert_eq!(
             &*ui.state.recents.borrow(),
-            &[PRESETS[0].1, initial, 0xff123456]
+            &[initial, 0xff123456, PRESETS[0].1]
         );
         let hwnd = picker(&ui, initial)?;
         ui.state.post(UiEvent::Closed);
