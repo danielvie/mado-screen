@@ -1,5 +1,9 @@
 # Features and remaining work
 
+## Compact panel and picker layout
+
+Approved: tool-icon-only panel at the primary monitor's top-right, leftward hover expansion and five session-only recent colors for quick selection. The reference-led light color picker retains Apply/Cancel and existing keyboard controls. Drawing and ink remain unchanged. Scope and evidence: tasks/layout-spec.md and tasks/layout-progress.md. Physical hover/click and mixed-DPI acceptance remain open.
+
 ## Bézier and performance follow-up
 
 Approved: trial streaming quadratic Bézier smoothing for both freehand pens and repeated release-mode rendering measurements. Keep shape tools, sizes and the one-second lifetime unchanged. Scope and evidence: tasks/bezier-performance.md. Offscreen CPU timings do not establish Windows upload cost or physical latency.

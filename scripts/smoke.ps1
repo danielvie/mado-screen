@@ -440,7 +440,7 @@ try {
         [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
         Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible'
         $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
-        Check (($statusStyle -band 0x080800a8) -eq 0x080800a8) 'Status indicator is topmost layered click-through and nonactivating'
+        Check (($statusStyle -band 0x08080088) -eq 0x08080088 -and ($statusStyle -band 0x20) -eq 0) 'Status panel is topmost layered nonactivating and receives hover/swatch input'
         $statusBounds = [PocSmoke+Rect]::new()
         Check ([PocSmoke]::GetWindowRect($statusWindow, [ref]$statusBounds)) 'Status bounds available for visual evidence'
         $statusSize = [Drawing.Size]::new(($statusBounds.Right - $statusBounds.Left), ($statusBounds.Bottom - $statusBounds.Top))

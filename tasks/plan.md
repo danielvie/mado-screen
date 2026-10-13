@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## Compact panel and picker layout
+
+Approved scope: tasks/layout-spec.md. One UI worker owns src/ui.rs in worker/layout-ui; supervisor owns documentation, stale smoke expectations and serial integration in integration/layout. Reuse the existing Color event and committed update_label state to avoid changing canvas drawing. Deliver icon-only compact, leftward hover expansion, bounded session recents and reference-led picker presentation. Validate focused native/UI regressions, release build and formatting/Clippy only. Results and manual limits: tasks/layout-progress.md. Do not run desktop smoke or disturb an active overlay.
+
 ## PoC 7 follow-up: Bézier trial and performance
 
 The user reports release mode much better, approves a freehand Bézier trial and asks for performance measurements. Keep shape tools, arrow size, widths and one-second lifetime unchanged. Use streaming midpoint quadratics with a live tail, measure release rendering before/after, and retain only measured optimization wins. Worker owns bezier/strokes/trail; supervisor owns renderer and offscreen perf check in a persistent integration worktree. Scope, measurements and focused validation are in tasks/bezier-performance.md. No full suite or desktop smoke.

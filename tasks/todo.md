@@ -1,5 +1,14 @@
 # Windows prototype tasks
 
+## Compact panel and picker layout
+
+Approved scope: tasks/layout-spec.md. Evidence: tasks/layout-progress.md.
+
+- [x] Confirm reference layouts, icon-only compact state, primary top-right anchor and five session recents.
+- [ ] Implement panel hover/leave/color selection and light picker presentation.
+- [ ] Integrate committed UI delivery and pass focused checks, release build and formatting/Clippy.
+- [ ] User accepts real hover/click behavior, picker layout and mixed-DPI appearance.
+
 ## Bézier and performance follow-up
 
 Scope and evidence: tasks/bezier-performance.md.

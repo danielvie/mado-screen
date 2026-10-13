@@ -41,9 +41,9 @@ Undo/redo first settles any active gesture. Pen ink is committed, unfinished sha
 
 Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. Arrows default to head-first: press at the head and drag toward the tail. Toggle A for tail-first: press at the tail and drag toward the head. Completed arrows never change direction. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
-The top-right indicator on the primary monitor shows drawing/click-through mode, selected tool variant, brush width and color swatch. Variant labels are Pen, Temporary pen, Arrow head-first and Arrow tail-first. It is click-through and nonactivating.
+The primary monitor's top-right panel shows only the selected tool's icon when compact. Hover expands it to the left with drawing/click-through mode, tool variant, brush width and current-color swatch. Click that swatch to reveal up to five distinct recent colors, newest first; click a recent color to select it immediately. Leaving the panel collapses it. Recent colors are session-only and include the initial brush color and committed selections, not picker previews. The panel receives mouse input only in its occupied rounded area and does not activate itself or capture keyboard shortcuts.
 
-The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
+The color picker uses a light rounded pane with a continuous hue/saturation disk, brightness slider, circular swatches, hex input and Cancel/Apply. The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
 
 ## Temporary ink
 
@@ -62,6 +62,8 @@ One overlay and CPU bitmap span the virtual desktop, including gaps between moni
 The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot history and many stroke points can use substantial memory and slow drawing; extra screens and gaps increase bitmap cost. No idle redraw loop or GPU rewrite is introduced. Layouts larger than 32767 pixels on either axis are rejected to prevent signed mouse-coordinate wrapping, and surface allocation remains bounded. Physical mixed-DPI input and long-session responsiveness need user testing. Sharing/recording is deferred. Elevated applications and other topmost windows remain unverified. Exclusive fullscreen coverage is not guaranteed; secure desktop and lock screen are excluded.
 
 ## Verification
+
+The compact panel/color-picker layout contract is in tasks/layout-spec.md; focused checks and manual limits are recorded in tasks/layout-progress.md. Hidden native checks and offscreen previews do not establish physical hover, focus or mixed-DPI interaction.
 
 The Bézier follow-up measures optimized offscreen rendering and model construction, not physical input latency or Windows bitmap upload. Reproduction and before/after results are in tasks/bezier-performance.md. Use release mode for visual and responsiveness checks.
 
