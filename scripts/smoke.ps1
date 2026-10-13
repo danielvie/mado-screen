@@ -100,8 +100,19 @@ public static class PocSmoke {
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
     // 0 is inconclusive motion, 1 is transparent, -1 is a stable difference.
     public static int CompareSamples(int hiddenBefore, int visibleFirst, int visibleSecond, int hiddenAfter) {
+        return CompareSamples(hiddenBefore, visibleFirst, visibleSecond, hiddenAfter, false);
+    }
+    public static int CompareSamples(int hiddenBefore, int visibleFirst, int visibleSecond, int hiddenAfter, bool drawing) {
         if (hiddenBefore != hiddenAfter || visibleFirst != visibleSecond) return 0;
-        return hiddenBefore == visibleFirst ? 1 : -1;
+        if (hiddenBefore == visibleFirst) return 1;
+        if (!drawing || (hiddenBefore & unchecked((int)0xff000000)) != (visibleFirst & unchecked((int)0xff000000))) return -1;
+        // Drawing mode intentionally composites black at alpha 1/255. Depending
+        // on channel rounding, each desktop channel stays equal or darkens by one.
+        for (int shift = 0; shift < 24; shift += 8) {
+            int background = (hiddenBefore >> shift) & 255, visible = (visibleFirst >> shift) & 255;
+            if (visible > background || background - visible > 1) return -1;
+        }
+        return 1;
     }
     public static string LatestToolLabel(string log) {
         var labels = System.Text.RegularExpressions.Regex.Matches(log, @"(?m)^Tool: ([^\r\n]+)\. Color:");
@@ -122,6 +133,12 @@ public static class PocSmoke {
 }
 '@
 if ($SelfCheck) {
+    # A cast of an empty command pipeline can still assign $null in Windows PowerShell.
+    [string]$emptyStartup = @() | Out-Null
+    if ($null -eq $emptyStartup -or $emptyStartup.Contains('Mode: click-through.')) {
+        throw 'Empty startup log must remain a safe, not-ready string.'
+    }
+    Write-Host 'PASS: empty startup log is a safe string before readiness'
     foreach ($case in @(
         @(10, 10, 10, 10, 1),  # Empty stable canvas.
         @(10, 20, 20, 10, -1), # Stable ink differs from the desktop.
@@ -132,6 +149,21 @@ if ($SelfCheck) {
             throw 'Sample comparison self-check failed.'
         }
     }
+    foreach ($case in @(
+        @(-1, -65794, -65794, -1, 1), # White desktop darkened by alpha-1 capture background.
+        @(-1, -65794, -131587, -1, 0), # Visible motion remains inconclusive.
+        @(-1, -131587, -131587, -1, -1), # Two-level darkening is not capture background.
+        @(-1, -428778, -428778, -1, -1), # Opaque orange ink is not capture background.
+        @(-65794, -1, -1, -65794, -1) # Background never brightens a channel.
+    )) {
+        if ([PocSmoke]::CompareSamples($case[0], $case[1], $case[2], $case[3], $true) -ne $case[4]) {
+            throw 'Drawing-background comparison self-check failed.'
+        }
+    }
+    if ([PocSmoke]::CompareSamples(-1, -65794, -65794, -1) -ne -1) {
+        throw 'Click-through samples must remain exact.'
+    }
+    Write-Host 'PASS: drawing alpha-1 background, motion, opaque ink and exact click-through comparison'
     foreach ($case in @(
         @(120, 240, 0, 0, 120, 240),
         @(120, 240, -1920, -1080, -1800, -840),
@@ -239,10 +271,15 @@ function CanvasPoints([int[]]$ScreenPoints) {
     }
 }
 function CheckInk([int[]]$Points, [string]$Name) {
-    $painted = $true
-    for ($i = 0; $i -lt $Points.Count; $i += 2) {
-        if ((Pixel $Points[$i] $Points[$i + 1]) -ne $ink) { $painted = $false }
-    }
+    $wait = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $painted = $true
+        for ($i = 0; $i -lt $Points.Count; $i += 2) {
+            if ((Pixel $Points[$i] $Points[$i + 1]) -ne $ink) { $painted = $false }
+        }
+        if ($painted) { break }
+        Start-Sleep -Milliseconds 50
+    } while ($wait.Elapsed.TotalSeconds -lt 2)
     Check $painted $Name
 }
 function PostAction([uint32]$Action, [string]$Name) {
@@ -298,6 +335,8 @@ function SetPostedDrawingMode([bool]$Drawing) {
     Check ($active -eq $Drawing) "Posted drawing=$Drawing reached within bounded wait"
 }
 function CheckEmptyCanvas([string]$Name, [int[]]$Points = @($lx, $ly, $rx, $ry)) {
+    CheckOwnedCanvas
+    $drawingBackground = ([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -eq 0
     $matched = @(for ($i = 0; $i -lt $Points.Count; $i += 2) { $false })
     $mismatches = @(for ($i = 0; $i -lt $Points.Count; $i += 2) { 0 })
     # Bracket visible samples with fresh hidden references. Motion is not evidence of ink.
@@ -313,7 +352,7 @@ function CheckEmptyCanvas([string]$Name, [int[]]$Points = @($lx, $ly, $rx, $ry))
             $after = @(for ($i = 0; $i -lt $Points.Count; $i += 2) { Pixel $Points[$i] $Points[$i + 1] })
         } finally { SetCanvasVisibility $true }
         for ($i = 0; $i -lt $matched.Count; $i++) {
-            $comparison = [PocSmoke]::CompareSamples($before[$i], $first[$i], $second[$i], $after[$i])
+            $comparison = [PocSmoke]::CompareSamples($before[$i], $first[$i], $second[$i], $after[$i], $drawingBackground)
             if ($comparison -eq 1) { $matched[$i] = $true }
             if ($comparison -eq -1) { $mismatches[$i]++ }
         }
@@ -324,6 +363,8 @@ function CheckEmptyCanvas([string]$Name, [int[]]$Points = @($lx, $ly, $rx, $ry))
         if ($matched[$i]) {
             if ($matched.Contains($false)) { Check $true "$Name at stable sample $i" }
         } elseif ($mismatches[$i] -eq 5) {
+            Write-Warning ("Stable mismatch diagnostics: before=0x{0:X8}, visible=0x{1:X8}/0x{2:X8}, after=0x{3:X8}; drawing={4}" -f
+                $before[$i], $first[$i], $second[$i], $after[$i], (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -eq 0))
             Check $false "$Name at sample $i has a persistent stable difference"
         } else {
             $reason = "SKIPPED/UNTESTED: $Name at sample ${i}, samples changed across 5 attempts"
@@ -364,7 +405,7 @@ try {
     do {
         Start-Sleep -Milliseconds 50
         $window = [PocSmoke]::FindWindow('MadoScreenPoc1', 'Mado Screen PoC 1')
-        $startup = [string](Get-Content (Join-Path $directory 'run-out.log') -Raw -ErrorAction SilentlyContinue)
+        [string]$startup = Get-Content (Join-Path $directory 'run-out.log') -Raw -ErrorAction SilentlyContinue
         $ready = [PocSmoke]::IsWindowVisible($window) -and $startup.Contains('Mode: click-through.')
     } while (-not $ready -and -not $process.HasExited -and $deadline.Elapsed.TotalSeconds -lt 5)
     [uint32]$owner = 0
@@ -436,7 +477,7 @@ try {
             Check ((Pixel ($lx + 70) ($ly + 20)) -ne $ink) 'Replaced line preview leaves no trail'
             Check ([PocSmoke]::PostDrag($window, $thread, 6, 0, [int[]]@(($lx + 240), ($ly + 120), ($lx + 160), ($ly + 60), ($lx + 160), ($ly + 60)))) 'Rectangle selection and reverse-direction rectangle queued'
             Start-Sleep -Milliseconds 300
-            Check ((Pixel ($lx + 160) ($ly + 60)) -eq $ink -and (Pixel ($lx + 240) ($ly + 60)) -eq $ink -and (Pixel ($lx + 160) ($ly + 120)) -eq $ink -and (Pixel ($lx + 240) ($ly + 120)) -eq $ink) 'Rectangle has all four corners'
+            CheckInk ([int[]]@(($lx + 160), ($ly + 60), ($lx + 240), ($ly + 60), ($lx + 160), ($ly + 120), ($lx + 240), ($ly + 120))) 'Rectangle has all four corners'
             Check ((Pixel ($lx + 200) ($ly + 90)) -ne $ink) 'Rectangle interior remains unfilled'
             Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(11), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Blue color and thicker brush queued'
             Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 500), $ly, ($lx + 520), $ly, ($lx + 540), $ly))) 'Styled pen queued'
@@ -748,7 +789,7 @@ try {
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
         manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, picker placement/focus/scaling and hardware latency.'
         mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or picker scaling.'
-        limits = 'Empty-canvas checks sample tested geometry, not every pixel; unstable points are skipped/untested, not passed. No injected keyboard/mouse input, cursor movement or focus changes. Only windows owned by the copied child are modified; a pre-existing overlay aborts the run. Restart after display topology/scaling changes. Mirrored displays expose one desktop. Sharing is deferred.'
+        limits = 'Empty-canvas checks sample tested geometry, not every pixel; drawing-mode comparisons allow only the intentional alpha-1 black background to darken RGB channels by at most one; click-through comparisons remain exact. Unstable points are skipped/untested, not passed. No injected keyboard/mouse input, cursor movement or focus changes. Only windows owned by the copied child are modified; a pre-existing overlay aborts the run. Restart after display topology/scaling changes. Mirrored displays expose one desktop. Sharing is deferred.'
     } | ConvertTo-Json -Depth 4 | Tee-Object (Join-Path $directory 'results.json')
     Write-Host "Logs and results: $directory"
 } finally {
