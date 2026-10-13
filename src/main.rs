@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use strokes::{Strokes, Tool};
 use surface::Surface;
 use trail::Trail;
-use ui::{DesktopUi, UiEvent};
+use ui::{DesktopUi, MenuTool, UiEvent};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -52,10 +52,13 @@ Drawing shortcuts (while the color picker is closed)
   4 / 5        Green / white
   C            Open the color picker at the pointer
 
-Color panel and picker
-  Hover over the top-right tool icon to show status and recent colors.
-  Click a different recent color to select it; click the selected color
-  to open the picker. Apply / Enter saves; Cancel / Escape discards changes.
+Floating menu and picker
+  Hover over the top-right tool icon to open the dark menu.
+  Click tool icons, color slots or the width slider; letters show shortcuts.
+  Click Drawing / Click-through to switch canvas input without a shortcut.
+  Drag only the grip beside the tool icon to move the menu.
+  Click the stroke preview or selected color to open the picker.
+  Apply / Enter saves; Cancel / Escape discards changes.
 
 Default brush: orange, 5 pixels. Restart after changing the monitor layout.
 ";
@@ -80,7 +83,7 @@ fn main() -> Result<()> {
         clock.elapsed(),
     )?;
     overlay.show()?;
-    // The canvas spans the virtual desktop, but the indicator stays on the primary screen.
+    // Start the floating menu on the primary screen; grip dragging can move it later.
     let ui = DesktopUi::new(
         overlay.hwnd(),
         unsafe { GetSystemMetrics(SM_CXSCREEN) },
@@ -112,6 +115,24 @@ fn main() -> Result<()> {
         if let Some(event) = ui.event(&message) {
             let changed = match event {
                 UiEvent::Color(color) => apply_ui_color(color, &mut strokes, &mut trail, &mut drag),
+                UiEvent::Tool(tool) if !ui.is_picker_open() => {
+                    apply_menu_tool(tool, &mut strokes, &mut trail, &mut drag)
+                }
+                UiEvent::Width(width) if !ui.is_picker_open() => {
+                    apply_menu_width(width, &mut strokes, &mut trail, &mut drag)
+                }
+                UiEvent::Toggle => {
+                    ui.close_picker();
+                    toggle_drawing(
+                        &mut drawing,
+                        &mut tool_keys,
+                        &overlay,
+                        &mut surface,
+                        (&mut strokes, &mut trail, now),
+                        &mut drag,
+                    )?;
+                    false
+                }
                 UiEvent::OpenPicker if !ui.is_picker_open() => {
                     let changed =
                         prepare_picker(&mut strokes, &mut trail, &mut drag, &mut tool_keys);
@@ -152,30 +173,13 @@ fn main() -> Result<()> {
             match action {
                 Action::Toggle => {
                     ui.close_picker();
-                    if !drawing {
-                        match Hotkeys::drawing_keys(true, true) {
-                            Ok(keys) => tool_keys = Some(keys),
-                            Err(error) => {
-                                eprintln!(
-                                    "Cannot enter drawing mode: {error}. Ink preserved; still click-through."
-                                );
-                                continue;
-                            }
-                        }
-                    } else {
-                        drop(tool_keys.take());
-                    }
-                    strokes.cancel();
-                    trail.finish();
-                    drop(drag.take());
-                    drawing = !drawing;
-                    overlay.set_capture(drawing)?;
-                    surface.present_scene(
-                        overlay.hwnd(),
-                        drawing,
-                        strokes.annotations(),
-                        &trail,
-                        now,
+                    toggle_drawing(
+                        &mut drawing,
+                        &mut tool_keys,
+                        &overlay,
+                        &mut surface,
+                        (&mut strokes, &mut trail, now),
+                        &mut drag,
                     )?;
                 }
                 Action::Clear => {
@@ -283,6 +287,39 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+// Both the visible input toggle and Ctrl+Alt+D use this transaction.
+fn toggle_drawing(
+    drawing: &mut bool,
+    keys: &mut Option<Hotkeys>,
+    overlay: &Overlay,
+    surface: &mut Surface,
+    scene: (&mut Strokes, &mut Trail, Duration),
+    drag: &mut Option<DragCapture>,
+) -> Result<()> {
+    let (strokes, trail, now) = scene;
+    let entering = !*drawing;
+    let pending = if entering {
+        match Hotkeys::drawing_keys(true, true) {
+            Ok(keys) => Some(keys),
+            Err(error) => {
+                eprintln!(
+                    "Cannot enter drawing mode: {error}. Ink preserved; still click-through."
+                );
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+    strokes.cancel();
+    trail.finish();
+    drop(drag.take());
+    overlay.set_capture(entering)?;
+    *keys = pending;
+    *drawing = entering;
+    surface.present_scene(overlay.hwnd(), entering, strokes.annotations(), trail, now)
+}
+
 fn restore_drawing_keys(
     drawing: &mut bool,
     keys: &mut Option<Hotkeys>,
@@ -332,6 +369,55 @@ fn apply_ui_color(
     trail.finish();
     drop(drag.take());
     strokes.set_color(color);
+    changed
+}
+
+// Menu choices are exact selections, unlike repeated P/A hotkey actions.
+fn apply_menu_tool(
+    choice: MenuTool,
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+) -> bool {
+    let tool = match choice {
+        MenuTool::Pen | MenuTool::TemporaryPen => Tool::Pen,
+        MenuTool::Line => Tool::Line,
+        MenuTool::Arrow => Tool::Arrow,
+        MenuTool::Rectangle => Tool::Rectangle,
+        MenuTool::Ellipse => Tool::Ellipse,
+        MenuTool::Eraser => Tool::Eraser,
+    };
+    let temporary = choice == MenuTool::TemporaryPen;
+    let variant_changes = tool == Tool::Pen && strokes.temporary_pen() != temporary;
+    let flip_arrow = tool == Tool::Arrow && strokes.tool() == Tool::Arrow;
+    if strokes.tool() == tool && !variant_changes && !flip_arrow {
+        return false;
+    }
+    trail.finish();
+    drop(drag.take());
+    let mut changed = strokes.select(tool);
+    if variant_changes {
+        changed |= strokes.toggle_temporary_pen();
+    }
+    if flip_arrow {
+        changed |= strokes.toggle_arrow_direction();
+    }
+    changed
+}
+
+fn apply_menu_width(
+    width: u32,
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+) -> bool {
+    if !(1..=31).contains(&width) || width % 2 == 0 || width == strokes.style().thickness {
+        return false;
+    }
+    trail.finish();
+    drop(drag.take());
+    let changed = strokes.cancel();
+    strokes.set_thickness(width);
     changed
 }
 
@@ -549,7 +635,7 @@ mod tests {
             "4 / 5",
             "C            Open the color picker",
             "Hover over the top-right tool icon",
-            "click the selected color",
+            "Click the stroke preview or selected color",
             "Apply / Enter",
             "Cancel / Escape",
             "1 second",
@@ -578,6 +664,178 @@ mod tests {
             runtime.contains("eprintln!("),
             "Actionable errors must remain visible"
         );
+    }
+
+    #[test]
+    fn panel_menu_tools_select_exact_variants_without_changing_history() {
+        let mut strokes = Strokes::default();
+        strokes.begin((2, 2));
+        strokes.finish();
+        let scene = strokes.annotations().to_vec();
+        assert!(strokes.undo());
+        let mut trail = Trail::default();
+        let choices = [
+            (MenuTool::TemporaryPen, "Temporary pen"),
+            (MenuTool::Line, "Line"),
+            (MenuTool::Rectangle, "Rectangle"),
+            (MenuTool::Ellipse, "Ellipse"),
+            (MenuTool::Eraser, "Eraser"),
+            (MenuTool::Pen, "Pen"),
+            (MenuTool::TemporaryPen, "Temporary pen"),
+            (MenuTool::Pen, "Pen"),
+        ];
+        for (choice, label) in choices {
+            assert!(!apply_menu_tool(
+                choice,
+                &mut strokes,
+                &mut trail,
+                &mut None
+            ));
+            assert_eq!(strokes.tool_label(), label);
+            assert!(strokes.annotations().is_empty());
+        }
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), scene);
+    }
+
+    #[test]
+    fn panel_menu_identical_choice_preserves_active_input() {
+        let mut strokes = Strokes::default();
+        strokes.begin((10, 10));
+        let mut trail = Trail::default();
+        assert!(!apply_menu_tool(
+            MenuTool::Pen,
+            &mut strokes,
+            &mut trail,
+            &mut None
+        ));
+        assert!(strokes.is_active());
+        strokes.cancel();
+        strokes.toggle_temporary_pen();
+        trail.begin((20, 20), strokes.style(), Duration::ZERO);
+        assert!(!apply_menu_tool(
+            MenuTool::TemporaryPen,
+            &mut strokes,
+            &mut trail,
+            &mut None
+        ));
+        assert!(trail.is_active());
+    }
+
+    #[test]
+    fn panel_menu_tool_changes_settle_shapes_but_retain_pen_and_temporary_ages() {
+        for tool in [Tool::Pen, Tool::Rectangle] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.begin((10, 10));
+            strokes.append((30, 30));
+            let mut trail = Trail::default();
+            trail.begin((50, 50), strokes.style(), Duration::ZERO);
+            let parts = trail.annotations().cloned().collect::<Vec<_>>();
+            assert_eq!(
+                apply_menu_tool(MenuTool::Ellipse, &mut strokes, &mut trail, &mut None),
+                tool != Tool::Pen
+            );
+            assert_eq!(strokes.annotations().len(), usize::from(tool == Tool::Pen));
+            assert!(!strokes.is_active() && !trail.is_active());
+            assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+            assert!(trail.expire(Duration::from_secs(1)));
+        }
+    }
+
+    #[test]
+    fn panel_menu_arrow_click_flips_only_selected_arrow_and_freezes_old_geometry() {
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        assert_eq!(strokes.tool_label(), "Arrow head-first");
+        strokes.begin((30, 30));
+        strokes.append((100, 30));
+        strokes.finish();
+        let old = strokes.annotations().to_vec();
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        assert_eq!(strokes.tool_label(), "Arrow tail-first");
+        assert_eq!(strokes.annotations(), old);
+        apply_menu_tool(MenuTool::Line, &mut strokes, &mut trail, &mut None);
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        assert_eq!(strokes.tool_label(), "Arrow tail-first");
+    }
+
+    #[test]
+    fn panel_menu_width_rejects_bad_values_and_freezes_old_style() {
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        strokes.begin((10, 10));
+        for width in [0, 2, 32, u32::MAX, 5] {
+            assert!(!apply_menu_width(
+                width,
+                &mut strokes,
+                &mut trail,
+                &mut None
+            ));
+            assert!(strokes.is_active());
+            assert_eq!(strokes.style().thickness, 5);
+        }
+        assert!(!apply_menu_width(11, &mut strokes, &mut trail, &mut None));
+        assert!(!strokes.is_active());
+        assert_eq!(strokes.style().thickness, 11);
+        assert_eq!(strokes.annotations()[0].style.thickness, 5);
+        strokes.select(Tool::Rectangle);
+        strokes.begin((20, 20));
+        assert!(apply_menu_width(31, &mut strokes, &mut trail, &mut None));
+        assert_eq!(strokes.style().thickness, 31);
+        assert_eq!(strokes.annotations().len(), 1);
+    }
+
+    #[test]
+    fn panel_menu_shortcuts_and_clicks_keep_distinct_pen_behavior() {
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        apply_menu_tool(MenuTool::TemporaryPen, &mut strokes, &mut trail, &mut None);
+        assert!(strokes.temporary_pen());
+        apply_edit(Action::Pen, &mut strokes, &mut None);
+        assert!(!strokes.temporary_pen());
+        apply_edit(Action::Pen, &mut strokes, &mut None);
+        assert!(strokes.temporary_pen());
+        apply_menu_tool(MenuTool::Pen, &mut strokes, &mut trail, &mut None);
+        assert!(!strokes.temporary_pen());
+    }
+
+    #[test]
+    fn panel_menu_mode_conflict_preserves_ink_and_click_through() {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey,
+        };
+        // Reserve a drawing key only if not already owned by the running app.
+        let reserved = unsafe { RegisterHotKey(None, 200, MOD_NOREPEAT, b'L' as u32) }.is_ok();
+        let overlay = Overlay::new().unwrap();
+        // Conflict is rejected before any upload; no desktop-sized bitmap is needed.
+        let mut surface = Surface::new(1, 1).unwrap();
+        let mut strokes = Strokes::default();
+        strokes.begin((10, 10));
+        strokes.finish();
+        let old = strokes.annotations().to_vec();
+        let mut trail = Trail::default();
+        trail.begin((20, 20), strokes.style(), Duration::ZERO);
+        let temporary = trail.annotations().cloned().collect::<Vec<_>>();
+        let mut drawing = false;
+        let mut keys = None;
+        let result = toggle_drawing(
+            &mut drawing,
+            &mut keys,
+            &overlay,
+            &mut surface,
+            (&mut strokes, &mut trail, Duration::ZERO),
+            &mut None,
+        );
+        if reserved {
+            unsafe { UnregisterHotKey(None, 200) }.unwrap();
+        }
+        result.unwrap();
+        assert!(!drawing && keys.is_none());
+        assert_eq!(strokes.annotations(), old);
+        assert!(trail.is_active());
+        assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), temporary);
     }
 
     #[test]

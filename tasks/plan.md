@@ -1,5 +1,101 @@
 # Windows annotation proof of concept
 
+## Proposed floating menu with mouse controls
+
+Status: implemented in the feature/floating-menu worktree; 14 new-feature tests and release build passed. Physical acceptance remains open. User requests only new-feature tests, not the full or legacy suites, and favors real manual acceptance. Use only the new graphite scheme. Do not promote, push or replace the installed app. Progress: tasks/panel-menu-progress.md. Older acceptance items and user-owned changes remain untouched.
+
+Visual proposal: [panel layout and transitions](../docs/design/mado-screen-panel-layout-and-transitions.excalidraw). Implementation tasks: [floating menu checklist](todo.md#proposed-floating-menu-with-mouse-controls).
+
+### Goal and layout
+
+Users can select existing tools, stroke width, color and canvas input mode without remembering shortcuts. Small shortcut badges teach the existing keys.
+
+- Two presentation states only: a 44 x 44 logical-pixel badge and a 440 x 304 logical-pixel full menu. Hover reveals the full menu directly; there is no status-row-only state.
+- The badge retains the selected tool icon beside a separate far-right drag grip. The right edge stays fixed as the menu expands left. Near the bottom, open upward with the badge fixed.
+- Full menu contains an input-mode toggle in the header, selected-stroke preview, odd-width slider, two rows of eight populated color slots and a clickable tool strip.
+- Use graphite #191C20, warm-white #F1EEE8, neutral border #444B52 and UI accent #7CC7B4. Drawing colors remain literal, independent of the UI theme.
+- Each tool icon includes a small readable shortcut letter. Tooltips include its full name, shortcut and variant behavior; selection is also marked by an outline, not color alone.
+- Native Win32 and existing antialiased layered-panel rendering remain. No new dependency, UI framework or canvas-renderer rewrite.
+
+### Tool and input behavior
+
+| Button | Shortcut hint | Mouse action |
+| --- | --- | --- |
+| Pen | P | Select permanent Pen explicitly; repeated clicks are a no-op. |
+| Temporary pen | P | Select temporary Pen explicitly. Tooltip says P selects Pen, then P again toggles temporary ink. There is no dedicated temporary key. |
+| Line | L | Select straight line. |
+| Arrow | A | Select Arrow, keeping the saved direction. Clicking an already-selected Arrow flips direction, matching repeated A. Show head-first/tail-first in status and tooltip. |
+| Rectangle | R | Select outline rectangle. |
+| Ellipse | O | Select outline ellipse. |
+| Eraser | E | Select whole-annotation eraser. |
+| Canvas input toggle | Ctrl+Alt+D | Switch Drawing/Click-through using the same transition as the global shortcut. |
+
+Bare P and A keep their current select/repeat-to-toggle semantics. Do not map both Pen buttons to Action::Pen, because that would make exact mouse selection accidentally toggle.
+
+The input toggle is a separate two-state control, not another drawing tool. It remains usable in click-through and does not hide the menu, clear ink or alter the selected tool. Entering drawing must acquire drawing shortcuts before enabling canvas input. A conflict preserves annotations, remains click-through and reports the actual key. Leaving drawing releases drawing shortcuts and capture.
+
+Mouse tool, palette and width selection work in both input modes, preparing the next annotation without automatically entering drawing. The modeless picker disables those controls while editing; the input toggle remains usable and closes the picker through the existing mode-change path. The panel never takes keyboard focus for these actions.
+
+Preserve gesture contracts: actual tool/variant/style changes settle partial pen ink, cancel unfinished shape previews, end temporary drags and release canvas capture. They do not change completed annotations or create tool/style history entries. A repeated exact selection is a no-op. Undo/redo remains permanent-history-only. Mode toggling must not restart temporary lifetimes.
+
+### Fixed palette
+
+Fill all slots at startup and keep their positions unchanged. This replaces the five-slot recent/replacement behavior only in the new full panel.
+
+| Row | Left to right |
+| --- | --- |
+| Warm and purple hues | Yellow #FFDF32, amber #FFB51B, orange #F97316, red #E31635, violet #673B92, purple #9B4FC0, pink #D50D81, magenta #B9085E |
+| Cool hues and neutrals | Cyan #35C7EF, azure #0085DC, blue #075CBF, lime #83C400, emerald #00B85A, white #F1F1EF, gray #BDBDBB, black #161616 |
+
+Default remains orange and 5 px. Selecting a different slot applies its exact color without closing or reordering the menu. Preserve the existing current-color/full-picker behavior by making the selected stroke preview clickable; a selected matching palette swatch can also request the picker, as today. Picker Apply must not replace fixed slots. Highlight a slot only on an exact RGB match; a custom color may have no matching slot.
+
+Existing numeric 1..5 shortcut colors remain unchanged. Some reference-derived slots differ from those legacy RGB values, so do not put misleading numeric badges on the new palette or silently change the legacy shortcuts.
+
+### Implementation ownership and routing
+
+- src/ui.rs owns panel geometry, icon/badge painting, hit targets, fixed palette, slider, animation, panel dragging and tooltip/accessibility metadata. Keep current UiEvent::Color, Closed and OpenPicker decoding compatible.
+- Extend the pointer-free queued UiEvent protocol with validated selection, width and input-toggle requests. Use explicit integer values and reject unknown tool IDs or payloads. Do not send State pointers through queued messages.
+- src/main.rs remains the owner of Strokes, Trail, drawing state, canvas capture and hotkey guards. Both keyboard and menu input use shared gesture-settlement and mode-transition helpers; UI callbacks do not change the canvas themselves.
+- Use an exact mouse selection request, including permanent/temporary Pen, separate from existing repeated-key Action semantics. Existing Strokes getters and toggles support this without a new renderer or a new temporary Tool variant.
+- src/controls.rs retains existing hotkey IDs/modifiers. Add only the smallest mapping/metadata required to verify the displayed shortcut hints.
+- Keep main-driven committed UI updates. Highlight the actual tool/input state after successful handling, not an optimistic clicked state.
+- Use current interpolated dimensions for hit-testing. Hidden/unrevealed controls cannot receive clicks. Confirm press and release on the same target; capture loss/cancellation cannot activate a stale target.
+- Drag only the right grip, after a 4 logical-pixel threshold. Hold the current size during dragging. Clamp the complete expanded footprint to the destination work area on drop and keep position for this run only.
+
+### Motion
+
+Use a 150 ms ease-out for width and height together. Content fades and clips into the growing bounds; the fixed badge stays opaque. Reverse from current progress on pointer re-entry without resetting. Keep the menu open while the pointer or an active slider/grip gesture is inside it.
+
+Respect Windows disabled-animation preferences. Use a dedicated timer only during a transition, separate from trail expiry and canvas drag watchdog timers. Stop it when settled. No idle animation loop or polling. Verify Win32 capture restrictions for a nonactivating panel; do not assume capture alone guarantees outside-window release.
+
+### Build order
+
+1. Mouse tool selection and accurate shortcut badges, wired through main.
+2. Reachable input-mode toggle sharing the existing global toggle path.
+3. Fixed two-row palette and working width slider.
+4. Smooth two-state reveal and fixed-right dragging.
+5. Combined hidden/native checks, offscreen visual review and user acceptance.
+
+Each slice must remain runnable and leave its smallest focused regression check. Work sharing ui.rs or main.rs is sequential. The user approved implementation in an isolated worktree. If implementation uses workers later, follow docs/workflow-strategy.md with one serial integrator.
+
+### Validation
+
+Approved commands for this implementation loop:
+
+- cargo test panel_menu_ -- --test-threads=1
+- cargo build --release
+- git diff --check
+
+New tests use the panel_menu_ prefix, including tool/variant selection, width, fixed palette, input toggle rollback, typed events, motion and placement. Older recent-color tests may need compilation changes because the five-slot history UI is removed; do not execute legacy tests in this loop. The user explicitly overrides the normal full-suite/smoke gate: run only new-feature tests and a release build, then favor manual acceptance. Format changed source files only; no full-project lint/test pass.
+
+Offscreen renders at 100%, 150% and 200% check all badges, long arrow labels, selected outlines, black-slot visibility, both input states and animation endpoints. Include hidden/native event decoding, invalid payloads, click cancellation, resource cleanup and no UI-owned focus changes. Elapsed-time injection verifies reversal, disabled motion and timer termination deterministically.
+
+Real mouse clicks, outside-window slider/grip release, normal typing after toggle, assistive-technology discoverability and mixed-DPI placement remain manual checks. Do not claim these from posted events or hidden windows. Do not inject system input, move the cursor, launch/close the user's app, overwrite the installed executable, push remotely or modify unrelated README.md/Taskfile.yml edits.
+
+### Approved scope
+
+Implement the depicted full menu, exact Pen/Temporary mouse choices, repeat-click Arrow direction, fixed colors, input toggle, motion and grip dragging. Retain legacy numeric shortcut RGB values. Only new-feature tests run; manual observations remain unverified until the user tries the release binary.
+
 ## Current execution strategy
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.

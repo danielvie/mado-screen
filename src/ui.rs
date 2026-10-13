@@ -7,6 +7,7 @@ use std::{
     marker::PhantomData,
     rc::Rc,
     sync::atomic::{AtomicU32, Ordering},
+    time::{Duration, Instant},
 };
 use windows::{
     Win32::{
@@ -14,13 +15,18 @@ use windows::{
         Graphics::Gdi::*,
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::{EM_SETLIMITTEXT, EM_SETMARGINS, WM_MOUSELEAVE},
+            Controls::{
+                EM_SETLIMITTEXT, EM_SETMARGINS, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
+                InitCommonControlsEx, TOOLTIPS_CLASSW, TTF_SUBCLASS, TTF_TRANSPARENT, TTM_ACTIVATE,
+                TTM_ADDTOOLW, TTM_NEWTOOLRECTW, TTM_POP, TTM_UPDATETIPTEXTW, TTS_ALWAYSTIP,
+                TTS_NOPREFIX, TTTOOLINFOW, WM_MOUSELEAVE,
+            },
             HiDpi::GetDpiForWindow,
             Input::KeyboardAndMouse::*,
             WindowsAndMessaging::*,
         },
     },
-    core::{Error, PCWSTR, Result, w},
+    core::{BOOL, Error, PCWSTR, Result, w},
 };
 
 const UI_EVENT: u32 = WM_APP + 40;
@@ -50,17 +56,87 @@ const FOREGROUND: u32 = 0xff334155;
 const MUTED: u32 = 0xff64748b;
 const BLUE: u32 = 0xff2563eb;
 const ORANGE: u32 = 0xfff97316;
-const PANEL_BACKGROUND: u32 = 0xff333940;
-const PANEL_BLUE: u32 = 0xff58a6ef;
+const PANEL_BACKGROUND: u32 = 0xff191c20;
+const PANEL_BORDER: u32 = 0xff444b52;
+const PANEL_TEXT: u32 = 0xfff1eee8;
+const PANEL_SECONDARY: u32 = 0xffadb4bb;
+const PANEL_ACCENT: u32 = 0xff7cc7b4;
 const PANEL_WIDTH: i32 = 440;
+const PANEL_HEIGHT: i32 = 304;
 const PANEL_ROW: i32 = 44;
 const PANEL_SAMPLES: i32 = 4;
+const PANEL_ANIMATION_TIMER: usize = 0x4d01;
+const PANEL_DRAG_TIMER: usize = 0x4d02;
+const PANEL_DURATION: Duration = Duration::from_millis(150);
+const PANEL_PALETTE: [u32; 16] = [
+    0xffffdf32, 0xffffb51b, 0xfff97316, 0xffe31635, 0xff673b92, 0xff9b4fc0, 0xffd50d81, 0xffb9085e,
+    0xff35c7ef, 0xff0085dc, 0xff075cbf, 0xff83c400, 0xff00b85a, 0xfff1f1ef, 0xffbdbdbb, 0xff161616,
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuTool {
+    Pen = 0,
+    TemporaryPen = 1,
+    Line = 2,
+    Arrow = 3,
+    Rectangle = 4,
+    Ellipse = 5,
+    Eraser = 6,
+}
+
+const PANEL_TOOLS: [(MenuTool, &str, &str, &str); 7] = [
+    (
+        MenuTool::Pen,
+        "Pen",
+        "P",
+        "Pen. P selects pen, then P again toggles temporary ink. Click selects permanent pen.",
+    ),
+    (
+        MenuTool::TemporaryPen,
+        "Temp",
+        "P",
+        "Temporary pen. P selects pen, then P again toggles temporary ink. Click selects temporary pen.",
+    ),
+    (
+        MenuTool::Line,
+        "Line",
+        "L",
+        "Line. L selects a straight line.",
+    ),
+    (
+        MenuTool::Arrow,
+        "Arrow",
+        "A",
+        "Arrow. Repeat A or click selected Arrow to flip direction.",
+    ),
+    (
+        MenuTool::Rectangle,
+        "Rectangle",
+        "R",
+        "Rectangle. R selects an outline rectangle.",
+    ),
+    (
+        MenuTool::Ellipse,
+        "Ellipse",
+        "O",
+        "Ellipse. O selects an outline ellipse.",
+    ),
+    (
+        MenuTool::Eraser,
+        "Eraser",
+        "E",
+        "Eraser. E selects whole-annotation erasing.",
+    ),
+];
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum UiEvent {
     Color(u32),
     Closed,
     OpenPicker,
+    Tool(MenuTool),
+    Width(u32),
+    Toggle,
 }
 
 // Each instance owns its classes, so independent instances cannot unregister each other.
@@ -124,13 +200,24 @@ struct State {
     slider: Cell<HWND>,
     text: RefCell<String>,
     color: Cell<u32>,
-    tool: Cell<Tool>,
+    tool: Cell<MenuTool>,
+    tool_label: RefCell<String>,
+    drawing: Cell<bool>,
+    width: Cell<u32>,
     expanded: Cell<bool>,
-    panel_width: Cell<i32>,
+    motion: Cell<PanelMotion>,
+    animation_timer: Cell<bool>,
     panel_pixels: RefCell<Vec<u32>>,
-    recents: RefCell<Vec<u32>>,
-    next_recent: Cell<usize>,
+    panel_anchor: Cell<POINT>,
+    panel_upward: Cell<bool>,
+    panel_drag: Cell<Option<PanelDrag>>,
+    panel_capture: Cell<bool>,
+    panel_guard: Cell<bool>,
+    tooltip: Cell<HWND>,
+    tooltip_hit: Cell<Option<PanelHit>>,
+    tooltip_text: RefCell<Vec<u16>>,
     panel_scale: Cell<f64>,
+    panel_dpi: Cell<u32>,
     panel_monitor: Cell<RECT>,
     tracking: Cell<bool>,
     pressed: Cell<Option<PanelHit>>,
@@ -160,13 +247,24 @@ impl State {
             slider: Cell::new(HWND::default()),
             text: RefCell::new(String::new()),
             color: Cell::new(Style::default().color),
-            tool: Cell::new(Tool::Pen),
+            tool: Cell::new(MenuTool::Pen),
+            tool_label: RefCell::new("Pen".into()),
+            drawing: Cell::new(false),
+            width: Cell::new(Style::default().thickness),
             expanded: Cell::new(false),
-            panel_width: Cell::new(224),
+            motion: Cell::new(PanelMotion::settled(false)),
+            animation_timer: Cell::new(false),
             panel_pixels: RefCell::new(Vec::new()),
-            recents: RefCell::new(vec![Style::default().color]),
-            next_recent: Cell::new(0),
+            panel_anchor: Cell::new(POINT::default()),
+            panel_upward: Cell::new(false),
+            panel_drag: Cell::new(None),
+            panel_capture: Cell::new(false),
+            panel_guard: Cell::new(false),
+            tooltip: Cell::new(HWND::default()),
+            tooltip_hit: Cell::new(None),
+            tooltip_text: RefCell::new(Vec::new()),
             panel_scale: Cell::new(1.0),
+            panel_dpi: Cell::new(96),
             panel_monitor: Cell::new(RECT::default()),
             tracking: Cell::new(false),
             pressed: Cell::new(None),
@@ -233,6 +331,7 @@ impl DesktopUi {
                 Some(ui.state.as_ref() as *const State as _),
             )?;
             ui.state.status.set(hwnd);
+            ui.state.create_tooltip(instance)?;
             ui.state.anchor_panel(GetDpiForWindow(hwnd))?;
             ui.update(false, Tool::Pen, Style::default())?;
             SetWindowPos(
@@ -259,27 +358,24 @@ impl DesktopUi {
             return Ok(());
         }
         *self.state.text.borrow_mut() = text;
+        *self.state.tool_label.borrow_mut() = tool.into();
         self.state.tool.set(tool_icon(tool));
-        if self.state.color.replace(style.color) != style.color {
-            let mut recents = self.state.recents.borrow_mut();
-            if !recents.contains(&style.color) {
-                if recents.len() < 5 {
-                    recents.push(style.color);
-                } else {
-                    let slot = self.state.next_recent.get();
-                    recents[slot] = style.color;
-                    self.state.next_recent.set((slot + 1) % 5);
-                }
-            }
+        self.state.drawing.set(drawing);
+        self.state.width.set(style.thickness);
+        self.state.color.set(style.color);
+        // A queued request never changes selection. Only the owner's committed update does.
+        if self.state.panel_drag.get().is_none()
+            && self.state.pressed.get() != Some(PanelHit::Width)
+        {
             self.state.pressed.set(None);
         }
+        self.state.hide_tooltip();
         unsafe {
             let _ = SetWindowTextW(
                 self.state.status.get(),
                 PCWSTR(wide(&format!("Mado {tool}; {mode}")).as_ptr()),
             );
         }
-        self.state.measure_panel()?;
         self.state.resize_panel()
     }
 
@@ -315,6 +411,9 @@ impl DesktopUi {
                 Some(self.state.as_ref() as *const State as _),
             )?;
             self.state.picker.set(hwnd);
+            self.state.cancel_panel_gesture();
+            self.state.hide_tooltip();
+            let _ = self.state.resize_panel();
             // On any child-construction error destroy the complete partial child tree.
             if let Err(error) = self
                 .size_picker(hwnd, cursor, info.rcWork)
@@ -530,6 +629,7 @@ impl DesktopUi {
 impl Drop for DesktopUi {
     fn drop(&mut self) {
         self.close_picker();
+        self.state.destroy_panel_resources();
         unsafe {
             for hwnd in [
                 self.state.disk.get(),
@@ -549,8 +649,66 @@ impl Drop for DesktopUi {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PanelHit {
+    Grip,
+    Toggle,
     Current,
-    Recent(u32),
+    Palette(usize),
+    Width,
+    Tool(MenuTool),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PanelMotion {
+    from: f64,
+    to: f64,
+    progress: f64,
+    started: Instant,
+}
+impl PanelMotion {
+    fn settled(open: bool) -> Self {
+        let progress = if open { 1.0 } else { 0.0 };
+        Self {
+            from: progress,
+            to: progress,
+            progress,
+            started: Instant::now(),
+        }
+    }
+    fn moving(self) -> bool {
+        self.progress != self.to
+    }
+    fn sample(mut self, now: Instant) -> Self {
+        let t = (now.saturating_duration_since(self.started).as_secs_f64()
+            / PANEL_DURATION.as_secs_f64())
+        .clamp(0.0, 1.0);
+        self.progress = if t == 1.0 {
+            self.to
+        } else {
+            self.from + (self.to - self.from) * (1.0 - (1.0 - t).powi(3))
+        };
+        self
+    }
+    fn redirect(self, open: bool, animated: bool, now: Instant) -> Self {
+        let current = self.sample(now);
+        let to = if open { 1.0 } else { 0.0 };
+        if !animated {
+            return Self::settled(open);
+        }
+        Self {
+            from: current.progress,
+            to,
+            progress: current.progress,
+            started: now,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PanelDrag {
+    start: POINT,
+    anchor: POINT,
+    scale: f64,
+    moving: bool,
 }
 
 struct PanelGeometry {
@@ -558,29 +716,88 @@ struct PanelGeometry {
     height: i32,
     radius: i32,
     scale: f64,
+    upward: bool,
+    opacity: f64,
 }
 impl PanelGeometry {
     fn new(state: &State) -> Self {
         let scale = state.panel_scale.get();
+        let progress = state.motion.get().progress;
         Self {
-            width: if state.expanded.get() {
-                state.panel_width.get()
-            } else {
-                scaled(PANEL_ROW, scale)
-            },
-            height: scaled(PANEL_ROW * if state.expanded.get() { 2 } else { 1 }, scale),
+            width: scaled(PANEL_ROW, scale)
+                + scaled(
+                    ((PANEL_WIDTH - PANEL_ROW) as f64 * progress).round() as i32,
+                    scale,
+                ),
+            height: scaled(PANEL_ROW, scale)
+                + scaled(
+                    ((PANEL_HEIGHT - PANEL_ROW) as f64 * progress).round() as i32,
+                    scale,
+                ),
             radius: scaled(12, scale).max(1),
             scale,
+            upward: state.panel_upward.get(),
+            opacity: progress,
         }
     }
-    fn current(&self) -> (i32, i32) {
-        (self.width - scaled(24, self.scale), scaled(22, self.scale))
-    }
-    fn recent(&self, index: usize) -> (i32, i32) {
-        (
-            self.width - scaled(24 + (4 - index) as i32 * 36, self.scale),
-            scaled(66, self.scale),
+    fn badge(&self) -> RECT {
+        rect(
+            self.width - scaled(44, self.scale),
+            if self.upward {
+                self.height - scaled(44, self.scale)
+            } else {
+                0
+            },
+            scaled(44, self.scale),
+            scaled(44, self.scale),
         )
+    }
+    fn bounds(&self, hit: PanelHit) -> RECT {
+        let s = self.scale;
+        let ox = self.width - scaled(PANEL_WIDTH, s);
+        let oy = if self.upward {
+            self.height - scaled(PANEL_HEIGHT, s)
+        } else {
+            0
+        };
+        let body = if self.upward { -44 } else { 0 };
+        let local = match hit {
+            PanelHit::Grip => {
+                let badge = self.badge();
+                return rect(
+                    badge.right - scaled(12, s),
+                    badge.top + scaled(8, s),
+                    scaled(10, s),
+                    scaled(28, s),
+                );
+            }
+            PanelHit::Toggle => rect(16, if self.upward { 264 } else { 4 }, 184, 40),
+            PanelHit::Current => rect(16, 48 + body, 408, 48),
+            PanelHit::Width => rect(24, 96 + body, 348, 32),
+            PanelHit::Palette(i) => rect(
+                30 + (i % 8) as i32 * 50,
+                146 + body + (i / 8) as i32 * 42,
+                30,
+                30,
+            ),
+            PanelHit::Tool(tool) => {
+                let i = PANEL_TOOLS
+                    .iter()
+                    .position(|entry| entry.0 == tool)
+                    .unwrap();
+                rect(16 + i as i32 * 58, 236 + body, 56, 56)
+            }
+        };
+        rect(
+            ox + scaled(local.left, s),
+            oy + scaled(local.top, s),
+            scaled(local.right - local.left, s),
+            scaled(local.bottom - local.top, s),
+        )
+    }
+    fn center(&self, hit: PanelHit) -> (i32, i32) {
+        let r = self.bounds(hit);
+        ((r.left + r.right) / 2, (r.top + r.bottom) / 2)
     }
     fn contains(&self, x: i32, y: i32) -> bool {
         if x < 0 || y < 0 || x >= self.width || y >= self.height {
@@ -590,35 +807,108 @@ impl PanelGeometry {
         let cy = y.clamp(self.radius, self.height - self.radius - 1);
         (x - cx).pow(2) + (y - cy).pow(2) <= self.radius.pow(2)
     }
+    fn revealed(&self, hit: PanelHit) -> bool {
+        let r = self.bounds(hit);
+        hit == PanelHit::Grip
+            || (self.opacity >= 0.85
+                && r.left >= 0
+                && r.top >= 0
+                && r.right <= self.width
+                && r.bottom <= self.height)
+    }
     fn hit(&self, state: &State, x: i32, y: i32) -> Option<PanelHit> {
-        if !state.expanded.get() || !self.contains(x, y) {
+        if !self.contains(x, y) {
             return None;
         }
-        let inside = |center: (i32, i32)| {
-            (x - center.0).pow(2) + (y - center.1).pow(2) <= scaled(9, self.scale).pow(2)
-        };
-        if inside(self.current()) {
-            return Some(PanelHit::Current);
-        }
-        let recents = state.recents.borrow();
-        for (i, color) in recents.iter().enumerate() {
-            if inside(self.recent(i)) {
-                return Some(PanelHit::Recent(*color));
+        let targets = [
+            PanelHit::Grip,
+            PanelHit::Toggle,
+            PanelHit::Current,
+            PanelHit::Width,
+        ]
+        .into_iter()
+        .chain((0..16).map(PanelHit::Palette))
+        .chain(PANEL_TOOLS.iter().map(|entry| PanelHit::Tool(entry.0)));
+        for hit in targets {
+            if !self.revealed(hit)
+                || (!state.picker.get().is_invalid()
+                    && !matches!(hit, PanelHit::Toggle | PanelHit::Grip))
+            {
+                continue;
+            }
+            let r = self.bounds(hit);
+            let inside = if matches!(hit, PanelHit::Palette(_)) {
+                let (cx, cy) = self.center(hit);
+                (x - cx).pow(2) + (y - cy).pow(2) <= scaled(15, self.scale).pow(2)
+            } else {
+                x >= r.left && x < r.right && y >= r.top && y < r.bottom
+            };
+            if inside {
+                return Some(hit);
             }
         }
         None
     }
+    fn requested_width(&self, x: i32) -> u32 {
+        let r = self.bounds(PanelHit::Width);
+        let step = (((x - r.left) as f64 / (r.right - r.left).max(1) as f64).clamp(0.0, 1.0) * 15.0)
+            .round() as u32;
+        1 + 2 * step
+    }
 }
 
-fn tool_icon(label: &str) -> Tool {
+fn tool_icon(label: &str) -> MenuTool {
     match label {
-        "Line" => Tool::Line,
-        "Rectangle" => Tool::Rectangle,
-        "Ellipse" => Tool::Ellipse,
-        "Eraser" => Tool::Eraser,
-        label if label.starts_with("Arrow") => Tool::Arrow,
-        _ => Tool::Pen,
+        "Temporary pen" => MenuTool::TemporaryPen,
+        "Line" => MenuTool::Line,
+        "Rectangle" => MenuTool::Rectangle,
+        "Ellipse" => MenuTool::Ellipse,
+        "Eraser" => MenuTool::Eraser,
+        label if label.starts_with("Arrow") => MenuTool::Arrow,
+        _ => MenuTool::Pen,
     }
+}
+
+fn panel_scale(dpi: u32, work: RECT) -> f64 {
+    (dpi.max(96) as f64 / 96.0)
+        .min((work.right - work.left).max(1) as f64 / PANEL_WIDTH as f64)
+        .min((work.bottom - work.top).max(1) as f64 / PANEL_HEIGHT as f64)
+}
+
+// Anchor is the badge's screen-space right edge and top. Upward opening keeps it fixed.
+fn panel_clamp(anchor: POINT, work: RECT, scale: f64) -> (POINT, bool) {
+    let width = scaled(PANEL_WIDTH, scale);
+    let height = scaled(PANEL_HEIGHT, scale);
+    let badge = scaled(PANEL_ROW, scale);
+    let upward = anchor.y + height > work.bottom;
+    let y = if upward {
+        anchor
+            .y
+            .clamp(work.top + height - badge, work.bottom - badge)
+    } else {
+        anchor.y.clamp(work.top, work.bottom - height)
+    };
+    (
+        POINT {
+            x: anchor.x.clamp(work.left + width, work.right),
+            y,
+        },
+        upward,
+    )
+}
+
+fn panel_animations_enabled() -> bool {
+    let mut enabled = BOOL(1);
+    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow
+    unsafe {
+        let _ = SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some(&mut enabled as *mut BOOL as _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
+    }
+    enabled.as_bool()
 }
 
 fn rounded_region(hwnd: HWND, width: i32, height: i32, radius: i32) -> Result<()> {
@@ -639,6 +929,7 @@ fn rounded_region(hwnd: HWND, width: i32, height: i32, radius: i32) -> Result<()
 
 impl State {
     fn anchor_panel(&self, dpi: u32) -> Result<()> {
+        self.panel_dpi.set(dpi);
         unsafe {
             // The primary monitor includes the virtual-desktop origin, independent
             // of the overlay's virtual-desktop dimensions.
@@ -649,54 +940,66 @@ impl State {
                 ..Default::default()
             };
             GetMonitorInfoW(monitor, &mut info).ok()?;
-            self.panel_monitor.set(info.rcMonitor);
-            self.panel_scale.set(
-                (dpi.max(96) as f64 / 96.0)
-                    .min(
-                        (info.rcMonitor.right - info.rcMonitor.left).max(1) as f64
-                            / (PANEL_WIDTH + 32) as f64,
-                    )
-                    .min(
-                        (info.rcMonitor.bottom - info.rcMonitor.top).max(1) as f64
-                            / (2 * PANEL_ROW + 32) as f64,
-                    ),
+            self.panel_monitor.set(info.rcWork);
+            let scale = panel_scale(dpi, info.rcWork);
+            self.panel_scale.set(scale);
+            let (anchor, upward) = panel_clamp(
+                POINT {
+                    x: info.rcWork.right - scaled(16, scale),
+                    y: info.rcWork.top + scaled(16, scale),
+                },
+                info.rcWork,
+                scale,
             );
+            self.panel_anchor.set(anchor);
+            self.panel_upward.set(upward);
         }
-        self.measure_panel()?;
         self.resize_panel()
     }
 
-    fn measure_panel(&self) -> Result<()> {
-        let s = self.panel_scale.get();
-        let surface = Bitmap::new(1, 1)?;
-        let font = panel_font(s * PANEL_SAMPLES as f64)?;
-        let text: Vec<u16> = self.text.borrow().encode_utf16().collect();
-        let mut extent = SIZE::default();
+    fn place_panel(&self, anchor: POINT, dpi: u32) -> Result<()> {
+        self.panel_dpi.set(dpi);
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
         unsafe {
-            let old = SelectObject(surface.dc, font.0);
-            let result = GetTextExtentPoint32W(surface.dc, &text, &mut extent).ok();
-            SelectObject(surface.dc, old);
-            result?;
+            GetMonitorInfoW(
+                MonitorFromPoint(
+                    POINT {
+                        x: anchor.x - 1,
+                        y: anchor.y,
+                    },
+                    MONITOR_DEFAULTTONEAREST,
+                ),
+                &mut info,
+            )
+            .ok()?;
         }
-        // Measure in the same font/DPI as painting. Five swatches always fit;
-        // the existing maximum bounds allocation for unexpected long labels.
-        // https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gettextextentpoint32w
-        self.panel_width.set(
-            ((extent.cx + PANEL_SAMPLES - 1) / PANEL_SAMPLES + scaled(64, s))
-                .clamp(scaled(224, s), scaled(PANEL_WIDTH, s)),
-        );
-        self.pressed.set(None);
-        Ok(())
+        let scale = panel_scale(dpi, info.rcWork);
+        let (anchor, upward) = panel_clamp(anchor, info.rcWork, scale);
+        self.panel_scale.set(scale);
+        self.panel_monitor.set(info.rcWork);
+        self.panel_anchor.set(anchor);
+        self.panel_upward.set(upward);
+        self.resize_panel()
     }
 
     fn resize_panel(&self) -> Result<()> {
         let geometry = PanelGeometry::new(self);
-        let monitor = self.panel_monitor.get();
-        let margin = scaled(16, geometry.scale);
+        if self.status.get().is_invalid() {
+            return Ok(());
+        }
+        let anchor = self.panel_anchor.get();
         let (surface, pixels) = panel_bitmap(self)?;
         let destination = POINT {
-            x: monitor.right - margin - geometry.width,
-            y: monitor.top + margin,
+            x: anchor.x - geometry.width,
+            y: anchor.y
+                - if geometry.upward {
+                    geometry.height - scaled(44, geometry.scale)
+                } else {
+                    0
+                },
         };
         let size = SIZE {
             cx: geometry.width,
@@ -725,15 +1028,321 @@ impl State {
             )?;
         }
         *self.panel_pixels.borrow_mut() = pixels;
+        self.tooltip_rect();
         Ok(())
+    }
+
+    fn reveal_panel(&self, open: bool) {
+        if self.panel_drag.get().is_some() || self.pressed.get() == Some(PanelHit::Width) {
+            return;
+        }
+        if self.expanded.replace(open) == open
+            && self.motion.get().to == if open { 1.0 } else { 0.0 }
+        {
+            return;
+        }
+        self.hide_tooltip();
+        let now = Instant::now();
+        self.motion.set(
+            self.motion
+                .get()
+                .redirect(open, panel_animations_enabled(), now),
+        );
+        self.sync_animation_timer();
+        let _ = self.resize_panel();
+    }
+
+    fn sync_animation_timer(&self) {
+        let hwnd = self.status.get();
+        let moving = self.motion.get().moving() && !hwnd.is_invalid();
+        unsafe {
+            // KillTimer leaves queued messages behind; the flag gates their dispatch.
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-settimer
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-killtimer
+            if moving && !self.animation_timer.get() {
+                self.animation_timer
+                    .set(SetTimer(Some(hwnd), PANEL_ANIMATION_TIMER, 15, None) != 0);
+                if !self.animation_timer.get() {
+                    self.motion.set(PanelMotion::settled(self.expanded.get()));
+                }
+            } else if !moving && self.animation_timer.replace(false) {
+                let _ = KillTimer(Some(hwnd), PANEL_ANIMATION_TIMER);
+            }
+        }
     }
 
     fn panel_leave(&self) {
         self.tracking.set(false);
-        self.pressed.set(None);
-        if self.expanded.replace(false) {
+        self.hide_tooltip();
+        if self.panel_drag.get().is_none() && self.pressed.get() != Some(PanelHit::Width) {
+            self.cancel_panel_gesture();
+            self.reveal_panel(false);
+        }
+    }
+
+    fn create_tooltip(&self, instance: HINSTANCE) -> Result<()> {
+        unsafe {
+            InitCommonControlsEx(&INITCOMMONCONTROLSEX {
+                dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
+                dwICC: ICC_WIN95_CLASSES,
+            })
+            .ok()?;
+            let hwnd = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                TOOLTIPS_CLASSW,
+                None,
+                WS_POPUP | WINDOW_STYLE(TTS_ALWAYSTIP | TTS_NOPREFIX),
+                0,
+                0,
+                0,
+                0,
+                Some(self.status.get()),
+                None,
+                Some(instance),
+                None,
+            )?;
+            self.tooltip.set(hwnd);
+            *self.tooltip_text.borrow_mut() =
+                wide("Mado selected tool. Drag the six-dot grip to move the menu.");
+            let info = self.tooltip_info();
+            if SendMessageW(
+                hwnd,
+                TTM_ADDTOOLW,
+                None,
+                Some(LPARAM(&info as *const _ as isize)),
+            )
+            .0 == 0
+            {
+                let _ = DestroyWindow(hwnd);
+                self.tooltip.set(HWND::default());
+                return Err(Error::from_thread());
+            }
+            self.hide_tooltip();
+        }
+        Ok(())
+    }
+
+    fn tooltip_info(&self) -> TTTOOLINFOW {
+        // The pointer stays owned by State. Never hold its RefCell borrow in SendMessage.
+        let text = self.tooltip_text.borrow().as_ptr() as *mut u16;
+        TTTOOLINFOW {
+            // The process uses the default common-controls version, which accepts V2 size.
+            cbSize: std::mem::offset_of!(TTTOOLINFOW, lpReserved) as u32,
+            uFlags: TTF_SUBCLASS | TTF_TRANSPARENT,
+            hwnd: self.status.get(),
+            uId: 1,
+            rect: rect(
+                0,
+                0,
+                PanelGeometry::new(self).width,
+                PanelGeometry::new(self).height,
+            ),
+            lpszText: windows::core::PWSTR(text),
+            ..Default::default()
+        }
+    }
+
+    fn tooltip_rect(&self) {
+        let hwnd = self.tooltip.get();
+        if hwnd.is_invalid() {
+            return;
+        }
+        let info = self.tooltip_info();
+        unsafe {
+            SendMessageW(
+                hwnd,
+                TTM_NEWTOOLRECTW,
+                None,
+                Some(LPARAM(&info as *const _ as isize)),
+            );
+        }
+    }
+
+    fn hide_tooltip(&self) {
+        self.tooltip_hit.set(None);
+        let hwnd = self.tooltip.get();
+        if !hwnd.is_invalid() {
+            unsafe {
+                SendMessageW(hwnd, TTM_POP, None, None);
+                SendMessageW(hwnd, TTM_ACTIVATE, Some(WPARAM(0)), None);
+            }
+        }
+    }
+
+    fn panel_tooltip(&self, hit: Option<PanelHit>) {
+        if self.tooltip_hit.get() == hit {
+            return;
+        }
+        self.hide_tooltip();
+        let hwnd = self.tooltip.get();
+        let Some(hit) = hit.filter(|_| !hwnd.is_invalid()) else {
+            return;
+        };
+        let description = match hit {
+            PanelHit::Grip => "Drag the six-dot grip to move the menu.".to_string(),
+            PanelHit::Toggle => "Drawing / Click-through. Ctrl+Alt+D toggles canvas input.".into(),
+            PanelHit::Current => format!(
+                "Selected stroke: {} at {} px. Click for the color picker. C opens it in drawing mode.",
+                hex(self.color.get()),
+                self.width.get()
+            ),
+            PanelHit::Width => "Stroke width. Odd widths from 1 to 31 px.".into(),
+            PanelHit::Palette(i) => format!(
+                "Color {}. Click to select; click the matching selected color for the picker.",
+                hex(PANEL_PALETTE[i])
+            ),
+            PanelHit::Tool(tool) => {
+                let text = PANEL_TOOLS.iter().find(|entry| entry.0 == tool).unwrap().3;
+                if tool == MenuTool::Arrow {
+                    format!("{text} Current tool: {}.", self.tool_label.borrow())
+                } else {
+                    text.into()
+                }
+            }
+        };
+        *self.tooltip_text.borrow_mut() = wide(&description);
+        self.tooltip_hit.set(Some(hit));
+        let info = self.tooltip_info();
+        unsafe {
+            SendMessageW(
+                hwnd,
+                TTM_UPDATETIPTEXTW,
+                None,
+                Some(LPARAM(&info as *const _ as isize)),
+            );
+            SendMessageW(hwnd, TTM_ACTIVATE, Some(WPARAM(1)), None);
+        }
+    }
+
+    fn begin_panel_gesture(&self, hit: Option<PanelHit>, point: POINT) {
+        self.cancel_panel_gesture();
+        self.hide_tooltip();
+        self.pressed.set(hit);
+        let hwnd = self.status.get();
+        if hit == Some(PanelHit::Grip) {
+            // Hold the current interpolation, including a half-revealed menu.
+            let mut motion = self.motion.get();
+            motion.from = motion.progress;
+            motion.to = motion.progress;
+            self.motion.set(motion);
+            self.sync_animation_timer();
+            self.panel_drag.set(Some(PanelDrag {
+                start: point,
+                anchor: self.panel_anchor.get(),
+                scale: self.panel_scale.get(),
+                moving: false,
+            }));
+        }
+        unsafe {
+            // Background nonactivating popups cannot rely on capture outside their bounds.
+            // This guard exists only during a grip or slider gesture, never while idle.
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcapture
+            if hit.is_some() && IsWindowVisible(hwnd).as_bool() {
+                SetCapture(hwnd);
+                self.panel_capture.set(GetCapture() == hwnd);
+                if matches!(hit, Some(PanelHit::Grip | PanelHit::Width)) && self.panel_capture.get()
+                {
+                    self.panel_guard
+                        .set(SetTimer(Some(hwnd), PANEL_DRAG_TIMER, 16, None) != 0);
+                    if !self.panel_guard.get() {
+                        self.cancel_panel_gesture();
+                    }
+                } else if !self.panel_capture.get() {
+                    self.cancel_panel_gesture();
+                }
+            }
+        }
+    }
+
+    fn move_panel_grip(&self, point: POINT) {
+        let Some(mut drag) = self.panel_drag.get() else {
+            return;
+        };
+        if !drag.moving
+            && ((point.x - drag.start.x) as f64).hypot((point.y - drag.start.y) as f64)
+                >= scaled(4, drag.scale) as f64
+        {
+            drag.moving = true;
+        }
+        if drag.moving {
+            self.panel_anchor.set(POINT {
+                x: drag.anchor.x + point.x - drag.start.x,
+                y: drag.anchor.y + point.y - drag.start.y,
+            });
+            self.panel_drag.set(Some(drag));
             let _ = self.resize_panel();
         }
+    }
+
+    fn cancel_panel_gesture(&self) {
+        self.pressed.set(None);
+        let drag = self.panel_drag.replace(None);
+        let hwnd = self.status.get();
+        unsafe {
+            if self.panel_guard.replace(false) {
+                let _ = KillTimer(Some(hwnd), PANEL_DRAG_TIMER);
+            }
+            if self.panel_capture.replace(false) && GetCapture() == hwnd {
+                let _ = ReleaseCapture();
+            }
+            if drag.is_some_and(|drag| drag.moving) && !hwnd.is_invalid() {
+                let _ = self.place_panel(self.panel_anchor.get(), self.panel_dpi.get());
+            }
+        }
+    }
+
+    fn finish_panel_gesture(&self, hit: Option<PanelHit>, x: i32) {
+        let pressed = self.pressed.get();
+        let width = PanelGeometry::new(self).requested_width(x);
+        self.cancel_panel_gesture();
+        if pressed == Some(PanelHit::Width) && self.picker.get().is_invalid() {
+            self.post(UiEvent::Width(width));
+        }
+        if let Some(target) = pressed.filter(|pressed| Some(*pressed) == hit) {
+            match target {
+                PanelHit::Grip => {}
+                PanelHit::Toggle => self.post(UiEvent::Toggle),
+                PanelHit::Current => self.post(UiEvent::OpenPicker),
+                PanelHit::Palette(i) => self.post(
+                    if PANEL_PALETTE[i] & 0xffffff == self.color.get() & 0xffffff {
+                        UiEvent::OpenPicker
+                    } else {
+                        UiEvent::Color(PANEL_PALETTE[i])
+                    },
+                ),
+                PanelHit::Width => {}
+                PanelHit::Tool(tool) => self.post(UiEvent::Tool(tool)),
+            }
+        }
+        // Resample only after ending a held-size gesture.
+        self.refresh_panel_hover();
+        self.reveal_panel(self.tracking.get());
+    }
+
+    fn refresh_panel_hover(&self) {
+        let hwnd = self.status.get();
+        if unsafe { IsWindowVisible(hwnd).as_bool() } {
+            let mut point = POINT::default();
+            let inside = unsafe {
+                GetCursorPos(&mut point).is_ok() && ScreenToClient(hwnd, &mut point).as_bool()
+            } && PanelGeometry::new(self).contains(point.x, point.y);
+            self.tracking.set(inside);
+        }
+    }
+
+    fn destroy_panel_resources(&self) {
+        self.cancel_panel_gesture();
+        let hwnd = self.status.get();
+        unsafe {
+            if self.animation_timer.replace(false) {
+                let _ = KillTimer(Some(hwnd), PANEL_ANIMATION_TIMER);
+            }
+            let tooltip = self.tooltip.replace(HWND::default());
+            if !tooltip.is_invalid() {
+                let _ = DestroyWindow(tooltip);
+            }
+        }
+        self.tooltip_hit.set(None);
     }
 
     fn post(&self, event: UiEvent) {
@@ -741,6 +1350,9 @@ impl State {
             UiEvent::Color(color) => (color as usize, 1),
             UiEvent::Closed => (0, 2),
             UiEvent::OpenPicker => (0, 3),
+            UiEvent::Tool(tool) => (tool as usize, 4),
+            UiEvent::Width(width) => (width as usize, 5),
+            UiEvent::Toggle => (0, 6),
         };
         // No pointers in queued messages: dispatch may outlive either native window.
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postmessagew
@@ -1002,8 +1614,22 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<UiEvent> {
     }
     match message.lParam.0 {
         1 if message.wParam.0 <= u32::MAX as usize => Some(UiEvent::Color(message.wParam.0 as u32)),
-        2 => Some(UiEvent::Closed),
+        2 if message.wParam.0 == 0 => Some(UiEvent::Closed),
         3 if message.wParam.0 == 0 => Some(UiEvent::OpenPicker),
+        4 => match message.wParam.0 {
+            0 => Some(UiEvent::Tool(MenuTool::Pen)),
+            1 => Some(UiEvent::Tool(MenuTool::TemporaryPen)),
+            2 => Some(UiEvent::Tool(MenuTool::Line)),
+            3 => Some(UiEvent::Tool(MenuTool::Arrow)),
+            4 => Some(UiEvent::Tool(MenuTool::Rectangle)),
+            5 => Some(UiEvent::Tool(MenuTool::Ellipse)),
+            6 => Some(UiEvent::Tool(MenuTool::Eraser)),
+            _ => None,
+        },
+        5 if (1..=31).contains(&message.wParam.0) && message.wParam.0 % 2 == 1 => {
+            Some(UiEvent::Width(message.wParam.0 as u32))
+        }
+        6 if message.wParam.0 == 0 => Some(UiEvent::Toggle),
         _ => None,
     }
 }
@@ -1221,9 +1847,11 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
         height: geometry.height * n,
         radius: geometry.radius * n,
         scale: geometry.scale * n as f64,
+        upward: geometry.upward,
+        opacity: geometry.opacity,
     };
     let sample = Bitmap::new(large.width, large.height)?;
-    // ponytail: 4x box sampling is bounded by the existing 440x88 logical
+    // ponytail: 4x box sampling is bounded by the 440x304 logical
     // maximum. Reuse GDI geometry; increase samples only if hardware review warrants it.
     fill(sample.dc, rect(0, 0, large.width, large.height), 0);
     unsafe {
@@ -1249,6 +1877,7 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
         .collect();
     paint_status(state, sample.dc, &large);
     let source = sample.pixels();
+    let badge = large.badge();
     let mut pixels = Vec::with_capacity((geometry.width * geometry.height) as usize);
     for y in 0..geometry.height {
         for x in 0..geometry.width {
@@ -1257,9 +1886,20 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
                 for dx in 0..n {
                     let i = ((y * n + dy) * large.width + x * n + dx) as usize;
                     if coverage[i] {
-                        sums[3] += 245;
+                        sums[3] += 255;
                         for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
-                            sums[channel] += ((source[i] >> shift) & 255) * 245;
+                            let sx = x * n + dx;
+                            let sy = y * n + dy;
+                            let color = if sx >= badge.left
+                                && sx < badge.right
+                                && sy >= badge.top
+                                && sy < badge.bottom
+                            {
+                                source[i]
+                            } else {
+                                blend(PANEL_BACKGROUND, source[i], geometry.opacity)
+                            };
+                            sums[channel] += ((color >> shift) & 255) * 255;
                         }
                     }
                 }
@@ -1282,14 +1922,70 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
     Ok((surface, pixels))
 }
 
+fn panel_line(dc: HDC, points: &[(i32, i32)], s: f64, origin: (i32, i32), color: u32, width: i32) {
+    unsafe {
+        let pen = GdiObject(CreatePen(PS_SOLID, width.max(1), colorref(color)).into());
+        let old = SelectObject(dc, pen.0);
+        let points: Vec<POINT> = points
+            .iter()
+            .map(|(x, y)| POINT {
+                x: origin.0 + scaled(*x, s),
+                y: origin.1 + scaled(*y, s),
+            })
+            .collect();
+        let _ = Polyline(dc, &points);
+        SelectObject(dc, old);
+    }
+}
+
+fn panel_icon(dc: HDC, tool: MenuTool, origin: (i32, i32), s: f64, color: u32) {
+    let line = |points: &[(i32, i32)]| panel_line(dc, points, s, origin, color, scaled(2, s));
+    match tool {
+        MenuTool::Pen | MenuTool::TemporaryPen => {
+            line(&[(4, 25), (7, 18), (19, 6), (24, 11), (12, 23), (4, 25)]);
+            line(&[(16, 9), (21, 14)]);
+            line(&[(7, 18), (12, 23)]);
+            if tool == MenuTool::TemporaryPen {
+                line(&[(25, 18), (25, 26)]);
+                line(&[(22, 22), (28, 22)]);
+            }
+        }
+        MenuTool::Arrow => {
+            line(&[(4, 26), (24, 6)]);
+            line(&[(12, 6), (24, 6), (24, 18)]);
+        }
+        MenuTool::Line => line(&[(4, 26), (24, 6)]),
+        MenuTool::Rectangle => line(&[(3, 9), (25, 9), (25, 25), (3, 25), (3, 9)]),
+        MenuTool::Ellipse => unsafe {
+            let pen = GdiObject(CreatePen(PS_SOLID, scaled(2, s).max(1), colorref(color)).into());
+            let old = SelectObject(dc, pen.0);
+            let brush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+            let _ = Ellipse(
+                dc,
+                origin.0 + scaled(3, s),
+                origin.1 + scaled(9, s),
+                origin.0 + scaled(25, s),
+                origin.1 + scaled(25, s),
+            );
+            SelectObject(dc, brush);
+            SelectObject(dc, old);
+        },
+        MenuTool::Eraser => {
+            line(&[(4, 20), (17, 7), (26, 16), (15, 27), (11, 27), (4, 20)]);
+            line(&[(10, 14), (20, 23)]);
+            line(&[(11, 27), (26, 27)]);
+        }
+    }
+}
+
 fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
     let s = geometry.scale;
+    let inset = scaled(1, s) / 2;
     fill(
         dc,
         rect(0, 0, geometry.width, geometry.height),
         PANEL_BACKGROUND,
     );
-    let inset = scaled(1, s) / 2;
     rounded_pen(
         dc,
         rect(
@@ -1300,92 +1996,299 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
         ),
         geometry.radius,
         PANEL_BACKGROUND,
-        PANEL_BLUE,
+        PANEL_BORDER,
         scaled(1, s),
     );
-    unsafe {
-        let saved = SaveDC(dc);
-        if state.expanded.get() {
-            let Ok(font) = panel_font(s) else {
-                let _ = RestoreDC(dc, saved);
-                return;
-            };
-            SelectObject(dc, font.0);
-            label(
-                dc,
-                &state.text.borrow(),
-                rect(
+    let disabled = !state.picker.get().is_invalid();
+    let text = if disabled {
+        PANEL_SECONDARY
+    } else {
+        PANEL_TEXT
+    };
+    if geometry.opacity > 0.0 {
+        if let Ok(font) = panel_font(s) {
+            unsafe {
+                let saved = SaveDC(dc);
+                SelectObject(dc, font.0);
+                let toggle = geometry.bounds(PanelHit::Toggle);
+                rounded_pen(
+                    dc,
+                    toggle,
+                    scaled(6, s),
+                    PANEL_BACKGROUND,
+                    if state.drawing.get() {
+                        PANEL_ACCENT
+                    } else {
+                        PANEL_BORDER
+                    },
+                    scaled(1, s),
+                );
+                let switch = rect(
+                    toggle.left + scaled(8, s),
+                    toggle.top + scaled(8, s),
+                    scaled(28, s),
                     scaled(16, s),
-                    0,
-                    geometry.width - scaled(64, s),
-                    scaled(PANEL_ROW, s),
-                ),
-                PANEL_BLUE,
-                DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+                );
+                rounded_pen(
+                    dc,
+                    switch,
+                    scaled(8, s),
+                    PANEL_BACKGROUND,
+                    if state.drawing.get() {
+                        PANEL_ACCENT
+                    } else {
+                        PANEL_SECONDARY
+                    },
+                    scaled(1, s),
+                );
+                ellipse(
+                    dc,
+                    switch.left + scaled(if state.drawing.get() { 20 } else { 8 }, s),
+                    switch.top + scaled(8, s),
+                    scaled(5, s),
+                    PANEL_ACCENT,
+                    1,
+                    true,
+                );
+                label(
+                    dc,
+                    if state.drawing.get() {
+                        "Drawing"
+                    } else {
+                        "Click-through"
+                    },
+                    rect(
+                        toggle.left + scaled(42, s),
+                        toggle.top,
+                        scaled(134, s),
+                        scaled(22, s),
+                    ),
+                    PANEL_TEXT,
+                    DT_SINGLELINE | DT_VCENTER,
+                );
+                let header = rect(
+                    toggle.right + scaled(12, s),
+                    toggle.top,
+                    scaled(180, s),
+                    scaled(32, s),
+                );
+                label(
+                    dc,
+                    &state.tool_label.borrow(),
+                    header,
+                    PANEL_SECONDARY,
+                    DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+                );
+                let preview = geometry.bounds(PanelHit::Current);
+                label(
+                    dc,
+                    "Ctrl+Alt+D",
+                    rect(
+                        toggle.left + scaled(42, s),
+                        toggle.top + scaled(22, s),
+                        scaled(134, s),
+                        scaled(16, s),
+                    ),
+                    PANEL_SECONDARY,
+                    DT_SINGLELINE | DT_VCENTER,
+                );
+                label(
+                    dc,
+                    &format!("{}   {} px", hex(state.color.get()), state.width.get()),
+                    rect(
+                        preview.right - scaled(180, s),
+                        preview.top,
+                        scaled(180, s),
+                        scaled(16, s),
+                    ),
+                    text,
+                    DT_SINGLELINE | DT_RIGHT | DT_VCENTER,
+                );
+                let y = preview.top + scaled(30, s);
+                let width = scaled(state.width.get() as i32, s).max(1);
+                let inset = scaled(4, s).max((width + 1) / 2);
+                let left = preview.left + inset;
+                let right = preview.right - inset;
+                panel_line(
+                    dc,
+                    &[(0, 0), (((right - left) as f64 / s).round() as i32, 0)],
+                    s,
+                    (left, y),
+                    state.color.get(),
+                    width,
+                );
+                ellipse(dc, left, y, width / 2, state.color.get(), 1, true);
+                ellipse(dc, right, y, width / 2, state.color.get(), 1, true);
+                let slider = geometry.bounds(PanelHit::Width);
+                let cy = (slider.top + slider.bottom) / 2;
+                fill(
+                    dc,
+                    rect(
+                        slider.left,
+                        cy - scaled(2, s),
+                        slider.right - slider.left,
+                        scaled(4, s),
+                    ),
+                    PANEL_BORDER,
+                );
+                let thumb = slider.left
+                    + ((slider.right - slider.left) as f64
+                        * (state.width.get().saturating_sub(1).min(30) as f64 / 30.0))
+                        .round() as i32;
+                fill(
+                    dc,
+                    rect(
+                        slider.left,
+                        cy - scaled(2, s),
+                        thumb - slider.left,
+                        scaled(4, s),
+                    ),
+                    PANEL_ACCENT,
+                );
+                ellipse(dc, thumb, cy, scaled(8, s), PANEL_BACKGROUND, 1, true);
+                ellipse(
+                    dc,
+                    thumb,
+                    cy,
+                    scaled(8, s),
+                    PANEL_ACCENT,
+                    scaled(2, s),
+                    false,
+                );
+                label(
+                    dc,
+                    &format!("{} px", state.width.get()),
+                    rect(
+                        slider.right + scaled(12, s),
+                        slider.top,
+                        scaled(48, s),
+                        scaled(32, s),
+                    ),
+                    text,
+                    DT_SINGLELINE | DT_RIGHT | DT_VCENTER,
+                );
+                for (i, color) in PANEL_PALETTE.iter().copied().enumerate() {
+                    let (x, y) = geometry.center(PanelHit::Palette(i));
+                    ellipse(dc, x, y, scaled(14, s), color, 1, true);
+                    ellipse(
+                        dc,
+                        x,
+                        y,
+                        scaled(14, s),
+                        PANEL_SECONDARY,
+                        scaled(1, s),
+                        false,
+                    );
+                    if color & 0xffffff == state.color.get() & 0xffffff {
+                        ellipse(dc, x, y, scaled(18, s), PANEL_ACCENT, scaled(2, s), false);
+                    }
+                }
+                let tools = geometry.bounds(PanelHit::Tool(MenuTool::Pen));
+                fill(
+                    dc,
+                    rect(
+                        tools.left,
+                        tools.top - scaled(8, s),
+                        scaled(408, s),
+                        scaled(1, s),
+                    ),
+                    PANEL_BORDER,
+                );
+                let small_font = panel_font(s * 0.72);
+                for (tool, name, key, _) in PANEL_TOOLS {
+                    let r = geometry.bounds(PanelHit::Tool(tool));
+                    let selected = state.tool.get() == tool;
+                    if selected {
+                        rounded_pen(
+                            dc,
+                            r,
+                            scaled(6, s),
+                            PANEL_BACKGROUND,
+                            PANEL_ACCENT,
+                            scaled(1, s),
+                        );
+                    }
+                    panel_icon(
+                        dc,
+                        tool,
+                        (r.left + scaled(5, s), r.top),
+                        s,
+                        if selected && !disabled {
+                            PANEL_TEXT
+                        } else {
+                            PANEL_SECONDARY
+                        },
+                    );
+                    let badge = rect(
+                        r.right - scaled(18, s),
+                        r.top + scaled(5, s),
+                        scaled(15, s),
+                        scaled(17, s),
+                    );
+                    rounded_pen(
+                        dc,
+                        badge,
+                        scaled(3, s),
+                        PANEL_BACKGROUND,
+                        PANEL_BORDER,
+                        scaled(1, s),
+                    );
+                    if let Ok(ref small) = small_font {
+                        SelectObject(dc, small.0);
+                    }
+                    label(
+                        dc,
+                        key,
+                        badge,
+                        PANEL_TEXT,
+                        DT_SINGLELINE | DT_CENTER | DT_VCENTER,
+                    );
+                    label(
+                        dc,
+                        name,
+                        rect(
+                            r.left,
+                            r.top + scaled(34, s),
+                            r.right - r.left,
+                            scaled(18, s),
+                        ),
+                        text,
+                        DT_SINGLELINE | DT_CENTER | DT_VCENTER,
+                    );
+                    SelectObject(dc, font.0);
+                }
+                let _ = RestoreDC(dc, saved);
+            }
+        }
+    }
+    // Badge is painted independently and is never faded, even during upward opening.
+    let badge = geometry.badge();
+    rounded_pen(
+        dc,
+        badge,
+        geometry.radius,
+        PANEL_BACKGROUND,
+        PANEL_BORDER,
+        scaled(1, s),
+    );
+    panel_icon(
+        dc,
+        state.tool.get(),
+        (badge.left + scaled(2, s), badge.top + scaled(6, s)),
+        s,
+        PANEL_TEXT,
+    );
+    for dy in [16, 21, 26] {
+        for dx in [35, 39] {
+            ellipse(
+                dc,
+                badge.left + scaled(dx, s),
+                badge.top + scaled(dy, s),
+                scaled(1, s).max(1),
+                PANEL_SECONDARY,
+                1,
+                true,
             );
-            let (x, y) = geometry.current();
-            ellipse(dc, x, y, scaled(9, s), state.color.get(), 1, true);
-            // Restore before dropping the selected font.
-            let _ = RestoreDC(dc, saved);
-            let recents = state.recents.borrow();
-            for (i, color) in recents.iter().enumerate() {
-                let (x, y) = geometry.recent(i);
-                ellipse(dc, x, y, scaled(9, s), *color, 1, true);
-                if *color == state.color.get() {
-                    ellipse(dc, x, y, scaled(12, s), PANEL_BLUE, scaled(1, s), false);
-                }
-            }
-        } else {
-            let pen =
-                GdiObject(CreatePen(PS_SOLID, scaled(2, s).max(1), colorref(PANEL_BLUE)).into());
-            SelectObject(dc, pen.0);
-            SelectObject(dc, GetStockObject(NULL_BRUSH));
-            let line = |points: &[(i32, i32)]| {
-                let points: Vec<POINT> = points
-                    .iter()
-                    .map(|(x, y)| POINT {
-                        x: scaled(*x, s),
-                        y: scaled(*y, s),
-                    })
-                    .collect();
-                let _ = Polyline(dc, &points);
-            };
-            match state.tool.get() {
-                Tool::Pen => {
-                    line(&[(13, 30), (16, 23), (28, 11), (33, 16), (21, 28), (13, 30)]);
-                    line(&[(25, 14), (30, 19)]);
-                    line(&[(16, 23), (21, 28)]);
-                }
-                Tool::Arrow => {
-                    line(&[(12, 32), (32, 12)]);
-                    line(&[(20, 12), (32, 12), (32, 24)]);
-                }
-                Tool::Line => line(&[(12, 32), (32, 12)]),
-                Tool::Rectangle => {
-                    let _ = Rectangle(
-                        dc,
-                        scaled(11, s),
-                        scaled(14, s),
-                        scaled(33, s),
-                        scaled(30, s),
-                    );
-                }
-                Tool::Ellipse => {
-                    let _ = Ellipse(
-                        dc,
-                        scaled(11, s),
-                        scaled(14, s),
-                        scaled(33, s),
-                        scaled(30, s),
-                    );
-                }
-                Tool::Eraser => {
-                    line(&[(12, 25), (25, 12), (34, 21), (23, 32), (19, 32), (12, 25)]);
-                    line(&[(18, 19), (28, 28)]);
-                    line(&[(19, 32), (34, 32)]);
-                }
-            }
-            let _ = RestoreDC(dc, saved);
         }
     }
 }
@@ -1781,6 +2684,7 @@ unsafe extern "system" fn picker_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                             let _ = DeleteObject(font.into());
                         }
                         state.post(UiEvent::Closed);
+                        let _ = state.resize_panel();
                     }
                 }
                 _ => {}
@@ -1920,10 +2824,11 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     return LRESULT(0);
                 }
                 WM_MOUSEMOVE => {
-                    // Track leave once per entry; WM_MOUSELEAVE cancels the request.
-                    // No hover timer, polling, capture or focus change is needed.
-                    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
-                    if !state.tracking.get() {
+                    let x = l.0 as u16 as i16 as i32;
+                    let y = (l.0 >> 16) as u16 as i16 as i32;
+                    let geometry = PanelGeometry::new(state);
+                    if geometry.contains(x, y) && !state.tracking.get() {
+                        // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
                         let mut tracking = TRACKMOUSEEVENT {
                             cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
                             dwFlags: TME_LEAVE,
@@ -1932,8 +2837,17 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         };
                         state.tracking.set(TrackMouseEvent(&mut tracking).is_ok());
                     }
-                    if !state.expanded.replace(true) {
-                        let _ = state.resize_panel();
+                    if state.panel_drag.get().is_some() {
+                        let mut point = POINT { x, y };
+                        let _ = ClientToScreen(hwnd, &mut point);
+                        state.move_panel_grip(point);
+                    } else if state.pressed.get() == Some(PanelHit::Width) {
+                        state.post(UiEvent::Width(geometry.requested_width(x)));
+                    } else {
+                        if geometry.contains(x, y) {
+                            state.reveal_panel(true);
+                        }
+                        state.panel_tooltip(geometry.hit(state, x, y));
                     }
                     return LRESULT(0);
                 }
@@ -1942,48 +2856,110 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     return LRESULT(0);
                 }
                 WM_LBUTTONDOWN => {
-                    state.pressed.set(PanelGeometry::new(state).hit(
-                        state,
-                        l.0 as u16 as i16 as i32,
-                        (l.0 >> 16) as u16 as i16 as i32,
-                    ));
+                    let point = POINT {
+                        x: l.0 as u16 as i16 as i32,
+                        y: (l.0 >> 16) as u16 as i16 as i32,
+                    };
+                    let hit = PanelGeometry::new(state).hit(state, point.x, point.y);
+                    let mut screen = point;
+                    let _ = ClientToScreen(hwnd, &mut screen);
+                    state.begin_panel_gesture(hit, screen);
                     return LRESULT(0);
                 }
                 WM_LBUTTONUP => {
-                    let hit = PanelGeometry::new(state).hit(
-                        state,
-                        l.0 as u16 as i16 as i32,
-                        (l.0 >> 16) as u16 as i16 as i32,
-                    );
-                    if let Some(hit) = state
-                        .pressed
-                        .replace(None)
-                        .filter(|pressed| Some(*pressed) == hit)
-                    {
-                        match hit {
-                            PanelHit::Current => state.post(UiEvent::OpenPicker),
-                            PanelHit::Recent(color) => state.post(if color == state.color.get() {
-                                UiEvent::OpenPicker
-                            } else {
-                                UiEvent::Color(color)
-                            }),
+                    let x = l.0 as u16 as i16 as i32;
+                    let y = (l.0 >> 16) as u16 as i16 as i32;
+                    let geometry = PanelGeometry::new(state);
+                    let hit = geometry.hit(state, x, y);
+                    state.tracking.set(geometry.contains(x, y));
+                    state.finish_panel_gesture(hit, x);
+                    return LRESULT(0);
+                }
+                WM_TIMER if w.0 == PANEL_ANIMATION_TIMER && state.animation_timer.get() => {
+                    state.motion.set(state.motion.get().sample(Instant::now()));
+                    state.sync_animation_timer();
+                    let _ = state.resize_panel();
+                    return LRESULT(0);
+                }
+                WM_TIMER if w.0 == PANEL_DRAG_TIMER && state.panel_guard.get() => {
+                    let key = if GetSystemMetrics(SM_SWAPBUTTON) != 0 {
+                        VK_RBUTTON
+                    } else {
+                        VK_LBUTTON
+                    };
+                    let mut point = POINT::default();
+                    let captured = GetCapture() == hwnd;
+                    let down = GetAsyncKeyState(key.0 as i32) < 0;
+                    let positioned = GetCursorPos(&mut point).is_ok();
+                    if !captured || !down || !positioned {
+                        // Outside release commits only a started slider, never a button.
+                        if captured
+                            && !down
+                            && positioned
+                            && state.pressed.get() == Some(PanelHit::Width)
+                        {
+                            let _ = ScreenToClient(hwnd, &mut point);
+                            state.finish_panel_gesture(None, point.x);
+                        } else {
+                            state.cancel_panel_gesture();
+                            state.refresh_panel_hover();
+                            state.reveal_panel(state.tracking.get());
                         }
+                    } else if state.panel_drag.get().is_some() {
+                        state.move_panel_grip(point);
+                    } else if state.pressed.get() == Some(PanelHit::Width) {
+                        let _ = ScreenToClient(hwnd, &mut point);
+                        let geometry = PanelGeometry::new(state);
+                        state.post(UiEvent::Width(geometry.requested_width(point.x)));
+                    }
+                    return LRESULT(0);
+                }
+                WM_CAPTURECHANGED => {
+                    // Never release or reacquire from inside the capture-change callback.
+                    // https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-capturechanged
+                    let active = state.panel_capture.get()
+                        || state.pressed.get().is_some()
+                        || state.panel_drag.get().is_some();
+                    state.panel_capture.set(false);
+                    state.cancel_panel_gesture();
+                    if active {
+                        state.refresh_panel_hover();
+                        state.reveal_panel(state.tracking.get());
                     }
                     return LRESULT(0);
                 }
                 WM_CANCELMODE => {
-                    state.pressed.set(None);
+                    state.cancel_panel_gesture();
+                    state.refresh_panel_hover();
+                    state.reveal_panel(state.tracking.get());
                     return LRESULT(0);
                 }
                 WM_DPICHANGED => {
-                    let _ = state.anchor_panel((w.0 & 0xffff) as u32);
+                    // Keep the dragged size until release, then use the destination DPI.
+                    state.panel_dpi.set((w.0 & 0xffff) as u32);
+                    if state.panel_drag.get().is_none() {
+                        state.cancel_panel_gesture();
+                        let _ = state.place_panel(state.panel_anchor.get(), state.panel_dpi.get());
+                    }
                     return LRESULT(0);
                 }
                 WM_DISPLAYCHANGE => {
-                    let _ = state.anchor_panel(GetDpiForWindow(hwnd));
+                    state.cancel_panel_gesture();
+                    let _ = state.place_panel(state.panel_anchor.get(), GetDpiForWindow(hwnd));
+                    return LRESULT(0);
+                }
+                WM_SETTINGCHANGE if !panel_animations_enabled() => {
+                    state.motion.set(PanelMotion::settled(state.expanded.get()));
+                    state.sync_animation_timer();
+                    let _ = state.resize_panel();
+                    return LRESULT(0);
+                }
+                WM_DESTROY => {
+                    state.destroy_panel_resources();
                     return LRESULT(0);
                 }
                 WM_NCDESTROY => {
+                    state.destroy_panel_resources();
                     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
                     state.status.set(HWND::default());
                 }
@@ -2131,45 +3107,240 @@ mod tests {
         Ok(bounds)
     }
 
+    fn menu_open(ui: &DesktopUi) -> Result<()> {
+        ui.state.expanded.set(true);
+        ui.state.tracking.set(true);
+        ui.state.motion.set(PanelMotion::settled(true));
+        ui.state.sync_animation_timer();
+        ui.state.resize_panel()
+    }
+
     #[test]
-    fn hidden_panel_hover_recents_anchor_nonactivation_and_previews() -> Result<()> {
+    fn panel_menu_fixed_palette_variants_keys_and_bounded_targets() -> Result<()> {
+        assert_eq!(
+            PANEL_PALETTE,
+            [
+                0xffffdf32, 0xffffb51b, 0xfff97316, 0xffe31635, 0xff673b92, 0xff9b4fc0, 0xffd50d81,
+                0xffb9085e, 0xff35c7ef, 0xff0085dc, 0xff075cbf, 0xff83c400, 0xff00b85a, 0xfff1f1ef,
+                0xffbdbdbb, 0xff161616,
+            ]
+        );
+        assert_eq!(
+            PANEL_TOOLS.map(|entry| entry.2),
+            ["P", "P", "L", "A", "R", "O", "E"]
+        );
+        assert_eq!(tool_icon("Temporary pen"), MenuTool::TemporaryPen);
+        assert_eq!(tool_icon("Arrow tail-first"), MenuTool::Arrow);
+        assert!(PANEL_TOOLS[0].3.contains("P again"));
+        assert!(PANEL_TOOLS[1].3.contains("P again"));
+        assert!(PANEL_TOOLS[3].3.contains("selected Arrow"));
+        let state = State::new(HWND::default())?;
+        for s in [1.0, 1.5, 2.0] {
+            state.panel_scale.set(s);
+            for upward in [false, true] {
+                state.panel_upward.set(upward);
+                state.motion.set(PanelMotion::settled(true));
+                let g = PanelGeometry::new(&state);
+                assert_eq!((g.width, g.height), (scaled(440, s), scaled(304, s)));
+                let targets: Vec<_> = [
+                    PanelHit::Grip,
+                    PanelHit::Toggle,
+                    PanelHit::Current,
+                    PanelHit::Width,
+                ]
+                .into_iter()
+                .chain((0..16).map(PanelHit::Palette))
+                .chain(PANEL_TOOLS.map(|entry| PanelHit::Tool(entry.0)))
+                .collect();
+                for target in targets {
+                    let r = g.bounds(target);
+                    assert!(
+                        r.left >= 0 && r.top >= 0 && r.right <= g.width && r.bottom <= g.height
+                    );
+                    let (x, y) = g.center(target);
+                    assert_eq!(g.hit(&state, x, y), Some(target));
+                }
+                assert_eq!(g.hit(&state, -1, 0), None);
+                assert_eq!(g.hit(&state, g.width, g.height), None);
+                assert_eq!(g.hit(&state, 0, 0), None);
+                let slider = g.bounds(PanelHit::Width);
+                assert_eq!(g.requested_width(slider.left - 100), 1);
+                assert_eq!(g.requested_width(slider.right + 100), 31);
+                for x in slider.left..slider.right {
+                    let width = g.requested_width(x);
+                    assert!((1..=31).contains(&width) && width % 2 == 1);
+                }
+                state.motion.set(PanelMotion::settled(false));
+                let compact = PanelGeometry::new(&state);
+                assert_eq!(
+                    compact.hit(
+                        &state,
+                        compact.center(PanelHit::Grip).0,
+                        compact.center(PanelHit::Grip).1
+                    ),
+                    Some(PanelHit::Grip)
+                );
+                assert!(!compact.revealed(PanelHit::Toggle));
+                let mut motion = PanelMotion::settled(true);
+                motion.progress = 0.5;
+                state.motion.set(motion);
+                assert!(!PanelGeometry::new(&state).revealed(PanelHit::Width));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_typed_message_decoding_rejects_invalid_requests() {
+        let owner = HWND(std::ptr::dangling_mut());
+        let mut message = MSG {
+            hwnd: owner,
+            message: UI_EVENT,
+            lParam: LPARAM(4),
+            ..Default::default()
+        };
+        for (id, entry) in PANEL_TOOLS.iter().enumerate() {
+            message.wParam = WPARAM(id);
+            assert_eq!(decode_event(&message, owner), Some(UiEvent::Tool(entry.0)));
+        }
+        for id in [7, 255, usize::MAX] {
+            message.wParam = WPARAM(id);
+            assert_eq!(decode_event(&message, owner), None);
+        }
+        message.lParam = LPARAM(5);
+        for width in 0..=33 {
+            message.wParam = WPARAM(width);
+            assert_eq!(
+                decode_event(&message, owner),
+                if (1..=31).contains(&width) && width % 2 == 1 {
+                    Some(UiEvent::Width(width as u32))
+                } else {
+                    None
+                }
+            );
+        }
+        message.wParam = WPARAM(usize::MAX);
+        assert_eq!(decode_event(&message, owner), None);
+        for (kind, event) in [
+            (2, UiEvent::Closed),
+            (3, UiEvent::OpenPicker),
+            (6, UiEvent::Toggle),
+        ] {
+            message.lParam = LPARAM(kind);
+            message.wParam = WPARAM(0);
+            assert_eq!(decode_event(&message, owner), Some(event));
+            message.wParam = WPARAM(1);
+            assert_eq!(decode_event(&message, owner), None);
+        }
+        for kind in [0, 7, -1] {
+            message.lParam = LPARAM(kind);
+            assert_eq!(decode_event(&message, owner), None);
+        }
+        message.lParam = LPARAM(4);
+        message.wParam = WPARAM(0);
+        assert_eq!(decode_event(&message, HWND::default()), None);
+        message.message = WM_APP;
+        assert_eq!(decode_event(&message, owner), None);
+    }
+
+    #[test]
+    fn panel_menu_animation_endpoints_reversal_reduced_motion_no_idle_timer() -> Result<()> {
+        let now = Instant::now();
+        let open = PanelMotion::settled(false).redirect(true, true, now);
+        assert!(open.moving());
+        let halfway = open.sample(now + Duration::from_millis(75));
+        assert!((halfway.progress - 0.875).abs() < 1e-8);
+        let reverse = halfway.redirect(false, true, now + Duration::from_millis(75));
+        assert_eq!(reverse.progress, halfway.progress);
+        let close = reverse.sample(now + Duration::from_millis(110));
+        let reopen = close.redirect(true, true, now + Duration::from_millis(110));
+        assert_eq!(close.progress, reopen.progress);
+        let end = reopen.sample(now + Duration::from_millis(260));
+        assert_eq!(end.progress, 1.0);
+        assert!(!end.moving());
+        assert_eq!(open.redirect(false, false, now).progress, 0.0);
+        assert_eq!(open.redirect(true, false, now).progress, 1.0);
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "MenuTimerRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        assert!(!ui.state.animation_timer.get());
+        ui.state.motion.set(open);
+        ui.state.sync_animation_timer();
+        assert!(ui.state.animation_timer.get());
+        ui.state.motion.set(end);
+        ui.state.sync_animation_timer();
+        assert!(!ui.state.animation_timer.get());
+        let before = ui.state.motion.get().progress;
         unsafe {
-            let focus = GetFocus();
-            let active = GetActiveWindow();
-            let capture = GetCapture();
-            let foreground = GetForegroundWindow();
+            SendMessageW(hwnd, WM_TIMER, Some(WPARAM(PANEL_ANIMATION_TIMER)), None);
+        }
+        assert_eq!(ui.state.motion.get().progress, before);
+        assert!(!ui.state.panel_guard.get());
+        // A ReleaseCapture callback after our flags were cleared must not restart motion.
+        unsafe {
+            SendMessageW(hwnd, WM_CAPTURECHANGED, None, None);
+        }
+        assert_eq!(ui.state.motion.get().progress, before);
+        assert!(!ui.state.animation_timer.get());
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_drag_clamp_anchor_dpi_and_hidden_resources() -> Result<()> {
+        for work in [
+            rect(0, 0, 1920, 1040),
+            rect(-1600, -900, 1600, 860),
+            rect(10, 20, 240, 180),
+        ] {
+            for dpi in [96, 144, 192] {
+                let s = panel_scale(dpi, work);
+                for point in [
+                    POINT {
+                        x: work.left - 900,
+                        y: work.top - 900,
+                    },
+                    POINT {
+                        x: work.right + 900,
+                        y: work.bottom + 900,
+                    },
+                ] {
+                    let (anchor, upward) = panel_clamp(point, work, s);
+                    let top = anchor.y
+                        - if upward {
+                            scaled(PANEL_HEIGHT - PANEL_ROW, s)
+                        } else {
+                            0
+                        };
+                    assert!(anchor.x - scaled(PANEL_WIDTH, s) >= work.left);
+                    assert!(anchor.x <= work.right && top >= work.top);
+                    assert!(top + scaled(PANEL_HEIGHT, s) <= work.bottom);
+                }
+            }
+        }
+        unsafe {
+            let before = (
+                GetFocus(),
+                GetActiveWindow(),
+                GetCapture(),
+                GetForegroundWindow(),
+            );
             let instance = HINSTANCE(GetModuleHandleW(None)?.0);
-            let class = WindowClass::new(instance, "PanelRoot", Some(root_proc))?;
+            let class = WindowClass::new(instance, "MenuResourceRoot", Some(root_proc))?;
             let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
             let ui = hidden_ui(root.0)?;
             let hwnd = status(&ui)?;
+            ui.state.create_tooltip(instance)?;
+            let tooltip = ui.state.tooltip.get();
             let initial = window_bounds(hwnd)?;
-            let monitor = ui.state.panel_monitor.get();
-            assert_eq!(
-                (initial.right, initial.top),
-                (monitor.right - 16, monitor.top + 16)
-            );
             assert_eq!(
                 (initial.right - initial.left, initial.bottom - initial.top),
                 (44, 44)
             );
-            assert!(!IsWindowVisible(hwnd).as_bool());
-            let styles = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-            assert_ne!(styles & WS_EX_NOACTIVATE.0, 0);
-            assert_eq!(styles & WS_EX_TRANSPARENT.0, 0);
             assert_eq!(
-                SendMessageW(hwnd, WM_MOUSEACTIVATE, None, None).0,
-                MA_NOACTIVATE as isize
-            );
-            assert_eq!(
-                SendMessageW(
-                    hwnd,
-                    WM_NCHITTEST,
-                    None,
-                    Some(point(initial.left + 22, initial.top + 22))
-                )
-                .0,
-                HTCLIENT as isize
+                (initial.right, initial.top),
+                (ui.state.panel_anchor.get().x, ui.state.panel_anchor.get().y)
             );
             assert_eq!(
                 SendMessageW(
@@ -2181,10 +3352,16 @@ mod tests {
                 .0,
                 HTTRANSPARENT as isize
             );
-            let region = GdiObject(CreateRectRgn(0, 0, 0, 0).into());
-            assert_eq!(GetWindowRgn(hwnd, HRGN(region.0.0)).0, ERROR);
-            assert_eq!(ui.state.panel_pixels.borrow()[0], 0);
-            assert_eq!(ui.state.panel_pixels.borrow()[22 * 44 + 22] >> 24, 245);
+            assert_eq!(
+                SendMessageW(
+                    hwnd,
+                    WM_NCHITTEST,
+                    None,
+                    Some(point(initial.left + 22, initial.top + 22))
+                )
+                .0,
+                HTCLIENT as isize
+            );
             let partial = ui
                 .state
                 .panel_pixels
@@ -2192,7 +3369,7 @@ mod tests {
                 .iter()
                 .position(|pixel| {
                     let alpha = pixel >> 24;
-                    alpha > 0 && alpha < 245
+                    alpha > 0 && alpha < 255
                 })
                 .unwrap();
             assert_eq!(
@@ -2208,146 +3385,75 @@ mod tests {
                 .0,
                 HTCLIENT as isize
             );
-            assert_eq!(&*ui.state.recents.borrow(), &[Style::default().color]);
-            let mut icon_images = Vec::new();
-            for tool in [
-                Tool::Pen,
-                Tool::Arrow,
-                Tool::Line,
-                Tool::Rectangle,
-                Tool::Ellipse,
-                Tool::Eraser,
-            ] {
-                ui.update(false, tool, Style::default())?;
-                let image = panel_preview(&ui, &format!("mado-panel-compact-{tool:?}"))?;
-                // Compact paint is independent of mode, color and thickness: icon only.
-                ui.update(
-                    true,
-                    tool,
-                    Style {
-                        color: 0xffabcdef,
-                        thickness: 31,
-                    },
-                )?;
-                let alternate = panel_bitmap(&ui.state)?.1;
-                assert_eq!(image, alternate);
-                assert!(!icon_images.contains(&image), "Tool icons must be distinct");
-                assert!(!image.iter().any(|pixel| pixel & 0xffffff == 0xabcdef));
-                icon_images.push(image);
-                ui.state.anchor_panel(144)?;
-                panel_preview(&ui, &format!("mado-panel-compact-{tool:?}-150"))?;
-                ui.state.anchor_panel(96)?;
-            }
-            ui.update(true, Tool::Pen, Style::default())?;
-            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
-            assert!(ui.state.expanded.get());
-            let expanded = window_bounds(hwnd)?;
-            assert_eq!((expanded.right, expanded.top), (initial.right, initial.top));
-            assert_eq!(expanded.right - expanded.left, ui.state.panel_width.get());
-            assert!(expanded.right - expanded.left < 300);
-            assert_eq!(expanded.bottom - expanded.top, 88);
-            panel_preview(&ui, "mado-panel-expanded")?;
-            ui.state.anchor_panel(144)?;
-            panel_preview(&ui, "mado-panel-expanded-150")?;
-            ui.state.anchor_panel(96)?;
-            panel_click(hwnd, PanelGeometry::new(&ui.state).current());
-            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
-            assert_eq!(window_bounds(hwnd)?.bottom - initial.top, 88);
-            for color in [
-                0xff112233, 0xff223344, 0xff334455, 0xff445566, 0xff556677, 0xff223344,
-            ] {
-                ui.update_label(
-                    true,
-                    "Arrow tail-first",
-                    Style {
-                        color,
-                        thickness: 31,
-                    },
-                )?;
-            }
+            assert!(!IsWindowVisible(hwnd).as_bool());
+            assert!(!IsWindowVisible(tooltip).as_bool());
             assert_eq!(
-                &*ui.state.recents.borrow(),
-                &[0xff445566, 0xff556677, 0xff112233, 0xff223344, 0xff334455]
+                SendMessageW(hwnd, WM_MOUSEACTIVATE, None, None).0,
+                MA_NOACTIVATE as isize
             );
-            panel_preview(&ui, "mado-panel-recents")?;
-            let long_bounds = window_bounds(hwnd)?;
+            let anchor = ui.state.panel_anchor.get();
+            let start = POINT { x: 100, y: 100 };
+            ui.state.begin_panel_gesture(Some(PanelHit::Grip), start);
+            ui.state.move_panel_grip(POINT { x: 103, y: 100 });
+            assert_eq!(ui.state.panel_anchor.get(), anchor);
+            ui.state.move_panel_grip(POINT { x: 110, y: 110 });
             assert_eq!(
-                (long_bounds.right, long_bounds.top),
-                (initial.right, initial.top)
+                ui.state.panel_anchor.get(),
+                POINT {
+                    x: anchor.x + 10,
+                    y: anchor.y + 10
+                }
             );
-            assert!(long_bounds.right - long_bounds.left > expanded.right - expanded.left);
-            ui.state.anchor_panel(144)?;
-            panel_preview(&ui, "mado-panel-recents-150")?;
-            ui.state.anchor_panel(96)?;
-            ui.update_label(
-                false,
-                "Arrow tail-first",
-                Style {
-                    color: ui.state.color.get(),
-                    thickness: 31,
-                },
-            )?;
-            panel_preview(&ui, "mado-panel-long-click-through")?;
-            ui.state.anchor_panel(144)?;
-            panel_preview(&ui, "mado-panel-long-click-through-150")?;
-            ui.state.anchor_panel(96)?;
-            for i in 0..5 {
-                let geometry = PanelGeometry::new(&ui.state);
-                let center = geometry.recent(i);
-                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(center.0, center.1)));
-                assert!(ui.state.expanded.get());
-                let color = ui.state.recents.borrow()[i];
-                panel_click(hwnd, center);
-                assert_eq!(
-                    decoded(root.0),
-                    [if color == ui.state.color.get() {
-                        UiEvent::OpenPicker
-                    } else {
-                        UiEvent::Color(color)
-                    }]
-                );
-                assert!(!ui.is_picker_open());
+            assert_eq!(
+                (
+                    PanelGeometry::new(&ui.state).width,
+                    PanelGeometry::new(&ui.state).height
+                ),
+                (44, 44)
+            );
+            assert!(!ui.state.panel_guard.get());
+            assert!(!ui.state.panel_capture.get());
+            SendMessageW(hwnd, WM_CANCELMODE, None, None);
+            assert!(ui.state.panel_drag.get().is_none());
+            menu_open(&ui)?;
+            ui.state
+                .panel_tooltip(Some(PanelHit::Tool(MenuTool::TemporaryPen)));
+            assert!(String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("P again"));
+            for upward in [false, true] {
+                ui.state.panel_upward.set(upward);
+                for progress in [0.0, 0.5, 1.0] {
+                    let mut motion = PanelMotion::settled(true);
+                    motion.from = progress;
+                    motion.to = progress;
+                    motion.progress = progress;
+                    ui.state.motion.set(motion);
+                    ui.state.resize_panel()?;
+                    let bounds = window_bounds(hwnd)?;
+                    let badge = PanelGeometry::new(&ui.state).badge();
+                    let anchor = ui.state.panel_anchor.get();
+                    assert_eq!(
+                        (bounds.left + badge.right, bounds.top + badge.top),
+                        (anchor.x, anchor.y)
+                    );
+                }
             }
-            // Unpaired, off-panel and stale press/release messages do nothing.
-            let center = PanelGeometry::new(&ui.state).recent(0);
-            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
-            panel_click(hwnd, (-1, -1));
-            panel_click(hwnd, (1, 1));
+            ui.state.panel_upward.set(false);
+            menu_open(&ui)?;
+            let center = PanelGeometry::new(&ui.state).center(PanelHit::Width);
             SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
-            ui.update(
-                true,
-                Tool::Pen,
-                Style {
-                    color: 0xff778899,
-                    thickness: 5,
-                },
-            )?;
-            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
-            assert!(decoded(root.0).is_empty());
-            panel_click(hwnd, PanelGeometry::new(&ui.state).current());
-            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
-            assert!(ui.state.expanded.get());
-            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
-            SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(-10, -10)));
+            assert!(!ui.state.tracking.get());
             assert!(!ui.state.expanded.get());
             assert!(ui.state.pressed.get().is_none());
-            assert_eq!(window_bounds(hwnd)?, initial);
-            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
-            assert!(decoded(root.0).is_empty());
-            for dpi in [120, 144, 192] {
-                ui.state.anchor_panel(dpi)?;
-                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
-                let before = window_bounds(hwnd)?;
-                panel_click(hwnd, PanelGeometry::new(&ui.state).current());
-                assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
-                let after = window_bounds(hwnd)?;
-                assert_eq!((before.right, before.top), (after.right, after.top));
-                SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
-                let compact = window_bounds(hwnd)?;
-                assert_eq!((compact.right, compact.top), (after.right, after.top));
-                assert_eq!(compact.right, monitor.right - scaled(16, dpi as f64 / 96.0));
-            }
+            assert!(!ui.state.panel_guard.get());
+            // Drain the closing transition without dispatching desktop input.
+            let end = ui.state.motion.get().started + PANEL_DURATION;
+            ui.state.motion.set(ui.state.motion.get().sample(end));
+            ui.state.sync_animation_timer();
+            assert!(!ui.state.animation_timer.get());
             drop(ui);
+            assert!(!IsWindow(Some(hwnd)).as_bool());
+            assert!(!IsWindow(Some(tooltip)).as_bool());
             assert_eq!(
                 (
                     GetFocus(),
@@ -2355,276 +3461,185 @@ mod tests {
                     GetCapture(),
                     GetForegroundWindow()
                 ),
-                (focus, active, capture, foreground)
+                before
             );
         }
         Ok(())
     }
 
     #[test]
-    fn panel_pixels_and_measured_layout_at_100_and_150_percent() -> Result<()> {
-        let state = State::new(HWND::default())?;
-        for scale in [1.0, 1.5] {
-            state.panel_scale.set(scale);
-            for tool in [
-                Tool::Pen,
-                Tool::Arrow,
-                Tool::Line,
-                Tool::Rectangle,
-                Tool::Ellipse,
-                Tool::Eraser,
-            ] {
-                state.tool.set(tool);
-                let geometry = PanelGeometry::new(&state);
-                let pixels = panel_bitmap(&state)?.1;
-                let width = geometry.width as usize;
-                let height = geometry.height as usize;
-                assert_eq!(
-                    (width, height),
-                    (scaled(44, scale) as usize, scaled(44, scale) as usize)
-                );
-                for index in [0, width - 1, (height - 1) * width, pixels.len() - 1] {
-                    assert_eq!(pixels[index], 0);
-                }
-                for pixel in &pixels {
-                    let alpha = pixel >> 24;
-                    assert!(alpha <= 245);
-                    for shift in [0, 8, 16] {
-                        assert!((pixel >> shift) & 255 <= alpha);
-                    }
-                }
-                // Every perimeter scan is contiguous and has partial coverage at
-                // the rounded ends, not a binary staircase or an opaque rectangle.
-                for row in pixels.chunks(width) {
-                    let first = row.iter().position(|pixel| pixel >> 24 != 0).unwrap();
-                    let last = row.iter().rposition(|pixel| pixel >> 24 != 0).unwrap();
-                    assert!(row[first..=last].iter().all(|pixel| pixel >> 24 != 0));
-                }
-                for x in 0..width {
-                    let column: Vec<_> = (0..height).map(|y| pixels[y * width + x] >> 24).collect();
-                    let first = column.iter().position(|alpha| *alpha != 0).unwrap();
-                    let last = column.iter().rposition(|alpha| *alpha != 0).unwrap();
-                    assert!(column[first..=last].iter().all(|alpha| *alpha != 0));
-                }
-                for (left, top) in [
-                    (0, 0),
-                    (width / 2, 0),
-                    (0, height / 2),
-                    (width / 2, height / 2),
-                ] {
-                    assert!(
-                        (top..top + height / 2).any(|y| (left..left + width / 2).any(|x| {
-                            let a = pixels[y * width + x] >> 24;
-                            a > 0 && a < 245
-                        }))
-                    );
-                }
-                // Only icon geometry occupies this interior. Intermediate blue
-                // values prove diagonal/curved strokes are sampled, not just the mask.
-                let background_blue = ((PANEL_BACKGROUND & 255) * 245 + 127) / 255;
-                let icon_blue = ((PANEL_BLUE & 255) * 245 + 127) / 255;
-                let mixed = (scaled(10, scale)..scaled(35, scale))
-                    .flat_map(|y| {
-                        (scaled(10, scale)..scaled(35, scale))
-                            .map(move |x| (y * geometry.width + x) as usize)
-                    })
-                    .filter(|i| {
-                        let b = pixels[*i] & 255;
-                        b > background_blue && b < icon_blue
-                    })
-                    .count();
-                assert!(
-                    mixed >= 8,
-                    "{tool:?} at {scale}: {mixed} antialiased icon pixels"
-                );
-            }
-            state.expanded.set(true);
-            *state.text.borrow_mut() = "Drawing | Pen | 5 px".into();
-            state.measure_panel()?;
-            let short = state.panel_width.get();
-            assert!(short < scaled(300, scale));
-            let short_geometry = PanelGeometry::new(&state);
-            for i in 0..5 {
-                let (x, y) = short_geometry.recent(i);
-                let radius = scaled(12, scale);
-                assert!(x - radius >= scaled(16, scale));
-                assert!(x + radius < short && y + radius < short_geometry.height);
-                if i != 0 {
-                    assert!(x - short_geometry.recent(i - 1).0 > radius * 2);
-                }
-            }
-            *state.text.borrow_mut() = "Click-through | Arrow tail-first | 31 px".into();
-            state.measure_panel()?;
-            let long = state.panel_width.get();
-            assert!(long > short && long < scaled(PANEL_WIDTH, scale));
-            let geometry = PanelGeometry::new(&state);
-            assert_eq!(geometry.height, scaled(88, scale));
-            for i in 0..5 {
-                let (x, y) = geometry.recent(i);
-                let radius = scaled(12, scale);
-                assert!(x - radius >= scaled(16, scale));
-                assert!(x + radius < geometry.width && y + radius < geometry.height);
-                if i != 0 {
-                    assert!(x - geometry.recent(i - 1).0 > radius * 2);
-                }
-            }
-            let surface = Bitmap::new(1, 1)?;
-            let font = panel_font(scale * PANEL_SAMPLES as f64)?;
-            let text: Vec<_> = state.text.borrow().encode_utf16().collect();
-            let mut extent = SIZE::default();
-            unsafe {
-                let old = SelectObject(surface.dc, font.0);
-                let result = GetTextExtentPoint32W(surface.dc, &text, &mut extent).ok();
-                SelectObject(surface.dc, old);
-                result?;
-            }
-            assert!(extent.cx <= (long - scaled(64, scale)) * PANEL_SAMPLES);
-            state.expanded.set(false);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn recent_colors_keep_slots_on_selection_and_replace_only_oldest() -> Result<()> {
+    fn panel_menu_native_requests_committed_selection_picker_gating_and_cancellation() -> Result<()>
+    {
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
-        let class = WindowClass::new(instance, "FixedRecentRoot", Some(root_proc))?;
+        let class = WindowClass::new(instance, "MenuRequestsRoot", Some(root_proc))?;
         let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
         let ui = hidden_ui(root.0)?;
         let hwnd = status(&ui)?;
+        menu_open(&ui)?;
+        for entry in PANEL_TOOLS {
+            panel_click(
+                hwnd,
+                PanelGeometry::new(&ui.state).center(PanelHit::Tool(entry.0)),
+            );
+            assert_eq!(decoded(root.0), [UiEvent::Tool(entry.0)]);
+            assert_eq!(ui.state.tool.get(), MenuTool::Pen);
+        }
+        panel_click(hwnd, PanelGeometry::new(&ui.state).center(PanelHit::Toggle));
+        assert_eq!(decoded(root.0), [UiEvent::Toggle]);
+        assert!(!ui.state.drawing.get());
+        for i in 0..16 {
+            panel_click(
+                hwnd,
+                PanelGeometry::new(&ui.state).center(PanelHit::Palette(i)),
+            );
+            assert_eq!(
+                decoded(root.0),
+                [if i == 2 {
+                    UiEvent::OpenPicker
+                } else {
+                    UiEvent::Color(PANEL_PALETTE[i])
+                }]
+            );
+        }
+        panel_click(
+            hwnd,
+            PanelGeometry::new(&ui.state).center(PanelHit::Current),
+        );
+        assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
+        panel_click(hwnd, PanelGeometry::new(&ui.state).center(PanelHit::Width));
+        assert_eq!(decoded(root.0), [UiEvent::Width(17)]);
+        assert_eq!(ui.state.width.get(), 5);
+        ui.update_label(
+            true,
+            "Temporary pen",
+            Style {
+                color: 0xff123456,
+                thickness: 31,
+            },
+        )?;
+        assert_eq!(
+            (
+                ui.state.tool.get(),
+                ui.state.color.get(),
+                ui.state.width.get(),
+                ui.state.drawing.get()
+            ),
+            (MenuTool::TemporaryPen, 0xff123456, 31, true)
+        );
+        let g = PanelGeometry::new(&ui.state);
+        let a = g.center(PanelHit::Tool(MenuTool::Line));
+        let b = g.center(PanelHit::Tool(MenuTool::Arrow));
         unsafe {
-            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(a.0, a.1)));
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(b.0, b.1)));
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(a.0, a.1)));
+            SendMessageW(hwnd, WM_CAPTURECHANGED, None, None);
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(a.0, a.1)));
         }
-        let choose = |color| {
-            ui.update(
-                true,
-                Tool::Pen,
-                Style {
-                    color,
-                    thickness: 5,
-                },
-            )
-        };
-        let initial = Style::default().color;
-        let centers: Vec<_> = (0..5)
-            .map(|i| PanelGeometry::new(&ui.state).recent(i))
-            .collect();
-        for color in [0xff112233, 0xff223344, 0xff334455, 0xff445566] {
-            choose(color)?;
-            assert_eq!(PanelGeometry::new(&ui.state).recent(0), centers[0]);
+        assert!(decoded(root.0).is_empty());
+        let picker_hwnd = picker(&ui, ui.state.color.get())?;
+        let candidate = ui.state.candidate.get();
+        for target in [
+            PanelHit::Current,
+            PanelHit::Palette(0),
+            PanelHit::Width,
+            PanelHit::Tool(MenuTool::Eraser),
+        ] {
+            panel_click(hwnd, PanelGeometry::new(&ui.state).center(target));
         }
-        let slots = ui.state.recents.borrow().clone();
-        assert_eq!(
-            slots,
-            [initial, 0xff112233, 0xff223344, 0xff334455, 0xff445566]
-        );
-        // Dispatch and commit each selection twice, including the selected-color
-        // picker request. Every swatch keeps the same center and array index.
-        for (i, color) in slots.iter().copied().enumerate().cycle().take(10) {
-            let expected = if color == ui.state.color.get() {
-                UiEvent::OpenPicker
-            } else {
-                UiEvent::Color(color)
-            };
-            panel_click(hwnd, centers[i]);
-            assert_eq!(decoded(root.0), [expected]);
-            choose(color)?;
-            panel_click(hwnd, centers[i]);
-            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
-            assert_eq!(&*ui.state.recents.borrow(), &slots);
-            assert_eq!(PanelGeometry::new(&ui.state).recent(i), centers[i]);
-        }
-        choose(0xff556677)?;
-        assert_eq!(
-            &*ui.state.recents.borrow(),
-            &[0xff556677, slots[1], slots[2], slots[3], slots[4]]
-        );
-        choose(slots[3])?; // Reusing a color must not advance the replacement slot.
-        choose(0xff667788)?;
-        assert_eq!(
-            &*ui.state.recents.borrow(),
-            &[0xff556677, 0xff667788, slots[2], slots[3], slots[4]]
-        );
-        for color in [0xff778899, 0xff8899aa, 0xff99aabb, 0xffaabbcc] {
-            choose(color)?;
-        }
-        assert_eq!(
-            &*ui.state.recents.borrow(),
-            &[0xffaabbcc, 0xff667788, 0xff778899, 0xff8899aa, 0xff99aabb]
-        );
-        assert_eq!(ui.state.next_recent.get(), 1);
-        for (i, center) in centers.iter().enumerate() {
-            assert_eq!(PanelGeometry::new(&ui.state).recent(i), *center);
-        }
+        assert!(decoded(root.0).is_empty());
+        panel_click(hwnd, PanelGeometry::new(&ui.state).center(PanelHit::Toggle));
+        assert_eq!(decoded(root.0), [UiEvent::Toggle]);
+        assert_eq!(ui.state.candidate.get(), candidate);
+        click(picker_hwnd, CANCEL);
+        assert_eq!(decoded(root.0), [UiEvent::Closed]);
         Ok(())
     }
 
     #[test]
-    fn recent_commit_during_picker_preserves_candidate_cancel_and_apply() -> Result<()> {
+    fn panel_menu_started_slider_clamps_outside_bounds_without_activating_buttons() -> Result<()> {
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
-        let class = WindowClass::new(instance, "RecentPickerRoot", Some(root_proc))?;
+        let class = WindowClass::new(instance, "MenuOutsideSliderRoot", Some(root_proc))?;
         let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
         let ui = hidden_ui(root.0)?;
-        let status = status(&ui)?;
-        let initial = Style::default().color;
-        ui.update(
-            true,
-            Tool::Pen,
-            Style {
-                color: 0xff123456,
-                thickness: 5,
-            },
-        )?;
-        let hwnd = picker(&ui, initial)?;
-        click(hwnd, PRESET);
-        let candidate = ui.state.candidate.get();
-        let history = ui.state.recents.borrow().clone();
+        let hwnd = status(&ui)?;
+        menu_open(&ui)?;
+        let g = PanelGeometry::new(&ui.state);
+        let center = g.center(PanelHit::Width);
         unsafe {
-            SendMessageW(status, WM_MOUSEMOVE, None, Some(point(22, 22)));
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(-50, -50)));
+            SendMessageW(
+                hwnd,
+                WM_MOUSEMOVE,
+                None,
+                Some(point(g.width + 50, g.height + 50)),
+            );
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(-50, -50)));
         }
-        panel_click(status, PanelGeometry::new(&ui.state).current());
-        panel_click(status, PanelGeometry::new(&ui.state).recent(1));
-        assert_eq!(decoded(root.0), [UiEvent::OpenPicker, UiEvent::OpenPicker]);
-        assert_eq!(&*ui.state.recents.borrow(), &history);
-        assert_eq!(ui.state.candidate.get(), candidate);
-        panel_click(status, PanelGeometry::new(&ui.state).recent(0));
-        assert_eq!(decoded(root.0), [UiEvent::Color(initial)]);
-        assert!(ui.is_picker_open());
-        assert_eq!(ui.state.candidate.get(), candidate);
-        ui.update(true, Tool::Pen, Style::default())?;
-        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
-        assert_eq!(ui.state.candidate.get(), candidate);
-        click(hwnd, CANCEL);
-        assert_eq!(decoded(root.0), [UiEvent::Closed]);
-        assert_eq!(ui.state.color.get(), initial);
-        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
-        let hwnd = picker(&ui, initial)?;
-        click(hwnd, PRESET);
-        click(hwnd, APPLY);
         assert_eq!(
             decoded(root.0),
-            [UiEvent::Color(PRESETS[0].1), UiEvent::Closed]
+            [UiEvent::Width(1), UiEvent::Width(31), UiEvent::Width(1)]
         );
-        // History records committed update_label state only, never a queued preview.
-        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
-        ui.update(
-            true,
-            Tool::Pen,
+        assert_eq!(ui.state.width.get(), 5);
+        assert!(ui.state.pressed.get().is_none());
+        assert!(!ui.state.tracking.get());
+        assert!(!ui.state.panel_guard.get());
+        menu_open(&ui)?;
+        let center = PanelGeometry::new(&ui.state).center(PanelHit::Tool(MenuTool::Line));
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(-50, -50)));
+        }
+        assert!(decoded(root.0).is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_offscreen_preview_premultiplied_badge_and_black_border() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "MenuPixelsRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        status(&ui)?;
+        let compact = panel_bitmap(&ui.state)?.1;
+        menu_open(&ui)?;
+        let pixels = panel_preview(&ui, "panel-menu-full-100")?;
+        let g = PanelGeometry::new(&ui.state);
+        let (x, y) = g.center(PanelHit::Palette(15));
+        let center = pixels[(y * g.width + x) as usize];
+        assert_eq!(center, PANEL_PALETTE[15]);
+        assert_ne!(pixels[(y * g.width + x - 14) as usize], center);
+        for (i, color) in PANEL_PALETTE.iter().enumerate() {
+            let (x, y) = g.center(PanelHit::Palette(i));
+            assert_eq!(pixels[(y * g.width + x) as usize], *color);
+        }
+        for pixel in &pixels {
+            let alpha = pixel >> 24;
+            for shift in [0, 8, 16] {
+                assert!((pixel >> shift) & 255 <= alpha);
+            }
+        }
+        let full_badge: Vec<_> = (0..44)
+            .flat_map(|y| (0..44).map(move |x| (y * 440 + 396 + x) as usize))
+            .map(|i| pixels[i])
+            .collect();
+        // Mask corners differ at the join, but the interior tool/grip is identical.
+        for y in 4..40 {
+            for x in 4..40 {
+                assert_eq!(compact[y * 44 + x], full_badge[y * 44 + x]);
+            }
+        }
+        ui.state.panel_upward.set(true);
+        ui.update_label(
+            false,
+            "Arrow tail-first",
             Style {
-                color: PRESETS[0].1,
-                thickness: 5,
+                color: 0xff123456,
+                thickness: 31,
             },
         )?;
-        assert_eq!(
-            &*ui.state.recents.borrow(),
-            &[initial, 0xff123456, PRESETS[0].1]
-        );
-        let hwnd = picker(&ui, initial)?;
-        ui.state.post(UiEvent::Closed);
-        assert_eq!(decoded(root.0), [UiEvent::Closed]);
-        assert!(ui.is_picker_open());
-        assert!(key(&ui, ui.state.slider.get(), VK_HOME));
-        click(hwnd, CANCEL);
-        assert_eq!(decoded(root.0), [UiEvent::Closed]);
+        panel_preview(&ui, "panel-menu-upward-100")?;
         Ok(())
     }
 
@@ -2976,7 +3991,9 @@ mod tests {
                 color
             })
             .collect();
-        let path = std::env::temp_dir().join(format!("{name}.png"));
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/panel-menu");
+        std::fs::create_dir_all(&directory).map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        let path = directory.join(format!("{name}.png"));
         std::fs::write(
             &path,
             png(geometry.width as u32, geometry.height as u32, &composed),
@@ -3169,8 +4186,10 @@ mod tests {
             Some(UiEvent::Color(0xff123456))
         );
         message.lParam = LPARAM(2);
+        message.wParam = WPARAM(0);
         assert_eq!(decode_event(&message, owner), Some(UiEvent::Closed));
         message.lParam = LPARAM(3);
+        message.wParam = WPARAM(1);
         assert_eq!(decode_event(&message, owner), None);
         message.wParam = WPARAM(0);
         assert_eq!(decode_event(&message, owner), Some(UiEvent::OpenPicker));

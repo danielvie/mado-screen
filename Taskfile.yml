@@ -33,6 +33,11 @@ tasks:
     cmds:
       - cargo test
 
+  test-menu:
+    desc: Run only new floating-menu feature tests
+    cmds:
+      - cargo test panel_menu_ -- --test-threads=1
+
   smoke:
     desc: Validate desktop rendering, cleanup, and idle CPU over 30 seconds
     deps: [build]

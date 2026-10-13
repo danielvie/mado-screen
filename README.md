@@ -13,6 +13,7 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 | `task perf` | Measure optimized offscreen pen input and rendering |
 | `task build` / `cargo build` | Build |
 | `task test` / `cargo test` | Pure model/render/input/control and native resource checks |
+| `task test-menu` | Only new floating-menu feature tests |
 | `task check` | Formatting and Clippy |
 | `task smoke` | Copied-app desktop checks, including 30-second idle sample |
 | `task clean` / `cargo clean` | Remove build artifacts |
@@ -43,7 +44,11 @@ Undo/redo first settles any active gesture. Pen ink is committed, unfinished sha
 
 Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. Arrows default to head-first: press at the head and drag toward the tail. Toggle A for tail-first: press at the tail and drag toward the head. Completed arrows never change direction. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
-The primary monitor's top-right panel shows only the selected tool's icon when compact. Hover expands it to the left with drawing/click-through mode, tool variant, brush width, current-color swatch and up to five distinct recent colors in fixed slots. The width fits the status text and swatches. Click a different recent color to select it immediately; click the selected color or current-color swatch to open the full picker. Leaving the panel collapses it. Selecting an existing recent color never reorders the swatches. New colors fill empty slots, then replace the oldest added entry in place without moving the others. Recent colors are session-only and include the initial brush color and committed selections, not picker previews. The panel receives mouse input only in its occupied rounded area and does not activate itself or capture keyboard shortcuts.
+The floating menu uses a dark graphite theme. Its compact badge shows the selected tool and a separate far-right drag grip. Hover opens the full menu directly: canvas-input toggle, stroke preview, width slider, two rows of eight fixed colors and clickable tool icons. Shortcut letters remain visible on the buttons. Pen and Temporary pen clicks choose their exact variant; clicking an already-selected Arrow switches its drawing direction. The Drawing/Click-through button uses the same transition as Ctrl+Alt+D. Tool, color and width selection can prepare the next annotation in click-through without enabling canvas input.
+
+The fixed colors cover warm hues, cool hues and white/gray/black. Slots are populated at startup and never reorder or change after custom picker selections. Click a different slot to select its exact color; click a selected matching slot or the stroke preview to open the full picker. Custom colors with no exact slot match do not highlight an unrelated preset. Existing numeric color shortcuts remain unchanged.
+
+The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it. Windows disabled-animation preferences are respected. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus. The modeless picker still intentionally takes focus for editing.
 
 The color picker uses a light rounded pane with a continuous hue/saturation disk, brightness slider, circular swatches, hex input and Cancel/Apply. The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
 
@@ -65,7 +70,7 @@ The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot
 
 ## Verification
 
-The compact panel/color-picker layout contract is in tasks/layout-spec.md; focused checks and manual limits are recorded in tasks/layout-progress.md. Hidden native checks and offscreen previews do not establish physical hover, focus or mixed-DPI interaction.
+The floating-menu implementation and manual checklist are in tasks/panel-menu-progress.md. This increment runs only new panel_menu_ feature tests and a release build, not the full suite or desktop smoke. Physical clicks, focus, outside-window release and mixed-DPI placement remain manual checks. Earlier compact-panel checks are recorded in tasks/layout-progress.md.
 
 The Bézier follow-up measures optimized offscreen rendering and model construction, not physical input latency or Windows bitmap upload. Reproduction and before/after results are in tasks/bezier-performance.md. Use release mode for visual and responsiveness checks.
 

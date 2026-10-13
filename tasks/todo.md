@@ -1,5 +1,75 @@
 # Windows prototype tasks
 
+## Proposed floating menu with mouse controls
+
+Approved for the feature/floating-menu worktree. Only new panel_menu_ feature tests and a release build run in this loop; physical acceptance remains manual. Contract: tasks/plan.md. Progress: tasks/panel-menu-progress.md. Preserve all older completion and manual-acceptance records below.
+
+### Task 1: Select tools by mouse and teach their shortcuts
+
+Dependency: approved. Likely files: src/ui.rs, src/main.rs, src/controls.rs. Medium scope.
+
+Acceptance:
+- [x] Clickable Pen, Temporary pen, Line, Arrow, Rectangle, Ellipse and Eraser icons show P, P, L, A, R, O and E badges with full-name tooltips.
+- [x] Exact mouse Pen selection is idempotent; Temporary chooses its variant; selected Arrow click flips direction; existing repeated-key behavior is unchanged.
+- [x] Main owns changes, settles gestures safely and updates actual selected state without focus theft, canvas ink from menu clicks or new history entries.
+
+Verify: cargo test panel_menu_tools; cargo test panel_menu_arrow; cargo test panel_menu_shortcuts; cargo build --release. Real mouse and mixed-DPI badge appearance remain manual.
+
+### Task 2: Toggle canvas input from the menu
+
+Dependency: Task 1. Likely files: src/ui.rs, src/main.rs. Small scope.
+
+Acceptance:
+- [x] A Drawing/Click-through toggle shows the actual state and full Ctrl+Alt+D hint; it remains clickable in click-through.
+- [x] Mouse and global key share registration, capture, gesture/picker settlement and safe rollback; a registration conflict preserves ink and click-through.
+- [x] Toggle does not hide the menu or clear ink. Tool/style preparation does not automatically enable drawing.
+
+Verify: cargo test panel_menu_mode; cargo build --release. Hidden tests reserve a drawing key to exercise rollback without system input. Physical click-through typing remains manual.
+
+### Checkpoint: Selection and input ownership
+
+- [x] Both slices build and their focused tests pass.
+- [x] Review mouse variant semantics, tooltip wording and mode-conflict reporting before adding more controls.
+
+### Task 3: Populate palette and make width directly adjustable
+
+Dependency: Tasks 1 and 2. Likely files: src/ui.rs, src/main.rs. Small scope.
+
+Acceptance:
+- [x] Two rows of eight fixed colors are populated on first open and never reordered or replaced by selections or picker Apply.
+- [x] Selection uses exact RGB, selected matching swatches/preview retain picker access, and black/white are visibly distinct; numeric shortcut colors are unchanged.
+- [x] Width slider changes only new work through odd values 1..31, displays the committed width, and ends safely on release/capture loss.
+
+Verify: cargo test panel_menu_palette; cargo test panel_menu_width; cargo build --release. All test commands select new features only.
+
+### Task 4: Animate the full menu and drag its fixed right grip
+
+Dependency: Task 3. Likely files: src/ui.rs, src/main.rs only if timer routing is needed. Small scope.
+
+Acceptance:
+- [x] Collapse goes directly to the full menu in 150 ms; reversal continues from current progress, disabled animations are respected and the timer stops when settled.
+- [x] Selected-tool icon and separate right grip remain visible and fixed; hidden content cannot take input and no status-only state returns.
+- [x] Grip drag holds size, handles release/cancellation safely and clamps the full menu within the destination work area at its DPI, without focus/canvas effects.
+
+Verify: cargo test panel_menu_motion; cargo test panel_menu_drag; cargo build --release. Review an offscreen full-menu render; motion near display edges remains manual.
+
+### Task 5: Validate the assembled menu and record user acceptance
+
+Dependency: Tasks 1 through 4. Likely files: README.md, tasks/plan.md, tasks/todo.md and directly affected checks. Medium scope.
+
+Acceptance:
+- [x] New panel_menu_ feature tests, release build and git diff --check pass; failures and unrun checks are recorded. Full/legacy tests, Clippy and desktop smoke are explicitly not run in this loop.
+- [x] New native tests cover controls, event validation, input states, transparency and cleanup; pure geometry covers 100%, 150% and 200%. Actual 100% full/upward previews reviewed; physical scaling remains manual.
+- [x] Record physical clicking, typing after toggle, outside-window release, mixed-DPI dragging and assistive-technology behavior separately as passed, failed or untested.
+
+Verify: run the agreed commands from tasks/plan.md; compare actual diff and exported previews against the Excalidraw. No desktop input injection, installed-app replacement or remote push without a request.
+
+### Final checkpoint
+
+- [x] Approved contract implemented, new-feature tests and release build pass; physical acceptance remains open.
+- [ ] User accepts actual tool clicks, shortcut hints, input toggle, fixed palette, motion and placement.
+- [x] Documentation clearly separates implemented behavior from remaining manual checks.
+
 ## Fixed recent-color positions
 
 - [x] Keep swatch slots unchanged on selection and highlight changes.
