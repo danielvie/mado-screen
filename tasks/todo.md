@@ -2,7 +2,7 @@
 
 ## Backlog and next increment
 
-Missing features and proposals: docs/feature-roadmap.md. Multi-monitor work is deferred because the user has no multi-monitor setup. Undo/redo is the recommended next single-monitor increment, pending approval. No implementation tasks are scheduled yet; sharing/recording validation remains open.
+PoC4 approved for autonomous staged implementation. Specification: tasks/poc4-spec.md. Evidence and remote checkpoints: tasks/poc4-progress.md. Stage1 styled history is validated; stages2geometry/eraser and3nativeUI follow. Multi-monitor and sharing/recording validation remain deferred/open.
 
 ## PoC 3: tool selection and shape previews
 
