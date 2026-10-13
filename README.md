@@ -17,7 +17,7 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 
 For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe -PostedStroke`. The primary executable is `target\debug\mado-screen-poc.exe`.
 
-## Stage 1 controls
+## Stage 2 controls
 
 Permanent global controls:
 - `Ctrl+Alt+D`: drawing/click-through toggle.
@@ -25,7 +25,7 @@ Permanent global controls:
 - `Ctrl+Alt+Q`: quit.
 
 Drawing-mode-only controls:
-- `P` pen, `L` straight line, `R` outline rectangle.
+- `P` pen, `L` straight line, `R` outline rectangle, `A` arrow, `O` ellipse, `E` eraser.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
@@ -34,7 +34,9 @@ Defaults are orange and 5 pixels. Each annotation retains the color and width ch
 
 Undo/redo first settles any active gesture. Pen ink is committed, unfinished shapes are discarded, then history is applied. Clear is undoable; a new edit after undo discards the redo branch. Style/tool choices themselves are not history entries. All drawing-only registrations are released in click-through and on exit so underlying-app editing shortcuts work normally. Conflicts report the actual key and roll back partial registrations, preserving ink in click-through.
 
-Stage 2 exposes arrows, ellipses and whole-annotation erasing. Stage 3 adds the visible indicator and cursor-position color picker. These are not presented as completed until their checkpoints pass.
+Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
+
+Stage 3 adds the visible indicator and cursor-position color picker; those controls are not exposed yet.
 
 ## Behavior and limits
 

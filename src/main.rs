@@ -19,7 +19,7 @@ use windows::{
 };
 
 // Published stages remain usable; later checkpoints expose advanced tools and UI.
-const STAGE: u8 = 1;
+const STAGE: u8 = 2;
 
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
