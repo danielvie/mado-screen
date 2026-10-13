@@ -103,6 +103,10 @@ public static class PocSmoke {
         if (hiddenBefore != hiddenAfter || visibleFirst != visibleSecond) return 0;
         return hiddenBefore == visibleFirst ? 1 : -1;
     }
+    public static string LatestToolLabel(string log) {
+        var labels = System.Text.RegularExpressions.Regex.Matches(log, @"(?m)^Tool: ([^\r\n]+)\. Color:");
+        return labels.Count == 0 ? "" : labels[labels.Count - 1].Groups[1].Value;
+    }
     public static bool PostDrag(IntPtr hwnd, uint thread, uint select, uint cancel, int[] points) {
         if (points.Length < 6 || points.Length % 2 != 0) throw new ArgumentException("Expected down, move and up coordinates.");
         bool queued = true;
@@ -162,13 +166,22 @@ if ($SelfCheck) {
         ([PocSmoke]::LineSamples([int[]]@(960, -80, 960, 80)) -join ',') -ne '960,-80,960,80,960,-40,960,40') {
         throw 'Interpolation sampling self-check failed.'
     }
+    foreach ($case in @(
+        @('PoC 6: stage 3', ''),
+        @("Tool: Pen. Color: #F97316; width: 5.`r`nTool: Temporary pen. Color: #3B82F6; width: 5.`r`n", 'Temporary pen'),
+        @("Tool: Arrow head-first. Color: #F97316; width: 5.`nTool: Arrow tail-first. Color: #F97316; width: 5.`n", 'Arrow tail-first'),
+        @("Tool: Arrow tail-first. Color: #F97316; width: 5.`nTool: Arrow head-first. Color: #F97316; width: 5.`n", 'Arrow head-first')
+    )) {
+        if ([PocSmoke]::LatestToolLabel($case[0]) -cne $case[1]) { throw 'Latest tool-label log self-check failed.' }
+    }
+    Write-Host 'PASS: latest tool-label parsing distinguishes variants from stale log entries'
     Write-Host 'PASS: stable match, stable mismatch and changing-background sample classification'
     Write-Host 'PASS: canvas/screen translation with negative left/above origins and round trips'
     Write-Host 'PASS: horizontal/vertical adjacent seams, reversed order, gap/corner rejection and interpolation samples'
     return
 }
 $oldDpi = [PocSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-$directory = Join-Path $env:TEMP ("mado-poc5-" + [Guid]::NewGuid())
+$directory = Join-Path $env:TEMP ("mado-poc6-" + [Guid]::NewGuid())
 New-Item -ItemType Directory $directory | Out-Null
 $copy = Join-Path $directory 'overlay-smoke.exe'
 Copy-Item (Resolve-Path $Exe).Path $copy
@@ -236,6 +249,18 @@ function PostAction([uint32]$Action, [string]$Name) {
     CheckOwnedCanvas
     Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new($Action), [IntPtr]::Zero)) $Name
     Start-Sleep -Milliseconds 200
+}
+function CheckToolLabel([string]$Expected) {
+    # Status paints internal text, not its native title. Check the logged tool_label.
+    $wait = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        CheckOwnedCanvas
+        $log = [string](Get-Content (Join-Path $directory 'run-out.log') -Raw)
+        $label = [PocSmoke]::LatestToolLabel($log)
+        if ($label -ceq $Expected) { break }
+        Start-Sleep -Milliseconds 50
+    } while ($wait.Elapsed.TotalSeconds -lt 2)
+    Check ($label -ceq $Expected) "Latest app log reports Tool: $Expected. Color: within bounded wait"
 }
 function PostLine([int[]]$Line, [string]$Name) {
     CheckOwnedCanvas
@@ -357,7 +382,7 @@ try {
         Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible before canvas sampling'
     }
     CheckEmptyCanvas 'Empty startup leaves sampled desktop pixels unchanged'
-    Check ($startup.Contains('PoC 5: stage 3')) 'PoC 5 stage 3 startup reported'
+    Check ($startup.Contains('PoC 6: stage 3')) 'PoC 6 stage 3 startup reported'
     ProbeToolKeys $true
     if ($startup.Contains('stage 3')) {
         $statusWindow = [PocSmoke]::FindWindowByTitle('Mado status')
@@ -436,6 +461,8 @@ try {
                 Start-Sleep -Milliseconds 200
                 Check ((Pixel ($lx + 600) $ly) -eq $ink -and (Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 639) ($ly + 20)) -eq $ink -and (Pixel ($lx + 639) ($ly - 20)) -eq $ink) 'Arrow head stays at press point with larger separate wings'
                 Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Thicker arrow style queued'
+                # Repeating A now toggles direction. Reselect from Line for the legacy head-first check.
+                PostAction 5 'Select Line before reselecting the legacy head-first Arrow'
                 Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), ($ly + 220), ($lx + 680), ($ly + 220), ($lx + 800), ($ly + 220)))) 'Thicker head-first arrow queued'
                 Start-Sleep -Milliseconds 200
                 Check ((Pixel ($lx + 651) ($ly + 246)) -eq $ink -and (Pixel ($lx + 651) ($ly + 194)) -eq $ink -and (Pixel ($lx + 800) ($ly + 246)) -ne $ink) 'Wider stroke enlarges both head wings without moving them to the tail'
@@ -584,6 +611,102 @@ try {
         $reason = 'SKIPPED/UNTESTED: per-monitor draw/undo/redo/erase and seam routing require -PostedStroke'
         $skipped.Add($reason); Write-Warning $reason
     }
+    $poc6PostedRan = $false
+    if ($PostedStroke -and $width -ge 480 -and $height -ge 640) {
+        # Isolated primary-display geometry, after all legacy/per-monitor preservation checks.
+        $x = [int][Math]::Floor($width / 4) - $virtualLeft
+        $y = [int][Math]::Floor($height / 2) - $virtualTop
+        $permanent = [PocSmoke]::LineSamples([int[]]@($x, $y, ($x + 80), $y))
+        $redo = [PocSmoke]::LineSamples([int[]]@($x, ($y + 60), ($x + 80), ($y + 60)))
+        $tempOnly = [int[]]@(($x + 120), $y, ($x + 160), $y)
+        $tempClickThrough = [int[]]@(($x + 120), ($y + 60), ($x + 160), ($y + 60))
+        PostAction 2 'Clear earlier setup before focused PoC 6 cases'
+        CheckEmptyCanvas 'PoC 6 sample locations initially empty' ([int[]]($permanent + $redo + $tempOnly + $tempClickThrough))
+        try {
+            SetPostedDrawingMode $true
+            PostAction 5 'Select Line before selecting permanent Pen, without toggling P'
+            PostAction 4 'Select permanent Pen from Line'
+            CheckToolLabel 'Pen'
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, $y, ($x + 40), $y, ($x + 80), $y))) 'PoC 6 first permanent pen queued'
+            Start-Sleep -Milliseconds 300
+            CheckInk $permanent 'PoC 6 known permanent ink rendered'
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, ($y + 60), ($x + 40), ($y + 60), ($x + 80), ($y + 60)))) 'PoC 6 second permanent pen queued without repeating P'
+            Start-Sleep -Milliseconds 300
+            CheckInk $redo 'PoC 6 second permanent ink rendered'
+            PostAction 7 'Undo second permanent annotation to establish a redo branch'
+            CheckEmptyCanvas 'Second permanent annotation is absent before temporary drawing' $redo
+            CheckInk $permanent 'Undo second annotation preserves the first permanent annotation'
+            PostAction 4 'Repeat P on Pen to toggle temporary ink'
+            CheckToolLabel 'Temporary pen'
+            PostAction 11 'Choose blue to distinguish temporary ink from permanent orange'
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, $y, ($x + 80), $y, ($x + 160), $y))) 'Temporary pen queued over permanent ink and empty desktop'
+            Start-Sleep -Milliseconds 300
+            Check ((Pixel $x $y) -eq $blue -and (Pixel ($x + 40) $y) -eq $blue -and
+                (Pixel ($x + 120) $y) -eq $blue -and (Pixel ($x + 160) $y) -eq $blue) 'Opaque temporary ink covers permanent ink and extends beyond it'
+            Start-Sleep -Milliseconds 2200
+            CheckInk $permanent 'Temporary expiry after release reveals unchanged permanent ink'
+            CheckEmptyCanvas 'Temporary-only pixels disappear after more than two seconds' $tempOnly
+            CheckEmptyCanvas 'Temporary drawing and expiry do not restore the undone permanent annotation' $redo
+            PostAction 7 'Undo first permanent annotation after temporary drawing and expiry'
+            CheckEmptyCanvas 'Temporary ink adds no undo entry; one undo removes first permanent annotation' $permanent
+            PostAction 8 'Redo first permanent annotation after temporary expiry'
+            CheckInk $permanent 'First permanent annotation redo is unchanged by temporary ink'
+            PostAction 8 'Redo the pre-existing second permanent annotation branch'
+            CheckInk $redo 'Temporary drawing and expiry preserve the pre-existing redo branch'
+            CheckInk $permanent 'Restoring the redo branch preserves the first permanent annotation'
+            CheckToolLabel 'Temporary pen'
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, ($y + 60), ($x + 80), ($y + 60), ($x + 160), ($y + 60)))) 'Temporary pen queued before entering click-through'
+            Start-Sleep -Milliseconds 300
+            Check ((Pixel ($x + 40) ($y + 60)) -eq $blue -and (Pixel ($x + 120) ($y + 60)) -eq $blue) 'Temporary ink is visible before click-through expiry'
+            SetPostedDrawingMode $false
+            Start-Sleep -Milliseconds 2200
+            CheckInk ([int[]]($permanent + $redo)) 'Expiry in click-through preserves both permanent annotations'
+            CheckEmptyCanvas 'Temporary ink expires without drawing-mode input' $tempClickThrough
+            Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0) 'Temporary expiry leaves the canvas click-through'
+            SetPostedDrawingMode $true
+            PostAction 5 'Select Line after click-through expiry'
+            PostAction 4 'Reselect Pen from Line without toggling the saved variant'
+            CheckToolLabel 'Temporary pen'
+            PostAction 4 'Repeat P to toggle back to permanent Pen'
+            CheckToolLabel 'Pen'
+            PostAction 12 'Restore orange for focused arrow raster checks'
+            PostAction 16 'Select Arrow from Pen with its default head-first direction'
+            CheckToolLabel 'Arrow head-first'
+            $headWings = [int[]]@(($x + 39), ($y + 100), ($x + 39), ($y + 140))
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, ($y + 120), ($x + 80), ($y + 120), ($x + 160), ($y + 120)))) 'Focused default head-first Arrow queued'
+            Start-Sleep -Milliseconds 300
+            CheckInk $headWings 'Default Arrow raster has both wings at the press point'
+            CheckEmptyCanvas 'Default Arrow has no tail wings' ([int[]]@(($x + 121), ($y + 100), ($x + 121), ($y + 140)))
+            PostAction 16 'Repeat A on Arrow to toggle tail-first'
+            CheckToolLabel 'Arrow tail-first'
+            CheckInk $headWings 'Direction toggle does not reverse an existing head-first arrow'
+            $tailWings = [int[]]@(($x + 121), ($y + 160), ($x + 121), ($y + 200))
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, ($y + 180), ($x + 80), ($y + 180), ($x + 160), ($y + 180)))) 'Focused tail-first Arrow queued without another A toggle'
+            Start-Sleep -Milliseconds 300
+            CheckInk ([int[]]@($x, ($y + 180), ($x + 80), ($y + 180), ($x + 160), ($y + 180))) 'Tail-first Arrow retains the complete shaft'
+            CheckInk $tailWings 'Tail-first Arrow raster has both wings at the release point'
+            CheckEmptyCanvas 'Tail-first Arrow has no press-point wings' ([int[]]@(($x + 39), ($y + 160), ($x + 39), ($y + 200)))
+            PostAction 16 'Repeat A again to toggle back to head-first'
+            CheckToolLabel 'Arrow head-first'
+            Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, ($y + 240), ($x + 80), ($y + 240), ($x + 160), ($y + 240)))) 'Focused toggled-back head-first Arrow queued'
+            Start-Sleep -Milliseconds 300
+            CheckInk ([int[]]@(($x + 39), ($y + 220), ($x + 39), ($y + 260))) 'Repeated A toggles back to the head-first raster'
+            CheckEmptyCanvas 'Toggled-back Arrow has no tail wings' ([int[]]@(($x + 121), ($y + 220), ($x + 121), ($y + 260)))
+            CheckInk ([int[]]($headWings + $tailWings + $permanent + $redo)) 'Arrow toggles preserve old directions and permanent pen history'
+            $poc6PostedRan = $true
+        } finally {
+            if (-not $process.HasExited -and ([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -eq 0) {
+                try { SetPostedDrawingMode $false } catch {
+                    if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+                    throw
+                }
+            }
+        }
+        ProbeToolKeys $true
+    } else {
+        $reason = 'SKIPPED/UNTESTED: focused PoC 6 temporary/history/arrow checks require -PostedStroke and a primary display at least 480 x 640'
+        $skipped.Add($reason); Write-Warning $reason
+    }
     # Queue clear/quit directly. This intentionally does NOT prove real keyboard routing.
     Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(2), [IntPtr]::Zero)) 'Clear action queued'
     Start-Sleep -Milliseconds 500
@@ -620,6 +743,8 @@ try {
         logicalProcessors = [Environment]::ProcessorCount
         idleCpuSeconds = $cpuSeconds; idleCpuPercent = $idlePercent
         postedStroke = [bool]$PostedStroke
+        postedPoc6 = if ($poc6PostedRan) { 'Posted P/A variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
+        variantLabelEvidence = 'Latest app log tool_label only. Status paints internal text, not its native title; painted indicator label correctness remains manual/untested.'
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
         manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, picker placement/focus/scaling and hardware latency.'
         mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or picker scaling.'
