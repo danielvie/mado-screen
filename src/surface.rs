@@ -94,10 +94,12 @@ impl Surface {
                 SourceConstantAlpha: 255,
                 AlphaFormat: AC_SRC_ALPHA as u8,
             };
+            // A null destination preserves the window's virtual-desktop position.
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow
             UpdateLayeredWindow(
                 hwnd,
                 None,
-                Some(&origin),
+                None,
                 Some(&size),
                 Some(self.dc),
                 Some(&origin),
@@ -129,6 +131,195 @@ impl Drop for Surface {
 mod tests {
     use super::*;
     use crate::strokes::{Annotation, Style};
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use windows::{
+        Win32::{
+            Foundation::{HINSTANCE, LPARAM, LRESULT, RECT, WPARAM},
+            System::LibraryLoader::GetModuleHandleW,
+            UI::{HiDpi::*, WindowsAndMessaging::*},
+        },
+        core::PCWSTR,
+    };
+
+    struct HiddenWindow {
+        hwnd: HWND,
+        instance: HINSTANCE,
+        class_name: Vec<u16>,
+    }
+
+    impl HiddenWindow {
+        fn new(x: i32, y: i32, width: i32, height: i32) -> Result<Self> {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            unsafe {
+                let instance = HINSTANCE(GetModuleHandleW(None)?.0);
+                let class_name: Vec<u16> = format!(
+                    "MadoSurfaceTest{}-{}\0",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                )
+                .encode_utf16()
+                .collect();
+                let class = WNDCLASSW {
+                    lpfnWndProc: Some(test_window_proc),
+                    hInstance: instance,
+                    lpszClassName: PCWSTR(class_name.as_ptr()),
+                    ..Default::default()
+                };
+                if RegisterClassW(&class) == 0 {
+                    return Err(Error::from_thread());
+                }
+                // Own the class before creation so failure also unregisters it.
+                let mut window = Self {
+                    hwnd: HWND::default(),
+                    instance,
+                    class_name,
+                };
+                window.hwnd = CreateWindowExW(
+                    WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                    PCWSTR(window.class_name.as_ptr()),
+                    PCWSTR::null(),
+                    WS_POPUP, // No WS_VISIBLE, show, focus or input calls.
+                    x,
+                    y,
+                    width,
+                    height,
+                    None,
+                    None,
+                    Some(instance),
+                    None,
+                )?;
+                Ok(window)
+            }
+        }
+    }
+
+    impl Drop for HiddenWindow {
+        fn drop(&mut self) {
+            unsafe {
+                if self.hwnd.is_invalid() || DestroyWindow(self.hwnd).is_ok() {
+                    let _ = UnregisterClassW(PCWSTR(self.class_name.as_ptr()), Some(self.instance));
+                }
+            }
+        }
+    }
+
+    unsafe extern "system" fn test_window_proc(
+        hwnd: HWND,
+        message: u32,
+        w: WPARAM,
+        l: LPARAM,
+    ) -> LRESULT {
+        unsafe { DefWindowProcW(hwnd, message, w, l) }
+    }
+
+    struct ThreadDpi(DPI_AWARENESS_CONTEXT);
+
+    impl Drop for ThreadDpi {
+        fn drop(&mut self) {
+            unsafe {
+                SetThreadDpiAwarenessContext(self.0);
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_upload_preserves_screen_bounds_and_releases_windows_and_classes() {
+        // Keep native bounds in physical pixels without changing other test threads.
+        let previous =
+            unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+        assert!(!previous.0.is_null());
+        let _dpi = ThreadDpi(previous);
+        for (x, y) in [(143, 97), (-143, 97), (143, -97), (-143, -97)] {
+            let window = HiddenWindow::new(x, y, 80, 60).unwrap();
+            let mut before = RECT::default();
+            unsafe {
+                GetWindowRect(window.hwnd, &mut before).unwrap();
+                assert!(!IsWindowVisible(window.hwnd).as_bool());
+            }
+            assert_eq!(
+                before,
+                RECT {
+                    left: x,
+                    top: y,
+                    right: x + 80,
+                    bottom: y + 60
+                }
+            );
+            let mut surface = Surface::new(80, 60).unwrap();
+            let annotations = [Annotation {
+                paths: vec![vec![(10, 15), (30, 30)]],
+                style: Style::default(),
+            }];
+            for drawing in [false, true, false] {
+                surface.present(window.hwnd, drawing, &annotations).unwrap();
+                let mut after = RECT::default();
+                unsafe {
+                    GetWindowRect(window.hwnd, &mut after).unwrap();
+                    assert!(!IsWindowVisible(window.hwnd).as_bool());
+                }
+                assert_eq!(after, before);
+                let pixels =
+                    unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 80 * 60) };
+                assert_eq!(pixels[15 * 80 + 10], 0xfff97316);
+            }
+            drop(surface);
+            let hwnd = window.hwnd;
+            let instance = window.instance;
+            let class_name = window.class_name.clone();
+            drop(window);
+            unsafe {
+                assert!(!IsWindow(Some(hwnd)).as_bool());
+                assert!(
+                    GetClassInfoW(
+                        Some(instance),
+                        PCWSTR(class_name.as_ptr()),
+                        &mut WNDCLASSW::default(),
+                    )
+                    .is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn negative_and_outside_points_remain_canvas_local_and_clip() {
+        let mut surface = Surface::new(8, 6).unwrap();
+        let annotations = [Annotation {
+            paths: vec![
+                vec![(i32::MIN, 3), (i32::MAX, 3)],
+                vec![(-1, -1)],
+                vec![(8, 6)],
+                vec![(-20, -20), (-10, -10)],
+                vec![(20, 20), (30, 30)],
+                vec![(0, 0)],
+                vec![(7, 5)],
+            ],
+            style: Style {
+                color: 0xff3b82f6,
+                thickness: 1,
+            },
+        }];
+        for drawing in [false, true] {
+            assert!(
+                surface
+                    .present(HWND::default(), drawing, &annotations)
+                    .is_err()
+            );
+            let pixels = unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 8 * 6) };
+            for y in 0..6 {
+                for x in 0..8 {
+                    let expected = if y == 3 || (x, y) == (0, 0) || (x, y) == (7, 5) {
+                        0xff3b82f6
+                    } else if drawing {
+                        0x01000000
+                    } else {
+                        0
+                    };
+                    assert_eq!(pixels[y * 8 + x], expected, "at ({x}, {y})");
+                }
+            }
+        }
+    }
 
     #[test]
     fn invalid_dimensions_fail_before_allocation() {
