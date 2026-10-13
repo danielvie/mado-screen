@@ -14,7 +14,7 @@ use windows::{
         Graphics::Gdi::*,
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::{EM_SETLIMITTEXT, EM_SETMARGINS},
+            Controls::{EM_SETLIMITTEXT, EM_SETMARGINS, WM_MOUSELEAVE},
             HiDpi::GetDpiForWindow,
             Input::KeyboardAndMouse::*,
             WindowsAndMessaging::*,
@@ -42,12 +42,18 @@ const PRESETS: [(&str, u32); 6] = [
     ("&6 Black", 0xff000000),
 ];
 const PICKER_WIDTH: i32 = 300;
-const PICKER_HEIGHT: i32 = 460;
-const BACKGROUND: u32 = 0xff17191d;
-const SURFACE: u32 = 0xff24282f;
-const BORDER: u32 = 0xff68717f;
-const FOREGROUND: u32 = 0xfff2f3f5;
-const MUTED: u32 = 0xffbcc3ce;
+const PICKER_HEIGHT: i32 = 496;
+const BACKGROUND: u32 = 0xffffffff;
+const SURFACE: u32 = 0xfff6f8fb;
+const BORDER: u32 = 0xffcbd5e1;
+const FOREGROUND: u32 = 0xff334155;
+const MUTED: u32 = 0xff64748b;
+const BLUE: u32 = 0xff2563eb;
+const ORANGE: u32 = 0xfff97316;
+const PANEL_BACKGROUND: u32 = 0xff333940;
+const PANEL_BLUE: u32 = 0xff58a6ef;
+const PANEL_WIDTH: i32 = 440;
+const PANEL_ROW: i32 = 44;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum UiEvent {
@@ -116,6 +122,14 @@ struct State {
     slider: Cell<HWND>,
     text: RefCell<String>,
     color: Cell<u32>,
+    tool: Cell<Tool>,
+    expanded: Cell<bool>,
+    recents_open: Cell<bool>,
+    recents: RefCell<Vec<u32>>,
+    panel_scale: Cell<f64>,
+    panel_monitor: Cell<RECT>,
+    tracking: Cell<bool>,
+    pressed: Cell<Option<PanelHit>>,
     candidate: Cell<Hsv>,
     valid: Cell<bool>,
     syncing: Cell<bool>,
@@ -142,6 +156,14 @@ impl State {
             slider: Cell::new(HWND::default()),
             text: RefCell::new(String::new()),
             color: Cell::new(Style::default().color),
+            tool: Cell::new(Tool::Pen),
+            expanded: Cell::new(false),
+            recents_open: Cell::new(false),
+            recents: RefCell::new(vec![Style::default().color]),
+            panel_scale: Cell::new(1.0),
+            panel_monitor: Cell::new(RECT::default()),
+            tracking: Cell::new(false),
+            pressed: Cell::new(None),
             candidate: Cell::new(Hsv::from_argb(Style::default().color)),
             valid: Cell::new(true),
             syncing: Cell::new(false),
@@ -187,22 +209,18 @@ impl DesktopUi {
             _thread: PhantomData,
         };
         unsafe {
-            // Layered + TRANSPARENT passes mouse events to windows underneath, even
-            // across threads. NOACTIVATE alone does not provide click-through.
+            // Only the occupied rounded region receives mouse input. Do not use
+            // WS_EX_TRANSPARENT: it bypasses layered-window hit testing entirely.
             // https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#layered-windows
             let hwnd = CreateWindowExW(
-                WS_EX_TOPMOST
-                    | WS_EX_LAYERED
-                    | WS_EX_TRANSPARENT
-                    | WS_EX_NOACTIVATE
-                    | WS_EX_TOOLWINDOW,
+                WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                 PCWSTR(ui.status_class.name.as_ptr()),
-                w!("Mado status"),
+                w!("Mado selected tool"),
                 WS_POPUP,
-                (width - 496).max(0),
-                16.min((height - 44).max(0)),
-                480.min(width),
-                44.min(height),
+                0,
+                0,
+                PANEL_ROW,
+                PANEL_ROW,
                 Some(owner),
                 None,
                 Some(instance),
@@ -210,6 +228,7 @@ impl DesktopUi {
             )?;
             ui.state.status.set(hwnd);
             SetLayeredWindowAttributes(hwnd, COLORREF(0), 245, LWA_ALPHA)?;
+            ui.state.anchor_panel(GetDpiForWindow(hwnd))?;
             ui.update(false, Tool::Pen, Style::default())?;
             SetWindowPos(
                 hwnd,
@@ -230,17 +249,26 @@ impl DesktopUi {
 
     pub fn update_label(&self, drawing: bool, tool: &str, style: Style) -> Result<()> {
         let mode = if drawing { "Drawing" } else { "Click-through" };
-        let text = format!(
-            "{mode} | {tool} | {} px | #{:06X}",
-            style.thickness,
-            style.color & 0xffffff
-        );
+        let text = format!("{mode} | {tool} | {} px", style.thickness);
         if *self.state.text.borrow() == text && self.state.color.get() == style.color {
             return Ok(());
         }
         *self.state.text.borrow_mut() = text;
-        self.state.color.set(style.color);
-        unsafe { InvalidateRect(Some(self.state.status.get()), None, true).ok() }
+        self.state.tool.set(tool_icon(tool));
+        if self.state.color.replace(style.color) != style.color {
+            let mut recents = self.state.recents.borrow_mut();
+            recents.retain(|color| *color != style.color);
+            recents.insert(0, style.color);
+            recents.truncate(5);
+            self.state.pressed.set(None);
+        }
+        unsafe {
+            let _ = SetWindowTextW(
+                self.state.status.get(),
+                PCWSTR(wide(&format!("Mado {tool}; {mode}")).as_ptr()),
+            );
+            InvalidateRect(Some(self.state.status.get()), None, false).ok()
+        }
     }
 
     pub fn open_picker(&self, color: u32) -> Result<()> {
@@ -388,6 +416,12 @@ impl DesktopUi {
             )?;
         }
         self.state.layout()?;
+        rounded_region(
+            hwnd,
+            scaled(PICKER_WIDTH, self.state.scale.get()),
+            scaled(PICKER_HEIGHT, self.state.scale.get()),
+            scaled(18, self.state.scale.get()),
+        )?;
         self.state.sync_candidate();
         Ok(())
     }
@@ -501,7 +535,165 @@ impl Drop for DesktopUi {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PanelHit {
+    Current,
+    Recent(u32),
+}
+
+struct PanelGeometry {
+    width: i32,
+    height: i32,
+    radius: i32,
+    scale: f64,
+}
+impl PanelGeometry {
+    fn new(state: &State) -> Self {
+        let scale = state.panel_scale.get();
+        Self {
+            width: scaled(
+                if state.expanded.get() {
+                    PANEL_WIDTH
+                } else {
+                    PANEL_ROW
+                },
+                scale,
+            ),
+            height: scaled(
+                PANEL_ROW * if state.recents_open.get() { 2 } else { 1 },
+                scale,
+            ),
+            radius: scaled(12, scale).max(1),
+            scale,
+        }
+    }
+    fn current(&self) -> (i32, i32) {
+        (self.width - scaled(24, self.scale), scaled(22, self.scale))
+    }
+    fn recent(&self, index: usize, count: usize) -> (i32, i32) {
+        (
+            self.width - scaled(24 + (count - 1 - index) as i32 * 36, self.scale),
+            scaled(66, self.scale),
+        )
+    }
+    fn contains(&self, x: i32, y: i32) -> bool {
+        if x < 0 || y < 0 || x >= self.width || y >= self.height {
+            return false;
+        }
+        let cx = x.clamp(self.radius, self.width - self.radius - 1);
+        let cy = y.clamp(self.radius, self.height - self.radius - 1);
+        (x - cx).pow(2) + (y - cy).pow(2) <= self.radius.pow(2)
+    }
+    fn hit(&self, state: &State, x: i32, y: i32) -> Option<PanelHit> {
+        if !state.expanded.get() || !self.contains(x, y) {
+            return None;
+        }
+        let inside = |center: (i32, i32)| {
+            (x - center.0).pow(2) + (y - center.1).pow(2) <= scaled(9, self.scale).pow(2)
+        };
+        if inside(self.current()) {
+            return Some(PanelHit::Current);
+        }
+        if state.recents_open.get() {
+            let recents = state.recents.borrow();
+            for (i, color) in recents.iter().enumerate() {
+                if inside(self.recent(i, recents.len())) {
+                    return Some(PanelHit::Recent(*color));
+                }
+            }
+        }
+        None
+    }
+}
+
+fn tool_icon(label: &str) -> Tool {
+    match label {
+        "Line" => Tool::Line,
+        "Rectangle" => Tool::Rectangle,
+        "Ellipse" => Tool::Ellipse,
+        "Eraser" => Tool::Eraser,
+        label if label.starts_with("Arrow") => Tool::Arrow,
+        _ => Tool::Pen,
+    }
+}
+
+fn rounded_region(hwnd: HWND, width: i32, height: i32, radius: i32) -> Result<()> {
+    unsafe {
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        if region.is_invalid() {
+            return Err(Error::from_thread());
+        }
+        // Ownership transfers only on success. This popup has no nonclient frame.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowrgn
+        if SetWindowRgn(hwnd, Some(region), true) == 0 {
+            let _ = DeleteObject(region.into());
+            return Err(Error::from_thread());
+        }
+    }
+    Ok(())
+}
+
 impl State {
+    fn anchor_panel(&self, dpi: u32) -> Result<()> {
+        unsafe {
+            // The primary monitor includes the virtual-desktop origin, independent
+            // of the overlay's virtual-desktop dimensions.
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-monitorfrompoint
+            let monitor = MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY);
+            let mut info = MONITORINFO {
+                cbSize: size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            GetMonitorInfoW(monitor, &mut info).ok()?;
+            self.panel_monitor.set(info.rcMonitor);
+            self.panel_scale.set(
+                (dpi.max(96) as f64 / 96.0)
+                    .min(
+                        (info.rcMonitor.right - info.rcMonitor.left).max(1) as f64
+                            / (PANEL_WIDTH + 32) as f64,
+                    )
+                    .min(
+                        (info.rcMonitor.bottom - info.rcMonitor.top).max(1) as f64
+                            / (2 * PANEL_ROW + 32) as f64,
+                    ),
+            );
+        }
+        self.resize_panel()
+    }
+
+    fn resize_panel(&self) -> Result<()> {
+        let geometry = PanelGeometry::new(self);
+        let monitor = self.panel_monitor.get();
+        let margin = scaled(16, geometry.scale);
+        unsafe {
+            SetWindowPos(
+                self.status.get(),
+                None,
+                monitor.right - margin - geometry.width,
+                monitor.top + margin,
+                geometry.width,
+                geometry.height,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )?;
+            rounded_region(
+                self.status.get(),
+                geometry.width,
+                geometry.height,
+                geometry.radius,
+            )?;
+            InvalidateRect(Some(self.status.get()), None, false).ok()
+        }
+    }
+
+    fn panel_leave(&self) {
+        self.tracking.set(false);
+        self.pressed.set(None);
+        self.recents_open.set(false);
+        if self.expanded.replace(false) {
+            let _ = self.resize_panel();
+        }
+    }
+
     fn post(&self, event: UiEvent) {
         let (value, kind) = match event {
             UiEvent::Color(color) => (color as usize, 1),
@@ -798,8 +990,8 @@ fn control_rect(id: usize) -> (i32, i32, i32, i32) {
         HEX_LABEL => (64, 330, 100, 16),
         HEX => (64, 346, 216, 26),
         HINT => (20, 375, 260, 16),
-        CANCEL => (20, 428, 100, 28),
-        APPLY => (132, 428, 148, 28),
+        CANCEL => (20, 440, 100, 32),
+        APPLY => (132, 440, 148, 32),
         CLOSE => (252, 12, 28, 28),
         _ if (PRESET..PRESET + PRESETS.len()).contains(&id) => {
             (20 + (id - PRESET) as i32 * 46, 394, 30, 26)
@@ -871,12 +1063,147 @@ fn ellipse(dc: HDC, x: i32, y: i32, radius: i32, color: u32, width: i32, solid: 
     }
 }
 fn marker(dc: HDC, x: i32, y: i32, s: f64) {
-    ellipse(dc, x, y, scaled(6, s), FOREGROUND, scaled(2, s), false);
+    ellipse(dc, x, y, scaled(6, s), 0xffffffff, scaled(2, s), false);
     ellipse(dc, x, y, scaled(4, s), 0xff000000, scaled(2, s), false);
 }
+fn rounded(dc: HDC, bounds: RECT, radius: i32, background: u32, border: u32) {
+    unsafe {
+        let pen = GdiObject(CreatePen(PS_SOLID, 1, colorref(border)).into());
+        let brush = GdiObject(CreateSolidBrush(colorref(background)).into());
+        let old_pen = SelectObject(dc, pen.0);
+        let old_brush = SelectObject(dc, brush.0);
+        let _ = RoundRect(
+            dc,
+            bounds.left,
+            bounds.top,
+            bounds.right,
+            bounds.bottom,
+            radius * 2,
+            radius * 2,
+        );
+        SelectObject(dc, old_brush);
+        SelectObject(dc, old_pen);
+    }
+}
+
+fn paint_status(state: &State, dc: HDC) {
+    let geometry = PanelGeometry::new(state);
+    let s = geometry.scale;
+    fill(
+        dc,
+        rect(0, 0, geometry.width, geometry.height),
+        PANEL_BACKGROUND,
+    );
+    rounded(
+        dc,
+        rect(0, 0, geometry.width, geometry.height),
+        geometry.radius,
+        PANEL_BACKGROUND,
+        PANEL_BLUE,
+    );
+    unsafe {
+        let saved = SaveDC(dc);
+        if state.expanded.get() {
+            let font = GdiObject(
+                CreateFontW(
+                    -scaled(14, s),
+                    0,
+                    0,
+                    0,
+                    400,
+                    0,
+                    0,
+                    0,
+                    DEFAULT_CHARSET,
+                    OUT_DEFAULT_PRECIS,
+                    CLIP_DEFAULT_PRECIS,
+                    CLEARTYPE_QUALITY,
+                    DEFAULT_PITCH.0 as u32,
+                    w!("Segoe UI"),
+                )
+                .into(),
+            );
+            SelectObject(dc, font.0);
+            label(
+                dc,
+                &state.text.borrow(),
+                logical_rect(s, 16, 0, PANEL_WIDTH - 64, PANEL_ROW),
+                PANEL_BLUE,
+                DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+            );
+            let (x, y) = geometry.current();
+            ellipse(dc, x, y, scaled(9, s), state.color.get(), 1, true);
+            // Restore before dropping the selected font.
+            let _ = RestoreDC(dc, saved);
+            if state.recents_open.get() {
+                let recents = state.recents.borrow();
+                for (i, color) in recents.iter().enumerate() {
+                    let (x, y) = geometry.recent(i, recents.len());
+                    ellipse(dc, x, y, scaled(9, s), *color, 1, true);
+                    if *color == state.color.get() {
+                        ellipse(dc, x, y, scaled(12, s), PANEL_BLUE, scaled(1, s), false);
+                    }
+                }
+            }
+        } else {
+            let pen =
+                GdiObject(CreatePen(PS_SOLID, scaled(2, s).max(1), colorref(PANEL_BLUE)).into());
+            SelectObject(dc, pen.0);
+            SelectObject(dc, GetStockObject(NULL_BRUSH));
+            let line = |points: &[(i32, i32)]| {
+                let points: Vec<POINT> = points
+                    .iter()
+                    .map(|(x, y)| POINT {
+                        x: scaled(*x, s),
+                        y: scaled(*y, s),
+                    })
+                    .collect();
+                let _ = Polyline(dc, &points);
+            };
+            match state.tool.get() {
+                Tool::Pen => {
+                    line(&[(13, 30), (16, 23), (28, 11), (33, 16), (21, 28), (13, 30)]);
+                    line(&[(25, 14), (30, 19)]);
+                    line(&[(16, 23), (21, 28)]);
+                }
+                Tool::Arrow => {
+                    line(&[(12, 32), (32, 12)]);
+                    line(&[(20, 12), (32, 12), (32, 24)]);
+                }
+                Tool::Line => line(&[(12, 32), (32, 12)]),
+                Tool::Rectangle => {
+                    let _ = Rectangle(
+                        dc,
+                        scaled(11, s),
+                        scaled(14, s),
+                        scaled(33, s),
+                        scaled(30, s),
+                    );
+                }
+                Tool::Ellipse => {
+                    let _ = Ellipse(
+                        dc,
+                        scaled(11, s),
+                        scaled(14, s),
+                        scaled(33, s),
+                        scaled(30, s),
+                    );
+                }
+                Tool::Eraser => {
+                    line(&[(12, 25), (25, 12), (34, 21), (23, 32), (19, 32), (12, 25)]);
+                    line(&[(18, 19), (28, 28)]);
+                    line(&[(19, 32), (34, 32)]);
+                }
+            }
+            let _ = RestoreDC(dc, saved);
+        }
+    }
+}
+
 fn paint_panel(state: &State, dc: HDC, bounds: RECT) {
     let s = state.scale.get();
     fill(dc, bounds, BACKGROUND);
+    rounded(dc, bounds, scaled(18, s), BACKGROUND, BORDER);
     unsafe {
         let saved = SaveDC(dc);
         SelectObject(dc, state.font.get().into());
@@ -884,7 +1211,7 @@ fn paint_panel(state: &State, dc: HDC, bounds: RECT) {
             dc,
             "Color",
             logical_rect(s, 20, 12, 170, 28),
-            FOREGROUND,
+            BLUE,
             DT_SINGLELINE | DT_VCENTER,
         );
         fill(dc, logical_rect(s, 226, 15, 20, 22), SURFACE);
@@ -894,6 +1221,20 @@ fn paint_panel(state: &State, dc: HDC, bounds: RECT) {
             logical_rect(s, 226, 15, 20, 22),
             MUTED,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+        );
+        label(
+            dc,
+            "Hue + saturation",
+            logical_rect(s, 32, 28, 236, 20),
+            FOREGROUND,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER,
+        );
+        label(
+            dc,
+            "Apply saves. Cancel keeps the old color.",
+            logical_rect(s, 12, 474, 276, 20),
+            MUTED,
+            DT_SINGLELINE | DT_VCENTER,
         );
         label(
             dc,
@@ -909,11 +1250,23 @@ fn paint_panel(state: &State, dc: HDC, bounds: RECT) {
             FOREGROUND,
             DT_RIGHT | DT_SINGLELINE | DT_VCENTER,
         );
-        fill(dc, logical_rect(s, 19, 341, 34, 34), BORDER);
-        fill(
+        ellipse(
             dc,
-            logical_rect(s, 20, 342, 32, 32),
+            scaled(36, s),
+            scaled(358, s),
+            scaled(14, s),
             state.candidate.get().argb(),
+            1,
+            true,
+        );
+        ellipse(
+            dc,
+            scaled(36, s),
+            scaled(358, s),
+            scaled(14, s),
+            BORDER,
+            1,
+            false,
         );
         fill(
             dc,
@@ -921,7 +1274,7 @@ fn paint_panel(state: &State, dc: HDC, bounds: RECT) {
             if state.valid.get() {
                 BORDER
             } else {
-                0xffffa5a5
+                0xffb91c1c
             },
         );
         // Hidden single-line EDIT does not WM_PRINT its client. Paint the same font,
@@ -1023,28 +1376,34 @@ fn paint_button(state: &State, item: &windows::Win32::UI::Controls::DRAWITEMSTRU
                 x,
                 y,
                 scaled(9, s),
-                if selected { FOREGROUND } else { BORDER },
+                if selected { BLUE } else { BORDER },
                 scaled(if selected || pressed { 2 } else { 1 }, s),
                 false,
             );
         } else {
             let background = if id == APPLY {
-                0xfff97316
+                if pressed { 0xffffe4cc } else { 0xfffff4e8 }
             } else if pressed {
-                0xff39414d
+                0xffe2e8f0
             } else if id == CLOSE {
                 BACKGROUND
             } else {
                 SURFACE
             };
-            fill(dc, item.rcItem, BORDER);
-            let inner = rect(
-                item.rcItem.left + 1,
-                item.rcItem.top + 1,
-                item.rcItem.right - item.rcItem.left - 2,
-                item.rcItem.bottom - item.rcItem.top - 2,
+            fill(dc, item.rcItem, BACKGROUND);
+            rounded(
+                dc,
+                item.rcItem,
+                scaled(6, s),
+                background,
+                if id == APPLY {
+                    ORANGE
+                } else if id == CLOSE {
+                    BACKGROUND
+                } else {
+                    BORDER
+                },
             );
-            fill(dc, inner, background);
             label(
                 dc,
                 if id == APPLY {
@@ -1055,7 +1414,7 @@ fn paint_button(state: &State, item: &windows::Win32::UI::Controls::DRAWITEMSTRU
                     "Cancel"
                 },
                 item.rcItem,
-                if id == APPLY { 0xff17191d } else { FOREGROUND },
+                if id == APPLY { 0xffc2410c } else { FOREGROUND },
                 DT_CENTER | DT_SINGLELINE | DT_VCENTER,
             );
         }
@@ -1138,7 +1497,7 @@ unsafe extern "system" fn picker_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     SetTextColor(
                         dc,
                         colorref(if child == state.hint.get() {
-                            0xffffa5a5
+                            0xffb91c1c
                         } else {
                             FOREGROUND
                         }),
@@ -1208,6 +1567,7 @@ unsafe extern "system" fn picker_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                             SWP_NOACTIVATE | SWP_NOZORDER,
                         );
                         let _ = state.layout();
+                        let _ = rounded_region(hwnd, width, height, scaled(18, s));
                         state.repaint();
                     }
                     return LRESULT(0);
@@ -1333,50 +1693,99 @@ unsafe extern "system" fn widget_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
 unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     unsafe {
         if message == WM_MOUSEACTIVATE {
+            // Keep delivering the click without activating or taking keyboard focus.
+            // https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mouseactivate
             return LRESULT(MA_NOACTIVATE as isize);
-        }
-        if message == WM_NCHITTEST {
-            return LRESULT(HTTRANSPARENT as isize);
         }
         if let Some(state) = state_for(hwnd, message, l) {
             match message {
-                WM_PAINT => {
+                WM_NCHITTEST => {
+                    let mut point = POINT {
+                        x: l.0 as u16 as i16 as i32,
+                        y: (l.0 >> 16) as u16 as i16 as i32,
+                    };
+                    let _ = ScreenToClient(hwnd, &mut point);
+                    return LRESULT(if PanelGeometry::new(state).contains(point.x, point.y) {
+                        HTCLIENT as isize
+                    } else {
+                        HTTRANSPARENT as isize
+                    });
+                }
+                WM_ERASEBKGND => return LRESULT(1),
+                WM_PAINT | WM_PRINTCLIENT => {
                     let mut paint = PAINTSTRUCT::default();
-                    let dc = BeginPaint(hwnd, &mut paint);
-                    let mut rect = RECT::default();
-                    let _ = GetClientRect(hwnd, &mut rect);
-                    FillRect(dc, &rect, GetSysColorBrush(COLOR_BTNFACE));
-                    let color = state.color.get();
-                    let brush = CreateSolidBrush(COLORREF(
-                        ((color >> 16) & 255) | (color & 0xff00) | ((color & 255) << 16),
-                    ));
-                    if !brush.is_invalid() {
-                        FillRect(
-                            dc,
-                            &RECT {
-                                left: 10,
-                                top: 12,
-                                right: 30,
-                                bottom: 32,
-                            },
-                            brush,
-                        );
-                        let _ = DeleteObject(brush.into());
+                    let dc = if message == WM_PAINT {
+                        BeginPaint(hwnd, &mut paint)
+                    } else {
+                        HDC(w.0 as _)
+                    };
+                    paint_status(state, dc);
+                    if message == WM_PAINT {
+                        let _ = EndPaint(hwnd, &paint);
                     }
-                    let old_font = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
-                    SetBkMode(dc, TRANSPARENT);
-                    SetTextColor(dc, COLORREF(GetSysColor(COLOR_BTNTEXT)));
-                    rect.left = 40;
-                    rect.right -= 8;
-                    let mut text: Vec<u16> = state.text.borrow().encode_utf16().collect();
-                    DrawTextW(
-                        dc,
-                        &mut text,
-                        &mut rect,
-                        DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+                    return LRESULT(0);
+                }
+                WM_MOUSEMOVE => {
+                    // Track leave once per entry; WM_MOUSELEAVE cancels the request.
+                    // No hover timer, polling, capture or focus change is needed.
+                    // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
+                    if !state.tracking.get() {
+                        let mut tracking = TRACKMOUSEEVENT {
+                            cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                            dwFlags: TME_LEAVE,
+                            hwndTrack: hwnd,
+                            ..Default::default()
+                        };
+                        state.tracking.set(TrackMouseEvent(&mut tracking).is_ok());
+                    }
+                    if !state.expanded.replace(true) {
+                        let _ = state.resize_panel();
+                    }
+                    return LRESULT(0);
+                }
+                WM_MOUSELEAVE => {
+                    state.panel_leave();
+                    return LRESULT(0);
+                }
+                WM_LBUTTONDOWN => {
+                    state.pressed.set(PanelGeometry::new(state).hit(
+                        state,
+                        l.0 as u16 as i16 as i32,
+                        (l.0 >> 16) as u16 as i16 as i32,
+                    ));
+                    return LRESULT(0);
+                }
+                WM_LBUTTONUP => {
+                    let hit = PanelGeometry::new(state).hit(
+                        state,
+                        l.0 as u16 as i16 as i32,
+                        (l.0 >> 16) as u16 as i16 as i32,
                     );
-                    SelectObject(dc, old_font);
-                    let _ = EndPaint(hwnd, &paint);
+                    if let Some(hit) = state
+                        .pressed
+                        .replace(None)
+                        .filter(|pressed| Some(*pressed) == hit)
+                    {
+                        match hit {
+                            PanelHit::Current => {
+                                state.recents_open.set(!state.recents_open.get());
+                                let _ = state.resize_panel();
+                            }
+                            PanelHit::Recent(color) => state.post(UiEvent::Color(color)),
+                        }
+                    }
+                    return LRESULT(0);
+                }
+                WM_CANCELMODE => {
+                    state.pressed.set(None);
+                    return LRESULT(0);
+                }
+                WM_DPICHANGED => {
+                    let _ = state.anchor_panel((w.0 & 0xffff) as u32);
+                    return LRESULT(0);
+                }
+                WM_DISPLAYCHANGE => {
+                    let _ = state.anchor_panel(GetDpiForWindow(hwnd));
                     return LRESULT(0);
                 }
                 WM_NCDESTROY => {
@@ -1440,7 +1849,13 @@ mod tests {
         })
     }
     fn picker(ui: &DesktopUi, color: u32) -> Result<HWND> {
-        let hwnd = create_hidden(&ui.picker_class, ui.state.owner, Some(&ui.state), 300, 460)?;
+        let hwnd = create_hidden(
+            &ui.picker_class,
+            ui.state.owner,
+            Some(&ui.state),
+            PICKER_WIDTH,
+            PICKER_HEIGHT,
+        )?;
         ui.state.picker.set(hwnd);
         ui.build_picker(hwnd, color)?;
         Ok(hwnd)
@@ -1485,6 +1900,296 @@ mod tests {
         LPARAM(((x as u16 as u32) | ((y as u16 as u32) << 16)) as isize)
     }
 
+    fn status(ui: &DesktopUi) -> Result<HWND> {
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                PCWSTR(ui.status_class.name.as_ptr()),
+                w!("Hidden selected tool test"),
+                WS_POPUP,
+                0,
+                0,
+                PANEL_ROW,
+                PANEL_ROW,
+                Some(ui.state.owner),
+                None,
+                Some(ui.status_class.instance),
+                Some(ui.state.as_ref() as *const State as _),
+            )?
+        };
+        ui.state.status.set(hwnd);
+        unsafe {
+            SetLayeredWindowAttributes(hwnd, COLORREF(0), 245, LWA_ALPHA)?;
+        }
+        ui.state.anchor_panel(96)?;
+        ui.update(false, Tool::Pen, Style::default())?;
+        Ok(hwnd)
+    }
+    fn panel_click(hwnd: HWND, center: (i32, i32)) {
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
+        }
+    }
+    fn window_bounds(hwnd: HWND) -> Result<RECT> {
+        let mut bounds = RECT::default();
+        unsafe {
+            GetWindowRect(hwnd, &mut bounds)?;
+        }
+        Ok(bounds)
+    }
+
+    #[test]
+    fn hidden_panel_hover_recents_anchor_nonactivation_and_previews() -> Result<()> {
+        unsafe {
+            let focus = GetFocus();
+            let active = GetActiveWindow();
+            let capture = GetCapture();
+            let foreground = GetForegroundWindow();
+            let instance = HINSTANCE(GetModuleHandleW(None)?.0);
+            let class = WindowClass::new(instance, "PanelRoot", Some(root_proc))?;
+            let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+            let ui = hidden_ui(root.0)?;
+            let hwnd = status(&ui)?;
+            let initial = window_bounds(hwnd)?;
+            let monitor = ui.state.panel_monitor.get();
+            assert_eq!(
+                (initial.right, initial.top),
+                (monitor.right - 16, monitor.top + 16)
+            );
+            assert_eq!(
+                (initial.right - initial.left, initial.bottom - initial.top),
+                (44, 44)
+            );
+            assert!(!IsWindowVisible(hwnd).as_bool());
+            let styles = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            assert_ne!(styles & WS_EX_NOACTIVATE.0, 0);
+            assert_eq!(styles & WS_EX_TRANSPARENT.0, 0);
+            assert_eq!(
+                SendMessageW(hwnd, WM_MOUSEACTIVATE, None, None).0,
+                MA_NOACTIVATE as isize
+            );
+            assert_eq!(
+                SendMessageW(
+                    hwnd,
+                    WM_NCHITTEST,
+                    None,
+                    Some(point(initial.left + 22, initial.top + 22))
+                )
+                .0,
+                HTCLIENT as isize
+            );
+            assert_eq!(
+                SendMessageW(
+                    hwnd,
+                    WM_NCHITTEST,
+                    None,
+                    Some(point(initial.left, initial.top))
+                )
+                .0,
+                HTTRANSPARENT as isize
+            );
+            let region = GdiObject(CreateRectRgn(0, 0, 0, 0).into());
+            assert_ne!(GetWindowRgn(hwnd, HRGN(region.0.0)).0, ERROR);
+            assert!(!PtInRegion(HRGN(region.0.0), 0, 0).as_bool());
+            assert!(PtInRegion(HRGN(region.0.0), 22, 22).as_bool());
+            assert_eq!(&*ui.state.recents.borrow(), &[Style::default().color]);
+            let mut icon_images = Vec::new();
+            for tool in [
+                Tool::Pen,
+                Tool::Arrow,
+                Tool::Line,
+                Tool::Rectangle,
+                Tool::Ellipse,
+                Tool::Eraser,
+            ] {
+                ui.update(false, tool, Style::default())?;
+                let image = preview(44, 44, &format!("mado-panel-compact-{tool:?}"), |dc| {
+                    SelectClipRgn(dc, Some(HRGN(region.0.0)));
+                    paint_status(&ui.state, dc);
+                    Ok(())
+                })?;
+                // Compact paint is independent of mode, color and thickness: icon only.
+                ui.update(
+                    true,
+                    tool,
+                    Style {
+                        color: 0xffabcdef,
+                        thickness: 31,
+                    },
+                )?;
+                let alternate = preview(
+                    44,
+                    44,
+                    &format!("mado-panel-compact-{tool:?}-alternate"),
+                    |dc| {
+                        SelectClipRgn(dc, Some(HRGN(region.0.0)));
+                        paint_status(&ui.state, dc);
+                        Ok(())
+                    },
+                )?;
+                assert_eq!(image, alternate);
+                assert!(!icon_images.contains(&image), "Tool icons must be distinct");
+                assert!(!image.iter().any(|pixel| pixel & 0xffffff == 0xabcdef));
+                icon_images.push(image);
+            }
+            ui.update(true, Tool::Pen, Style::default())?;
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
+            assert!(ui.state.expanded.get());
+            let expanded = window_bounds(hwnd)?;
+            assert_eq!((expanded.right, expanded.top), (initial.right, initial.top));
+            assert_eq!(expanded.right - expanded.left, PANEL_WIDTH);
+            panel_preview(&ui, "mado-panel-expanded")?;
+            panel_click(hwnd, PanelGeometry::new(&ui.state).current());
+            assert!(ui.state.recents_open.get());
+            assert_eq!(window_bounds(hwnd)?.bottom - initial.top, 88);
+            for color in [
+                0xff112233, 0xff223344, 0xff334455, 0xff445566, 0xff556677, 0xff223344,
+            ] {
+                ui.update_label(
+                    true,
+                    "Arrow tail-first",
+                    Style {
+                        color,
+                        thickness: 31,
+                    },
+                )?;
+            }
+            assert_eq!(
+                &*ui.state.recents.borrow(),
+                &[0xff223344, 0xff556677, 0xff445566, 0xff334455, 0xff112233]
+            );
+            panel_preview(&ui, "mado-panel-recents")?;
+            for i in 0..5 {
+                let geometry = PanelGeometry::new(&ui.state);
+                let center = geometry.recent(i, 5);
+                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(center.0, center.1)));
+                assert!(ui.state.expanded.get() && ui.state.recents_open.get());
+                let color = ui.state.recents.borrow()[i];
+                panel_click(hwnd, center);
+                assert_eq!(decoded(root.0), [UiEvent::Color(color)]);
+                assert!(!ui.is_picker_open());
+            }
+            // Unpaired, off-panel and stale press/release messages do nothing.
+            let center = PanelGeometry::new(&ui.state).recent(0, 5);
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
+            panel_click(hwnd, (-1, -1));
+            panel_click(hwnd, (1, 1));
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
+            ui.update(
+                true,
+                Tool::Pen,
+                Style {
+                    color: 0xff778899,
+                    thickness: 5,
+                },
+            )?;
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
+            assert!(decoded(root.0).is_empty());
+            panel_click(hwnd, PanelGeometry::new(&ui.state).current());
+            assert!(!ui.state.recents_open.get() && ui.state.expanded.get());
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
+            SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
+            assert!(!ui.state.expanded.get() && !ui.state.recents_open.get());
+            assert!(ui.state.pressed.get().is_none());
+            assert_eq!(window_bounds(hwnd)?, initial);
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
+            assert!(decoded(root.0).is_empty());
+            for dpi in [120, 144, 192] {
+                ui.state.anchor_panel(dpi)?;
+                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
+                let before = window_bounds(hwnd)?;
+                panel_click(hwnd, PanelGeometry::new(&ui.state).current());
+                let after = window_bounds(hwnd)?;
+                assert_eq!((before.right, before.top), (after.right, after.top));
+                SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
+                let compact = window_bounds(hwnd)?;
+                assert_eq!((compact.right, compact.top), (after.right, after.top));
+                assert_eq!(compact.right, monitor.right - scaled(16, dpi as f64 / 96.0));
+            }
+            drop(ui);
+            assert_eq!(
+                (
+                    GetFocus(),
+                    GetActiveWindow(),
+                    GetCapture(),
+                    GetForegroundWindow()
+                ),
+                (focus, active, capture, foreground)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recent_commit_during_picker_preserves_candidate_cancel_and_apply() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "RecentPickerRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let status = status(&ui)?;
+        let initial = Style::default().color;
+        ui.update(
+            true,
+            Tool::Pen,
+            Style {
+                color: 0xff123456,
+                thickness: 5,
+            },
+        )?;
+        let hwnd = picker(&ui, initial)?;
+        click(hwnd, PRESET);
+        let candidate = ui.state.candidate.get();
+        let history = ui.state.recents.borrow().clone();
+        unsafe {
+            SendMessageW(status, WM_MOUSEMOVE, None, Some(point(22, 22)));
+        }
+        panel_click(status, PanelGeometry::new(&ui.state).current());
+        panel_click(
+            status,
+            PanelGeometry::new(&ui.state).recent(1, history.len()),
+        );
+        assert_eq!(decoded(root.0), [UiEvent::Color(initial)]);
+        assert!(ui.is_picker_open());
+        assert_eq!(ui.state.candidate.get(), candidate);
+        ui.update(true, Tool::Pen, Style::default())?;
+        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
+        assert_eq!(ui.state.candidate.get(), candidate);
+        click(hwnd, CANCEL);
+        assert_eq!(decoded(root.0), [UiEvent::Closed]);
+        assert_eq!(ui.state.color.get(), initial);
+        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
+        let hwnd = picker(&ui, initial)?;
+        click(hwnd, PRESET);
+        click(hwnd, APPLY);
+        assert_eq!(
+            decoded(root.0),
+            [UiEvent::Color(PRESETS[0].1), UiEvent::Closed]
+        );
+        // History records committed update_label state only, never a queued preview.
+        assert_eq!(&*ui.state.recents.borrow(), &[initial, 0xff123456]);
+        ui.update(
+            true,
+            Tool::Pen,
+            Style {
+                color: PRESETS[0].1,
+                thickness: 5,
+            },
+        )?;
+        assert_eq!(
+            &*ui.state.recents.borrow(),
+            &[PRESETS[0].1, initial, 0xff123456]
+        );
+        let hwnd = picker(&ui, initial)?;
+        ui.state.post(UiEvent::Closed);
+        assert_eq!(decoded(root.0), [UiEvent::Closed]);
+        assert!(ui.is_picker_open());
+        assert!(key(&ui, ui.state.slider.get(), VK_HOME));
+        click(hwnd, CANCEL);
+        assert_eq!(decoded(root.0), [UiEvent::Closed]);
+        Ok(())
+    }
+
     #[test]
     fn hidden_native_disk_picker_controls_candidate_events_and_lifetimes() -> Result<()> {
         // No new/open_picker, ShowWindow, input injection, cursor or focus-changing API.
@@ -1516,7 +2221,7 @@ mod tests {
             )?;
             assert_eq!(
                 &*ui.state.text.borrow(),
-                "Click-through | Rectangle | 31 px | #123456"
+                "Click-through | Rectangle | 31 px"
             );
             let text_ptr = ui.state.text.borrow().as_ptr();
             ui.update(
@@ -1537,7 +2242,7 @@ mod tests {
                 ui.update_label(false, tool, Style::default())?;
                 assert_eq!(
                     &*ui.state.text.borrow(),
-                    &format!("Click-through | {tool} | 5 px | #F97316")
+                    &format!("Click-through | {tool} | 5 px")
                 );
             }
             let committed = ui.state.color.get();
@@ -1687,7 +2392,15 @@ mod tests {
             write_preview(&ui)?;
             let first_font = ui.state.font.get();
             ui.state.scale.set(1.5);
-            SetWindowPos(hwnd, None, 0, 0, 450, 690, SWP_NOACTIVATE | SWP_NOZORDER)?;
+            SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                450,
+                scaled(PICKER_HEIGHT, 1.5),
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )?;
             ui.state.layout()?;
             for id in tab_ids {
                 let child = GetDlgItem(Some(hwnd), id as i32)?;
@@ -1716,6 +2429,7 @@ mod tests {
                 ) > 0
             );
             assert_eq!(description.lfHeight, -21);
+            write_preview(&ui)?;
             assert!(key(&ui, slider, VK_HOME));
             assert_eq!(ui.state.candidate.get().value, 0.0);
             assert!(key(&ui, slider, VK_END));
@@ -1808,7 +2522,42 @@ mod tests {
         }
         Ok(())
     }
-    fn write_preview(ui: &DesktopUi) -> Result<()> {
+    fn panel_preview(ui: &DesktopUi, name: &str) -> Result<()> {
+        let geometry = PanelGeometry::new(&ui.state);
+        preview(geometry.width, geometry.height, name, |dc| {
+            let region = GdiObject(
+                unsafe {
+                    CreateRoundRectRgn(
+                        0,
+                        0,
+                        geometry.width + 1,
+                        geometry.height + 1,
+                        geometry.radius * 2,
+                        geometry.radius * 2,
+                    )
+                }
+                .into(),
+            );
+            unsafe {
+                SelectClipRgn(dc, Some(HRGN(region.0.0)));
+                SendMessageW(
+                    ui.state.status.get(),
+                    WM_PRINTCLIENT,
+                    Some(WPARAM(dc.0 as usize)),
+                    None,
+                );
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    fn preview(
+        width: i32,
+        height: i32,
+        name: &str,
+        paint: impl FnOnce(HDC) -> Result<()>,
+    ) -> Result<Vec<u32>> {
         struct Surface {
             dc: HDC,
             _bitmap: GdiObject,
@@ -1830,7 +2579,7 @@ mod tests {
             let mut bits = std::ptr::null_mut();
             let bitmap = match CreateDIBSection(
                 Some(dc),
-                &bitmap_info(300, 460),
+                &bitmap_info(width, height),
                 DIB_RGB_COLORS,
                 &mut bits,
                 None,
@@ -1847,43 +2596,84 @@ mod tests {
                 _bitmap: GdiObject(bitmap.into()),
                 old: SelectObject(dc, bitmap.into()),
             };
-            SendMessageW(
-                ui.state.picker.get(),
-                WM_PRINTCLIENT,
-                Some(WPARAM(dc.0 as usize)),
-                None,
-            );
-            for id in [DISK, BRIGHTNESS, HEX_LABEL, HEX, HINT, CANCEL, APPLY, CLOSE]
-                .into_iter()
-                .chain(PRESET..PRESET + PRESETS.len())
-            {
-                let child = GetDlgItem(Some(ui.state.picker.get()), id as i32)?;
-                let (x, y, _, _) = control_rect(id);
-                let saved = SaveDC(dc);
-                let _ = SetViewportOrgEx(dc, x, y, None);
-                SendMessageW(
-                    child,
-                    WM_PRINT,
-                    Some(WPARAM(dc.0 as usize)),
-                    Some(LPARAM(
-                        (PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND) as isize,
-                    )),
-                );
-                let _ = RestoreDC(dc, saved);
-            }
+            fill(dc, rect(0, 0, width, height), BACKGROUND);
+            paint(dc)?;
             let _ = GdiFlush();
-            let pixels = std::slice::from_raw_parts(bits as *const u32, 300 * 460);
-            assert_eq!(pixels[350 * 300 + 30] & 0xffffff, 0xf97316);
-            let center = pixels[166 * 300 + 150] & 0xffffff;
-            for shift in [0, 8, 16] {
-                assert!(((((center >> shift) & 255) as i32) - 249).abs() <= 3);
-            }
-            // The exact raster, including native controls, is exported without dependencies.
-            let path = std::env::temp_dir().join("mado-disk-picker-preview.png");
-            std::fs::write(&path, png(300, 460, pixels))
+            let pixels =
+                std::slice::from_raw_parts(bits as *const u32, (width * height) as usize).to_vec();
+            let path = std::env::temp_dir().join(format!("{name}.png"));
+            std::fs::write(&path, png(width as u32, height as u32, &pixels))
                 .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
-            println!("Offscreen picker preview: {}", path.display());
+            println!("Offscreen preview: {}", path.display());
             drop(surface);
+            Ok(pixels)
+        }
+    }
+
+    fn write_preview(ui: &DesktopUi) -> Result<()> {
+        let s = ui.state.scale.get();
+        let width = scaled(PICKER_WIDTH, s);
+        let height = scaled(PICKER_HEIGHT, s);
+        let pixels = preview(
+            width,
+            height,
+            if s == 1.0 {
+                "mado-disk-picker-preview"
+            } else {
+                "mado-disk-picker-preview-150"
+            },
+            |dc| unsafe {
+                let saved = SaveDC(dc);
+                SelectObject(dc, ui.state.font.get().into());
+                for (text, bounds) in [
+                    ("Hue + saturation", logical_rect(s, 32, 28, 236, 20)),
+                    (
+                        "Apply saves. Cancel keeps the old color.",
+                        logical_rect(s, 12, 474, 276, 20),
+                    ),
+                ] {
+                    let mut measured = RECT::default();
+                    let mut text: Vec<u16> = text.encode_utf16().collect();
+                    DrawTextW(dc, &mut text, &mut measured, DT_CALCRECT | DT_SINGLELINE);
+                    assert!(measured.right <= bounds.right - bounds.left);
+                    assert!(measured.bottom <= bounds.bottom - bounds.top);
+                    assert!(bounds.right <= width && bounds.bottom <= height);
+                }
+                let _ = RestoreDC(dc, saved);
+                SendMessageW(
+                    ui.state.picker.get(),
+                    WM_PRINTCLIENT,
+                    Some(WPARAM(dc.0 as usize)),
+                    None,
+                );
+                for id in [DISK, BRIGHTNESS, HEX_LABEL, HEX, HINT, CANCEL, APPLY, CLOSE]
+                    .into_iter()
+                    .chain(PRESET..PRESET + PRESETS.len())
+                {
+                    let child = GetDlgItem(Some(ui.state.picker.get()), id as i32)?;
+                    let (x, y, _, _) = control_rect(id);
+                    let saved = SaveDC(dc);
+                    let _ = SetViewportOrgEx(dc, scaled(x, s), scaled(y, s), None);
+                    SendMessageW(
+                        child,
+                        WM_PRINT,
+                        Some(WPARAM(dc.0 as usize)),
+                        Some(LPARAM(
+                            (PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND) as isize,
+                        )),
+                    );
+                    let _ = RestoreDC(dc, saved);
+                }
+                Ok(())
+            },
+        )?;
+        assert_eq!(
+            pixels[(scaled(358, s) * width + scaled(36, s)) as usize] & 0xffffff,
+            0xf97316
+        );
+        let center = pixels[(scaled(166, s) * width + scaled(150, s)) as usize] & 0xffffff;
+        for shift in [0, 8, 16] {
+            assert!(((((center >> shift) & 255) as i32) - 249).abs() <= 3);
         }
         Ok(())
     }
@@ -1957,7 +2747,7 @@ mod tests {
         ] {
             for dpi in [96, 120, 144, 192] {
                 let scale = fitting_scale(dpi, work);
-                let size = (scaled(300, scale), scaled(460, scale));
+                let size = (scaled(PICKER_WIDTH, scale), scaled(PICKER_HEIGHT, scale));
                 for cursor in [POINT { x: -3000, y: -3000 }, POINT { x: 3000, y: 3000 }] {
                     let (x, y, w, h) = picker_rect(cursor, work, size);
                     assert!(x >= work.left && y >= work.top);
