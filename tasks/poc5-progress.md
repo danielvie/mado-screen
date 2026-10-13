@@ -30,7 +30,7 @@ Continuation retry on the same validated code at 6cb1e0f again passed startup/vi
 
 The user reports "yes, i can draw on the other monitors" and explicitly instructs integration. This confirms drawing on secondary monitors, not every detailed manual scenario below. The user authorizes promotion despite the recorded automated capture blocker; desktop smoke remains blocked, not passed. Build, 68 tests, formatting/Clippy and self-check already passed on application code 776713e; subsequent changes are documentation only.
 
-Main fast-forwarded to 152dd3c after user acceptance. The primary executable was rebuilt successfully with cargo build. The primary checkout's uncommitted README.md/Taskfile.yml install changes were restored after promotion. The completed integration worktree is removed during final cleanup. The installed app was not replaced, no running overlay was interrupted, and no remote push was requested or performed.
+Main fast-forwarded to 152dd3c after user acceptance. The primary executable was rebuilt successfully with cargo build. The primary checkout's uncommitted README.md/Taskfile.yml install changes were restored after promotion. Git unregistered the completed integration worktree and removed its contents. Its empty directory remains because Windows reports it busy; close any terminal using that directory before deleting it. The installed app was not replaced, no running overlay was interrupted, and no remote push was requested or performed.
 
 For later desktop validation, with the desktop accessible and no overlay running:
 
