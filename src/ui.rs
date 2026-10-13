@@ -129,9 +129,9 @@ impl DesktopUi {
                 PCWSTR(ui.status_class.name.as_ptr()),
                 w!("Mado status"),
                 WS_POPUP,
-                (width - 330).max(0),
+                (width - 410).max(0),
                 16.min((height - 44).max(0)),
-                314.min(width),
+                394.min(width),
                 44.min(height),
                 Some(owner),
                 None,
@@ -156,7 +156,15 @@ impl DesktopUi {
 
     pub fn update(&self, drawing: bool, tool: Tool, style: Style) -> Result<()> {
         let mode = if drawing { "Drawing" } else { "Click-through" };
-        *self.state.text.borrow_mut() = format!("{mode} | {tool:?} | {} px", style.thickness);
+        let text = format!(
+            "{mode} | {tool:?} | {} px | #{:06X}",
+            style.thickness,
+            style.color & 0xffffff
+        );
+        if *self.state.text.borrow() == text && self.state.color.get() == style.color {
+            return Ok(());
+        }
+        *self.state.text.borrow_mut() = text;
         self.state.color.set(style.color);
         unsafe { InvalidateRect(Some(self.state.status.get()), None, true).ok() }
     }
@@ -446,8 +454,11 @@ impl State {
                     unsafe {
                         let _ =
                             SetWindowTextW(self.hint.get(), w!("Use whole numbers from 0 to 255."));
-                        let _ = SetFocus(Some(*hwnd));
-                        SendMessageW(*hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+                        // Hidden controls must not change the thread's keyboard focus.
+                        if IsWindowVisible(self.picker.get()).as_bool() {
+                            let _ = SetFocus(Some(*hwnd));
+                            SendMessageW(*hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+                        }
                     }
                     return;
                 };
@@ -619,6 +630,278 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidden_native_picker_controls_events_and_cleanup() -> Result<()> {
+        // No DesktopUi::new/open_picker, ShowWindow, input injection or focus APIs.
+        // Keep the hidden owner alive until all queued value-only events are checked.
+        unsafe extern "system" fn root_proc(
+            hwnd: HWND,
+            message: u32,
+            w: WPARAM,
+            l: LPARAM,
+        ) -> LRESULT {
+            unsafe { DefWindowProcW(hwnd, message, w, l) }
+        }
+        struct Root(HWND);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                unsafe {
+                    let _ = DestroyWindow(self.0);
+                }
+            }
+        }
+        unsafe {
+            let focus = GetFocus();
+            let active = GetActiveWindow();
+            let instance = HINSTANCE(GetModuleHandleW(None)?.0);
+            let root_class = WindowClass::new(instance, "TestRoot", Some(root_proc))?;
+            let create = |class: &WindowClass, owner: HWND, state: Option<*const State>, ex| {
+                CreateWindowExW(
+                    ex,
+                    PCWSTR(class.name.as_ptr()),
+                    w!("Hidden UI test"),
+                    WS_POPUP,
+                    0,
+                    0,
+                    394,
+                    PICKER_HEIGHT,
+                    Some(owner),
+                    None,
+                    Some(instance),
+                    state.map(|s| s as _),
+                )
+            };
+            let root = Root(create(
+                &root_class,
+                HWND::default(),
+                None,
+                WINDOW_EX_STYLE(0),
+            )?);
+            let ui = DesktopUi {
+                state: Box::new(State {
+                    owner: root.0,
+                    status: Cell::new(HWND::default()),
+                    picker: Cell::new(HWND::default()),
+                    previous: Cell::new(HWND::default()),
+                    edits: Cell::new([HWND::default(); 3]),
+                    hint: Cell::new(HWND::default()),
+                    text: RefCell::new(String::new()),
+                    color: Cell::new(Style::default().color),
+                }),
+                status_class: WindowClass::new(instance, "TestStatus", Some(status_proc))?,
+                picker_class: WindowClass::new(instance, "TestPicker", Some(picker_proc))?,
+                _thread: PhantomData,
+            };
+            let status = create(
+                &ui.status_class,
+                root.0,
+                Some(ui.state.as_ref()),
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            )?;
+            ui.state.status.set(status);
+            SetLayeredWindowAttributes(status, COLORREF(0), 245, LWA_ALPHA)?;
+            assert!(!IsWindowVisible(root.0).as_bool());
+            assert!(!IsWindowVisible(status).as_bool());
+            assert_eq!(
+                SendMessageW(status, WM_NCHITTEST, None, None).0,
+                HTTRANSPARENT as isize
+            );
+            assert_eq!(
+                SendMessageW(status, WM_MOUSEACTIVATE, None, None).0,
+                MA_NOACTIVATE as isize
+            );
+            let style = Style {
+                color: 0xff123456,
+                thickness: 31,
+            };
+            ui.update(false, Tool::Rectangle, style)?;
+            assert_eq!(
+                &*ui.state.text.borrow(),
+                "Click-through | Rectangle | 31 px | #123456"
+            );
+            // Measure the longest status with the same stock font used by WM_PAINT.
+            let dc = GetDC(Some(status));
+            let font = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+            let mut bounds = RECT::default();
+            let mut text: Vec<u16> = ui.state.text.borrow().encode_utf16().collect();
+            DrawTextW(dc, &mut text, &mut bounds, DT_SINGLELINE | DT_CALCRECT);
+            SelectObject(dc, font);
+            ReleaseDC(Some(status), dc);
+            assert!(bounds.right > 0 && bounds.right <= 394 - 48);
+            SendMessageW(status, WM_PAINT, None, None);
+            // Hidden windows need not retain update regions. Check the early-return
+            // path preserves the cached text allocation instead of replacing it.
+            let cached_text = ui.state.text.borrow().as_ptr();
+            ui.update(false, Tool::Rectangle, style)?;
+            assert_eq!(ui.state.text.borrow().as_ptr(), cached_text);
+            ui.update(true, Tool::Pen, Style::default())?;
+            assert_eq!(&*ui.state.text.borrow(), "Drawing | Pen | 5 px | #F97316");
+            let prior = ui.state.color.get();
+            let events = || {
+                let mut messages = Vec::new();
+                let mut message = MSG::default();
+                while PeekMessageW(&mut message, Some(root.0), UI_EVENT, UI_EVENT, PM_REMOVE)
+                    .as_bool()
+                {
+                    messages.push(message);
+                }
+                messages
+            };
+            let picker = || -> Result<HWND> {
+                let hwnd = create(
+                    &ui.picker_class,
+                    root.0,
+                    Some(ui.state.as_ref()),
+                    WS_EX_CONTROLPARENT,
+                )?;
+                ui.state.picker.set(hwnd);
+                ui.build_picker(hwnd, prior)?;
+                assert_eq!(GetWindow(hwnd, GW_OWNER)?, root.0);
+                assert!(!IsWindowVisible(hwnd).as_bool());
+                for id in [1, 2, 10, 11, 12, 13, 14, 30, 31, 32, 40, 41, 42, 50] {
+                    let child = GetDlgItem(Some(hwnd), id)?;
+                    assert!(IsChild(hwnd, child).as_bool());
+                    assert!(!IsWindowVisible(child).as_bool());
+                }
+                Ok(hwnd)
+            };
+            let channels = || {
+                ui.state.edits.get().map(|hwnd| {
+                    let mut text = [0_u16; 5];
+                    let len = GetWindowTextW(hwnd, &mut text) as usize;
+                    parse_channel(&String::from_utf16_lossy(&text[..len]))
+                })
+            };
+            let click = |hwnd: HWND, id: usize| -> Result<()> {
+                let child = GetDlgItem(Some(hwnd), id as i32)?;
+                // Send the control notification, not BM_CLICK which can move focus.
+                SendMessageW(
+                    hwnd,
+                    WM_COMMAND,
+                    Some(WPARAM(id)),
+                    Some(LPARAM(child.0 as isize)),
+                );
+                Ok(())
+            };
+            let hwnd = picker()?;
+            assert_eq!(channels(), [Some(249), Some(115), Some(22)]);
+            for (i, (_, color)) in PRESETS.iter().enumerate() {
+                click(hwnd, PRESET + i)?;
+                assert_eq!(
+                    channels(),
+                    [16, 8, 0].map(|shift| Some(((color >> shift) & 255) as u8))
+                );
+                assert!(events().is_empty());
+            }
+            ui.state.set_rgb(0xff123456)?;
+            assert_eq!(channels(), [Some(18), Some(52), Some(86)]);
+            for (edit, value) in ui.state.edits.get().into_iter().zip(["17", "109", "231"]) {
+                SetWindowTextW(edit, PCWSTR(wide(value).as_ptr()))?;
+            }
+            let edits = ui.state.edits.get();
+            let hint = ui.state.hint.get();
+            click(hwnd, APPLY)?;
+            let applied = events();
+            assert_eq!(
+                applied
+                    .iter()
+                    .filter_map(|m| ui.event(m))
+                    .collect::<Vec<_>>(),
+                [UiEvent::Color(0xff116de7), UiEvent::Closed]
+            );
+            assert_eq!(applied[0].wParam.0, 0xff116de7);
+            assert_eq!(applied[0].lParam.0, 1);
+            assert_eq!(applied[1].wParam.0, 0);
+            assert_eq!(applied[1].lParam.0, 2);
+            assert!(!ui.is_picker_open());
+            for handle in [hwnd, hint].into_iter().chain(edits) {
+                assert!(!IsWindow(Some(handle)).as_bool());
+            }
+            assert!(ui.state.edits.get().iter().all(HWND::is_invalid));
+            assert!(ui.state.hint.get().is_invalid());
+            assert!(ui.state.previous.get().is_invalid());
+            ui.close_picker();
+            assert!(events().is_empty());
+            let hwnd = picker()?;
+            // Test every channel against invalid native edit text, without SetFocus.
+            for edit in ui.state.edits.get() {
+                for value in ["256", "", "a", "+1", "1000"] {
+                    ui.state.set_rgb(0xff123456)?;
+                    SetWindowTextW(edit, PCWSTR(wide(value).as_ptr()))?;
+                    click(hwnd, APPLY)?;
+                    assert!(ui.is_picker_open());
+                    assert!(events().is_empty());
+                    assert_eq!(GetFocus(), focus);
+                    let mut text = [0_u16; 64];
+                    let len = GetWindowTextW(ui.state.hint.get(), &mut text) as usize;
+                    assert_eq!(
+                        String::from_utf16_lossy(&text[..len]),
+                        "Use whole numbers from 0 to 255."
+                    );
+                }
+            }
+            click(hwnd, CANCEL)?;
+            assert_eq!(
+                events()
+                    .iter()
+                    .filter_map(|m| ui.event(m))
+                    .collect::<Vec<_>>(),
+                [UiEvent::Closed]
+            );
+            assert!(!ui.is_picker_open());
+            assert_eq!(ui.state.color.get(), prior);
+            let hwnd = picker()?;
+            ui.state.set_rgb(0xffabcdef)?;
+            SendMessageW(hwnd, WM_CLOSE, None, None);
+            assert_eq!(
+                events()
+                    .iter()
+                    .filter_map(|m| ui.event(m))
+                    .collect::<Vec<_>>(),
+                [UiEvent::Closed]
+            );
+            assert!(!ui.is_picker_open());
+            assert_eq!(ui.state.color.get(), prior);
+            let hwnd = picker()?;
+            ui.state.set_rgb(0xff116de7)?;
+            click(hwnd, APPLY)?;
+            // Leave Color + Closed in the native queue while destroying another
+            // picker and releasing the State, then read them with only the owner.
+            let hwnd = picker()?;
+            let edits = ui.state.edits.get();
+            let classes = [ui.status_class.name.clone(), ui.picker_class.name.clone()];
+            assert_eq!(
+                GetWindowLongPtrW(hwnd, GWLP_USERDATA),
+                ui.state.as_ref() as *const State as isize
+            );
+            drop(ui);
+            for handle in [hwnd, status].into_iter().chain(edits) {
+                assert!(!IsWindow(Some(handle)).as_bool());
+            }
+            for name in classes {
+                let mut class = WNDCLASSW::default();
+                assert!(GetClassInfoW(Some(instance), PCWSTR(name.as_ptr()), &mut class).is_err());
+            }
+            assert_eq!(
+                events()
+                    .iter()
+                    .filter_map(|m| decode_event(m, root.0))
+                    .collect::<Vec<_>>(),
+                [UiEvent::Color(0xff116de7), UiEvent::Closed, UiEvent::Closed]
+            );
+            // Messages remain decodable after the State and both native classes die.
+            assert_eq!(
+                decode_event(&applied[0], root.0),
+                Some(UiEvent::Color(0xff116de7))
+            );
+            assert_eq!(decode_event(&applied[1], root.0), Some(UiEvent::Closed));
+            assert_eq!(decode_event(&applied[0], status), None);
+            assert_eq!(GetFocus(), focus);
+            assert_eq!(GetActiveWindow(), active);
+        }
+        Ok(())
+    }
 
     #[test]
     fn queued_ui_events_are_value_only_and_owner_filtered() {
