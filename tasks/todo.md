@@ -1,5 +1,14 @@
 # Windows prototype tasks
 
+## Panel polish follow-up
+
+Contract and results: tasks/panel-polish.md.
+
+- [ ] Antialiased panel alpha edges/icons without enlarging compact state.
+- [ ] Immediate recents, selected-color picker request and content-fitted expanded width.
+- [ ] Focused tests, visual review, release build/lints and serial promotion.
+- [ ] User accepts physical corners and direct color access.
+
 ## Compact panel and picker layout
 
 Approved scope: tasks/layout-spec.md. Evidence: tasks/layout-progress.md.

@@ -93,17 +93,26 @@ fn main() -> Result<()> {
             continue;
         }
         if let Some(event) = ui.event(&message) {
-            if let UiEvent::Color(color) = event {
-                let changed = apply_ui_color(color, &mut strokes, &mut trail, &mut drag);
-                if changed {
-                    surface.present_scene(
-                        overlay.hwnd(),
-                        drawing,
-                        strokes.annotations(),
-                        &trail,
-                        now,
-                    )?;
+            let changed = match event {
+                UiEvent::Color(color) => apply_ui_color(color, &mut strokes, &mut trail, &mut drag),
+                UiEvent::OpenPicker if !ui.is_picker_open() => {
+                    let changed =
+                        prepare_picker(&mut strokes, &mut trail, &mut drag, &mut tool_keys);
+                    if let Err(error) = ui.open_picker(strokes.style().color) {
+                        eprintln!("Cannot open color picker: {error}. Ink preserved.");
+                    }
+                    changed
                 }
+                _ => false,
+            };
+            if changed {
+                surface.present_scene(
+                    overlay.hwnd(),
+                    drawing,
+                    strokes.annotations(),
+                    &trail,
+                    now,
+                )?;
             }
             restore_drawing_keys(
                 &mut drawing,
@@ -178,10 +187,8 @@ fn main() -> Result<()> {
                 }
                 Action::Quit => break,
                 Action::Picker if drawing && !ui.is_picker_open() => {
-                    let changed = strokes.cancel();
-                    trail.finish();
-                    drop(drag.take());
-                    drop(tool_keys.take());
+                    let changed =
+                        prepare_picker(&mut strokes, &mut trail, &mut drag, &mut tool_keys);
                     if changed {
                         surface.present_scene(
                             overlay.hwnd(),
@@ -298,6 +305,19 @@ fn restore_drawing_keys(
         }
     }
     Ok(())
+}
+
+fn prepare_picker(
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+    keys: &mut Option<Hotkeys>,
+) -> bool {
+    let changed = strokes.cancel();
+    trail.finish();
+    drop(drag.take());
+    drop(keys.take());
+    changed
 }
 
 // Picker Apply and recent swatches share the same gesture settlement.
@@ -777,6 +797,42 @@ mod tests {
             assert!(strokes.cancel());
             drawing::render(&mut pixels, 100, true, strokes.annotations());
             assert!(pixels.iter().all(|&pixel| pixel == 0x01000000));
+        }
+    }
+
+    #[test]
+    fn panel_picker_request_preserves_color_and_settles_input() {
+        for tool in [Tool::Pen, Tool::Line] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.set_color(0xff123456);
+            strokes.begin((10, 10));
+            strokes.append((30, 30));
+            let mut trail = Trail::default();
+            trail.begin((50, 50), strokes.style(), Duration::ZERO);
+            let parts = trail.annotations().cloned().collect::<Vec<_>>();
+            let mut drag = None;
+            assert_eq!(
+                prepare_picker(&mut strokes, &mut trail, &mut drag, &mut None),
+                tool != Tool::Pen
+            );
+            assert_eq!(strokes.style().color, 0xff123456);
+            assert!(!strokes.is_active() && !trail.is_active());
+            assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+            assert!(
+                !handle_canvas_input(
+                    Event::Up((60, 60)),
+                    true,
+                    (&mut strokes, &mut trail),
+                    &mut drag,
+                    HWND::default(),
+                    Duration::from_millis(500),
+                )
+                .unwrap()
+            );
+            assert!(trail.expire(Duration::from_secs(1)));
+            assert!(trail.is_empty());
+            assert_eq!(strokes.annotations().len(), usize::from(tool == Tool::Pen));
         }
     }
 

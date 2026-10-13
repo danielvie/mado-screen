@@ -2,7 +2,7 @@
 
 ## Compact panel and picker layout
 
-Approved: tool-icon-only panel at the primary monitor's top-right, leftward hover expansion and five session-only recent colors for quick selection. The reference-led light color picker retains Apply/Cancel and existing keyboard controls. Drawing and ink remain unchanged. Scope and evidence: tasks/layout-spec.md and tasks/layout-progress.md. Physical hover/click and mixed-DPI acceptance remain open.
+Approved: tool-icon-only panel at the primary monitor's top-right, leftward content-fitted hover expansion with five session-only recent colors, and selected-color click to open the full picker. The panel-polish follow-up smooths corners and icons through per-pixel alpha rendering. The reference-led light color picker retains Apply/Cancel and existing keyboard controls. Drawing and ink remain unchanged. Scope and evidence: tasks/layout-spec.md and tasks/layout-progress.md. Physical hover/click and mixed-DPI acceptance remain open.
 
 ## Bézier and performance follow-up
 

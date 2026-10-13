@@ -2,7 +2,7 @@
 
 ## Approved scope
 
-The user approved the supplied reference layouts with these refinements: the collapsed panel has only the selected tool's icon; it sits at the primary monitor's top-right and expands to the left on hover. Clicking the expanded current-color dot reveals five distinct recent colors for immediate selection. History is session-only. Keep drawing, shortcuts, shapes, ink, undo and temporary lifetime unchanged.
+The user approved the supplied reference layouts with these refinements: the collapsed panel has only the selected tool's icon; it sits at the primary monitor's top-right and expands to the left on hover. The panel-polish follow-up supersedes the intermediate click: hovering immediately reveals five distinct recent colors. Clicking a different recent color selects it; clicking the current color opens the picker. History is session-only. Keep drawing, shortcuts, shapes, ink, undo and temporary lifetime unchanged.
 
 The color picker keeps C-at-pointer opening, nearest-monitor work-area clamping, hue/saturation selection, brightness, native hex input, presets, Cancel and Apply. Apply commits; dismissal does not change the current color. Use a light rounded pane with blue/gray text, orange Apply treatment and circular swatches, following the supplied reference. Keep hue/saturation continuous, including the less-saturated center. Do not turn the reference's illustrative wedges into a fixed palette.
 
@@ -10,7 +10,7 @@ The panel is dark charcoal with blue border/text. Compact state contains no stat
 
 ## Interaction contract
 
-The panel is nonactivating, but cannot remain mouse-transparent because hover and swatch clicks must work. Only its rounded occupied region intercepts the mouse, in drawing and click-through modes. No keyboard shortcuts are captured by the panel. Moving within the expanded panel or recent row must not collapse it. Leaving collapses it and hides recents. The current-color dot toggles the recent row. Quick selection changes future ink and settles the active gesture through the existing UiEvent::Color route, without painting a canvas dot. Do not show the full picker or steal focus for a recent selection.
+The panel is nonactivating, but cannot remain mouse-transparent because hover and swatch clicks must work. Only its rounded occupied region intercepts the mouse, in drawing and click-through modes. No keyboard shortcuts are captured by the panel. Moving within the expanded panel or recent row must not collapse it. Leaving collapses it and hides recents. The recent row is shown immediately on hover. Quick selection of a different color changes future ink and settles the active gesture through UiEvent::Color, without painting a canvas dot or taking focus. The current-color dot or a matching selected recent color requests the full picker through UiEvent::OpenPicker. The expanded width fits its text and swatches. The panel-polish follow-up antialiases the panel's per-pixel alpha edge rather than using a binary rounded window region.
 
 Recent colors are newest-first, deduplicated, maximum five; include the initial brush color. Record committed color changes from existing keyboard choices, picker Apply and quick selection. Picker preview and Cancel must not enter history. No storage/configuration dependencies. Ignore stale/out-of-bounds clicks.
 

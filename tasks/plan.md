@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## Panel polish follow-up
+
+Requested changes: smooth compact panel corners/icons at the existing size; show recents immediately on hover; click the selected color to open the full picker; shrink expanded width to fit content. Scope/results: tasks/panel-polish.md. Worker owns ui.rs, parent owns main OpenPicker routing and docs in sibling worktrees. Focused hidden/native/pixel checks and release build/lints only. No full suite, desktop smoke or installed-app replacement.
+
 ## Compact panel and picker layout
 
 Approved scope: tasks/layout-spec.md. One UI worker owns src/ui.rs in worker/layout-ui; supervisor owns documentation, stale smoke expectations and serial integration in integration/layout. Reuse the existing Color event and committed update_label state to avoid changing canvas drawing. Deliver icon-only compact, leftward hover expansion, bounded session recents and reference-led picker presentation. Validate focused native/UI regressions, release build and formatting/Clippy only. Results and manual limits: tasks/layout-progress.md. Do not run desktop smoke or disturb an active overlay.
