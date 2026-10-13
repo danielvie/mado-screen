@@ -12,6 +12,8 @@ Primary README.md and Taskfile.yml install edits and the untracked docs/design/m
 
 - PowerShell parser accepted scripts/smoke.ps1 after the style expectation update. This is a syntax check only, not a desktop test.
 - git diff --check passed for the supervisor's documentation/smoke changes.
+- A read-only routing review found the existing HWND-gated canvas input and Color/Closed/committed update_label routes sufficient. The supervisor extracted the unchanged Color settlement into apply_ui_color so it can be tested without creating a visible UI.
+- cargo test recent_color_ passed 2 tests at c548001. Cases cover same/different color settlement for Pen/Line/Rectangle, unchanged old styles, ignored trailing Move/Up, temporary birth preservation and unchanged permanent redo. No canvas capture or native activation was required.
 
 ## Pending gates
 
