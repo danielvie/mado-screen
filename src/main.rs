@@ -94,10 +94,7 @@ fn main() -> Result<()> {
         }
         if let Some(event) = ui.event(&message) {
             if let UiEvent::Color(color) = event {
-                let changed = strokes.cancel();
-                trail.finish();
-                drop(drag.take());
-                strokes.set_color(color);
+                let changed = apply_ui_color(color, &mut strokes, &mut trail, &mut drag);
                 if changed {
                     surface.present_scene(
                         overlay.hwnd(),
@@ -301,6 +298,20 @@ fn restore_drawing_keys(
         }
     }
     Ok(())
+}
+
+// Picker Apply and recent swatches share the same gesture settlement.
+fn apply_ui_color(
+    color: u32,
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+) -> bool {
+    let changed = strokes.cancel();
+    trail.finish();
+    drop(drag.take());
+    strokes.set_color(color);
+    changed
 }
 
 fn animate_trail(trail: &mut Trail, now: Duration, tick: bool) -> bool {
@@ -767,6 +778,98 @@ mod tests {
             drawing::render(&mut pixels, 100, true, strokes.annotations());
             assert!(pixels.iter().all(|&pixel| pixel == 0x01000000));
         }
+    }
+
+    #[test]
+    fn recent_color_settles_gestures_and_ignores_trailing_canvas_input() {
+        for tool in [Tool::Pen, Tool::Line, Tool::Rectangle] {
+            for color in [0xfff97316, 0xff123456] {
+                let mut strokes = Strokes::default();
+                strokes.select(tool);
+                strokes.begin((10, 10));
+                strokes.append((30, 30));
+                let mut trail = Trail::default();
+                let mut drag = None;
+                assert_eq!(
+                    apply_ui_color(color, &mut strokes, &mut trail, &mut drag),
+                    tool != Tool::Pen
+                );
+                assert_eq!(strokes.style().color, color);
+                assert!(!strokes.is_active());
+                let settled = strokes.annotations().to_vec();
+                assert_eq!(settled.len(), usize::from(tool == Tool::Pen));
+                if tool == Tool::Pen {
+                    assert_eq!(settled[0].style.color, 0xfff97316);
+                }
+                for event in [
+                    Event::Move {
+                        point: (50, 50),
+                        left_down: true,
+                    },
+                    Event::Up((60, 60)),
+                ] {
+                    assert!(
+                        !handle_canvas_input(
+                            event,
+                            true,
+                            (&mut strokes, &mut trail),
+                            &mut drag,
+                            HWND::default(),
+                            Duration::ZERO,
+                        )
+                        .unwrap()
+                    );
+                }
+                assert_eq!(strokes.annotations(), settled);
+            }
+        }
+    }
+
+    #[test]
+    fn recent_color_keeps_temporary_births_and_permanent_redo() {
+        let mut strokes = Strokes::default();
+        strokes.begin((5, 5));
+        strokes.finish();
+        let permanent = strokes.annotations().to_vec();
+        assert!(strokes.undo());
+        let mut trail = Trail::default();
+        trail.begin((10, 10), strokes.style(), Duration::ZERO);
+        trail.append((30, 30), Duration::from_millis(100));
+        let parts = trail.annotations().cloned().collect::<Vec<_>>();
+        let mut drag = None;
+        assert!(!apply_ui_color(
+            0xff123456,
+            &mut strokes,
+            &mut trail,
+            &mut drag
+        ));
+        assert!(!trail.is_active());
+        assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+        for event in [
+            Event::Move {
+                point: (50, 50),
+                left_down: true,
+            },
+            Event::Up((60, 60)),
+        ] {
+            assert!(
+                !handle_canvas_input(
+                    event,
+                    true,
+                    (&mut strokes, &mut trail),
+                    &mut drag,
+                    HWND::default(),
+                    Duration::from_millis(500),
+                )
+                .unwrap()
+            );
+        }
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), permanent);
+        assert!(trail.expire(Duration::from_millis(1000)));
+        assert_eq!(trail.annotations().count(), 1);
+        assert!(trail.expire(Duration::from_millis(1100)));
+        assert!(trail.is_empty());
     }
 
     #[test]
