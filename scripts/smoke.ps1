@@ -13,6 +13,8 @@ public static class PocSmoke {
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
@@ -171,10 +173,13 @@ try {
         Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id) 'Owned status indicator is visible'
         $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
         Check (($statusStyle -band 0x080800a8) -eq 0x080800a8) 'Status indicator is topmost layered click-through and nonactivating'
-        $statusBitmap = [Drawing.Bitmap]::new(314, 44)
+        $statusBounds = [PocSmoke+Rect]::new()
+        Check ([PocSmoke]::GetWindowRect($statusWindow, [ref]$statusBounds)) 'Status bounds available for visual evidence'
+        $statusSize = [Drawing.Size]::new(($statusBounds.Right - $statusBounds.Left), ($statusBounds.Bottom - $statusBounds.Top))
+        $statusBitmap = [Drawing.Bitmap]::new($statusSize.Width, $statusSize.Height)
         $statusGraphics = [Drawing.Graphics]::FromImage($statusBitmap)
         try {
-            $statusGraphics.CopyFromScreen(($width - 330), 16, 0, 0, [Drawing.Size]::new(314, 44))
+            $statusGraphics.CopyFromScreen($statusBounds.Left, $statusBounds.Top, 0, 0, $statusSize)
             $statusBitmap.Save((Join-Path $directory 'status.png'))
         } finally { $statusGraphics.Dispose(); $statusBitmap.Dispose() }
     }
