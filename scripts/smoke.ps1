@@ -426,7 +426,8 @@ try {
     Start-Sleep -Milliseconds 300
     $ink = [Drawing.Color]::FromArgb(255, 249, 115, 22).ToArgb()
     if ($startup.Contains('stage 3')) {
-        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado status')
+        # The accessible panel title follows the tool/mode; startup is Pen, click-through.
+        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado Pen; Click-through')
         [uint32]$statusOwner = 0
         [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
         Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible before canvas sampling'
@@ -435,7 +436,7 @@ try {
     Check ($startup.Contains('PoC 7: stage 3')) 'PoC 7 stage 3 startup reported'
     ProbeToolKeys $true
     if ($startup.Contains('stage 3')) {
-        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado status')
+        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado Pen; Click-through')
         [uint32]$statusOwner = 0
         [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
         Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible'
@@ -793,7 +794,7 @@ try {
         idleCpuSeconds = $cpuSeconds; idleCpuPercent = $idlePercent
         postedStroke = [bool]$PostedStroke
         postedPoc6 = if ($poc6PostedRan) { 'Posted P/A variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
-        variantLabelEvidence = 'Latest app log tool_label only. Status paints internal text, not its native title; painted indicator label correctness remains manual/untested.'
+        variantLabelEvidence = 'Latest app log tool_label only. The panel title follows tool/mode, but painted hover labels and compact icons remain manual/untested in desktop smoke.'
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
         manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, picker placement/focus/scaling and hardware latency.'
         mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or picker scaling.'
