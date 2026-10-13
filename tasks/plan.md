@@ -4,7 +4,11 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
-## Current increment: PoC 4
+## Disk picker follow-up
+
+User accepted PoC 4, approved the Excalidraw disk design and requested implementation. The RGB form is replaced by a smooth hue/saturation disk, brightness, candidate swatch/hex, six presets and Apply/Cancel in a dark DPI-scaled pane. Existing main/annotation/control behavior is unchanged. Validated code d670313: build, 59 tests, formatting/Clippy, 79 desktop regressions with zero skipped, and hidden native/offscreen visual review. Specification, delivery records and manual limits are in tasks/disk-picker.md.
+
+## PoC 4 history
 
 PoC 4 implemented. Final code 7f934a7 passed build, 55 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped, plus indicator visual review. User authorized autonomous implementation of undo/redo, color/thickness, status indicator, arrow/ellipse tools, whole-annotation erasing and a C color picker at the mouse. Contracts, scope and staged build order are in tasks/poc4-spec.md. Completed stage validation and remote checkpoints are in tasks/poc4-progress.md. Multi-monitor work remains deferred; no hardware is available. Each usable stage is validated, promoted and pushed to origin/main without force. Historical display/capture checks remain open.
 

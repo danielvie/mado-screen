@@ -10,7 +10,7 @@ PoC 4 covers:
 - Undo/redo, including clear and grouped whole-annotation erasing.
 - Whole-annotation eraser, topmost-first. Clicks erase one topmost hit; moving sweeps can remove multiple touched layers. Shape interiors are not filled hit targets.
 - Visible click-through/nonactivating mode/tool/style indicator.
-- Drawing-only C opens a modeless RGB picker at the mouse, clamped to the work area, with presets and arbitrary RGB inputs.
+- Drawing-only C opens the approved modeless disk picker at the mouse, clamped to the work area. Hue/saturation disk, brightness, presets and exact hex input update a candidate until Apply.
 
 All three stages are implemented and validated. Final code 7f934a7 passed 55 tests and 79 desktop checks with zero skipped, plus hidden native picker/control checks and visible indicator review. Stage pushes and manual limits are recorded in tasks/poc4-progress.md. This document does not replace those checks.
 
@@ -37,7 +37,7 @@ Unverified does not mean broken. Verify separately:
 - Application-window capture, which may omit a separate overlay window.
 - Borderless and exclusive fullscreen; exclusive fullscreen coverage is not guaranteed.
 - Real keys/mouse, focus restoration, held-button interruptions, capture loss and outside-display release for PoC 4.
-- Interactive picker keyboard navigation, visible placement and arbitrary RGB selection on the user's desktop.
+- Interactive disk-picker keyboard navigation, visible placement, dragging and focus on the user's desktop. Hidden native checks and offscreen rendering pass; physical behavior and assistive-technology acceptance remain manual.
 - Long-session memory and pointer responsiveness at high resolution. History snapshots clone the scene, and each changed event replays/uploads a full CPU bitmap.
 - Elevated applications and other topmost windows.
 

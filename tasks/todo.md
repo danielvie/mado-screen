@@ -4,10 +4,10 @@
 
 User reports PoC 4 works fine and approved the disk design in docs/design/disk-color-picker.excalidraw. Implementation contract and final evidence: tasks/disk-picker.md. Scope is the picker pane only; existing annotation/history/control behavior is preserved.
 
-- [ ] Pure HSV/ARGB/hex math and bounded disk selection.
-- [ ] Dark DPI-scaled disk pane, brightness, candidate/hex/presets and Apply/Cancel.
-- [ ] Hidden native checks, offscreen visual review, combined build/test/check/desktop smoke.
-- [ ] Validated promotion, origin/main push, primary executable rebuild and integration cleanup.
+- [x] Pure HSV/ARGB/hex math and bounded disk selection; 7 checks include 16,384 color roundtrips.
+- [x] Dark DPI-scaled disk pane, brightness, candidate/hex/presets and Apply/Cancel.
+- [x] Hidden native checks, offscreen visual review, combined build/test/check/desktop smoke. Code d670313: 59 tests, 79 desktop checks, zero skipped.
+- [x] Validated promotion and origin/main push; primary executable rebuilt and own integration worktree cleaned after gates.
 
 ## PoC 4: editing, styles and native UI
 

@@ -1,6 +1,6 @@
 # Disk color picker proposal
 
-Status: approved by the user for implementation. Source and validation are tracked in tasks/disk-picker.md. The Excalidraw drawing remains the design reference.
+Status: implemented after user approval. Validated code d670313 passed 59 tests, formatting/Clippy and 79 desktop checks with zero skipped. Source and detailed limits are tracked in tasks/disk-picker.md. The Excalidraw drawing remains the design reference; disk-color-picker-implemented.png is an actual offscreen native-pane capture.
 
 Editable design: disk-color-picker.excalidraw. Preview: disk-color-picker.png. Drop the Excalidraw file into https://excalidraw.com to inspect or edit it. The disk is grouped native polygon geometry, not an embedded reference image; ungroup it to edit individual sectors. All text uses Excalifont. The PNG previews the layout with Segoe UI rather than the Excalidraw font.
 
@@ -10,7 +10,7 @@ Adapt the supplied color-disk reference into an actual compact control, without 
 
 Approximate popup size: 300 by 460 logical pixels. It opens near the mouse on drawing-only C and clamps to the nearest work area. Scale controls with DPI rather than clipping them. Placement examples are schematic, not pixel-perfect scaled copies of the full panel.
 
-## Proposed interactions
+## Interactions
 
 - Angle changes hue; distance from the center changes saturation. The center is neutral, the rim vivid. A white/black double-ring marker stays visible over every color.
 - Brightness controls value from black to full brightness. Center plus maximum brightness selects white; the minimum brightness selects black.
@@ -21,4 +21,4 @@ Approximate popup size: 300 by 460 logical pixels. It opens near the mouse on dr
 
 Screen eyedropper/sampling, opacity and thickness controls are not part of this picker change. The reference pipette is treated as an illustration, not an additional requested feature.
 
-The user approved this layout and confirmation behavior. Native focus, performance and accessibility acceptance require explicit evidence; the design drawing alone does not establish them.
+The user approved this layout and confirmation behavior. Native hidden tests and offscreen capture verify candidate/event handling and rendering. Physical focus/drag, live Tab behavior, mixed-monitor DPI and assistive-technology acceptance remain manual; the design drawing and hidden tests do not establish them.
