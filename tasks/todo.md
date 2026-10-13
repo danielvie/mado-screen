@@ -2,25 +2,37 @@
 
 ## PoC 2: freehand drawing
 
-User reported PoC 1 works and approved this increment. No PoC 2 behavior has been validated yet.
+PoC 2 implemented. All 26 tests, build, formatting and Clippy pass. Desktop smoke passed 22 checks with a posted stroke. Physical mouse, focus, outside-release and responsiveness acceptance remain manual.
 
 - [x] P2-state: `strokes.rs` stores separate paths and active drag, rejects hover/duplicate points, preserves ink on finish, clears safely. Implemented and integrated; seven pure state tests passed. Dependencies: PoC 1. Owns only strokes.rs.
 - [x] P2-render: replace automatic shapes with dots and connected freehand paths in drawing.rs/surface.rs. Implemented and integrated; seven raster tests and native DIB/resource checks passed. Dependencies: fixed state/path contract, not state implementation. Verify empty startup, dots, sparse interpolation, separate paths, clipped points, mode alpha and GDI cleanup. Owns only drawing.rs/surface.rs.
 - [x] P2-input: input.rs decodes mouse/timer/cancel messages and owns active-only native capture watchdog; overlay.rs drops obsolete logging. Implemented and integrated; five input decoding/button tests passed, native capture/watchdog behavior remains untested. Dependencies: PoC 1. Verify signed coordinates, HWND/timer filtering, primary-button semantics and guard cleanup without visible desktop interaction. Owns only input.rs/overlay.rs.
-- [ ] P2-compose: main owns stroke/mode/drag guard, draws on changed points, keeps ink in click-through, clears/ends/releases safely; README and smoke match new empty startup. Dependencies: P2-state, P2-render, P2-input integrated. Owns main.rs/README.md/scripts/smoke.ps1. Verify build/test/check and safe app-local smoke, no injected system input.
-- [ ] P2-integrator: one completion-order queue, isolated integration worktrees, checks after cherry-pick, fast-forward main; at most four workers, no concurrent integration.
-- [ ] P2-supervisor: review final sources/commits, run final checks, record app-local smoke versus actual hardware/manual evidence, commit verification in a worktree.
+- [x] P2-compose: main owns stroke/mode/drag guard, draws on changed points, keeps ink in click-through, clears/ends/releases safely; README and smoke match new empty startup. Worker commit 40fbad9 integrated after the test-only Clippy fix. Dependencies: P2-state, P2-render, P2-input integrated. Owns main.rs/README.md/scripts/smoke.ps1. Verify build/test/check and safe app-local smoke, no injected system input.
+- [x] P2-integrator: one completion-order queue, isolated integration worktrees, checks after cherry-pick, fast-forward main; at most four workers, no concurrent integration. Composition initially stopped on an input-test lint; supervisor corrected the dummy pointer in a separate integration worktree, reverified and completed serial integration.
+- [x] P2-supervisor: reviewed final sources/commits, ran build/test/check and posted-stroke desktop smoke, recorded hardware limitations, committed verification in an integration worktree.
 
 ### PoC 2 acceptance
 
 - [ ] Empty startup; logical primary-button drag produces a fixed orange 5-pixel stroke, including a click dot and sparse-event interpolation.
-- [ ] Distinct strokes do not join; hover does not draw; mode switches end current stroke and preserve ink.
+- [x] Distinct strokes do not join; hover does not draw; mode switches end current stroke and preserve ink. Pure routing/raster tests passed; posted stroke remained visible after returning to click-through.
 - [ ] Clear while dragging releases capture, empties canvas and does not resume on a held button; toggle and quit during drag also release safely.
 - [ ] Button release outside the primary display, capture loss and stale timer events do not leave drawing stuck.
 - [ ] Draw over Notepad, toggle to click-through, type/click normally, then resume drawing without unwanted focus changes.
 - [ ] Idle still blocks with no timer after drag; actual pointer responsiveness at the tested resolution is observed and not inferred from unit tests.
 
 ### PoC 2 results
+
+Final composition and supervisor verification:
+- `task build`: passed.
+- `task test`: 26 passed.
+- `task check`: formatting and Clippy passed. The first composition integration was blocked by clippy::manual_dangling_ptr in an input test. A standard dangling pointer replaces the fabricated dummy HWND address; production input code is unchanged.
+- Desktop smoke with `-PostedStroke`: 22 checks passed. Empty startup, drawing-mode transition, posted down/move/up rendering, stroke persistence in click-through, clear, quit, registration conflict/rollback and window cleanup verified.
+- Test display: 3440x1440, 16 logical processors. Initial idle sample: process CPU time delta 0 seconds over 30 seconds. Not a hardware input-to-display latency measurement.
+- Smoke artifact: C:/Users/daniel/AppData/Local/Temp/mado-poc2-1fd89608-1c56-42d9-ad7a-978479bfab91/results.json.
+- No real keyboard/mouse input was injected or cursor moved. Native posted messages prove routing/rendering, not physical drag accuracy, focus, outside-release behavior, live clear/toggle/quit while held or responsiveness. These acceptance boxes intentionally remain open.
+- Multi-monitor, screen-sharing and fullscreen checks remain deferred.
+
+Historical intermediate integration checks follow; their earlier pending statements do not describe the final build.
 
 P2-state integrated from worker commit `955bfd254a914fd3d7c514b6472ab15a785a8f12`. Source changes are limited to `src/strokes.rs`; no conflicts or main adapter were needed.
 

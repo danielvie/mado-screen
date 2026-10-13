@@ -2,6 +2,8 @@
 
 ## Current increment: PoC 2 freehand pen
 
+Implemented and verified with build, 26 tests, formatting, Clippy and 22 desktop smoke checks using posted stroke messages. Physical mouse/focus/outside-release/latency validation remains manual; detailed results are in tasks/todo.md.
+
 Approved by the user after reporting PoC 1 works. Replace automatic shapes with an empty startup canvas and one fixed orange 5-pixel pen. Ctrl+Alt+D toggles drawing/click-through; Ctrl+Alt+C clears all strokes; Ctrl+Alt+Q quits. Drag the logical primary mouse button to draw. Switching mode ends the current stroke and preserves its visible points. Clear ends the drag and discards all strokes; holding the button after clear does not resume drawing until a new press. No toolbar, undo, shapes, settings or new dependencies.
 
 ### Responsibilities and fixed interfaces
