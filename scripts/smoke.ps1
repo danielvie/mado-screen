@@ -6,7 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-Add-Type @'
+Add-Type -ReferencedAssemblies System.Drawing @'
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -49,6 +49,18 @@ public static class PocSmoke {
             bool enumerated = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
             if (!enumerated) throw new Win32Exception(error != 0 ? error : Marshal.GetLastWin32Error());
             return monitors.ToArray();
+        } finally { SetThreadDpiAwarenessContext(previous); }
+    }
+    public static int PhysicalPixel(int x, int y) {
+        // Keep DPI context, GDI+ creation/capture/disposal on this one native thread.
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) throw new Win32Exception("Cannot sample physical pixels without per-monitor DPI awareness.");
+        try {
+            using (var bitmap = new System.Drawing.Bitmap(1, 1))
+            using (var graphics = System.Drawing.Graphics.FromImage(bitmap)) {
+                graphics.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(1, 1));
+                return bitmap.GetPixel(0, 0).ToArgb();
+            }
         } finally { SetThreadDpiAwarenessContext(previous); }
     }
     public static int ToScreen(int local, int origin) { return checked(local + origin); }
@@ -171,17 +183,7 @@ function Check([bool]$Condition, [string]$Name) {
     Write-Host "PASS: $Name"
 }
 function Pixel([int]$X, [int]$Y) {
-    $bitmap = [Drawing.Bitmap]::new(1, 1)
-    $graphics = [Drawing.Graphics]::FromImage($bitmap)
-    $dpi = [PocSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-    try {
-        if ($dpi -eq [IntPtr]::Zero) { throw 'Cannot sample physical pixels without per-monitor DPI awareness.' }
-        $graphics.CopyFromScreen([PocSmoke]::ToScreen($X, $virtualLeft), [PocSmoke]::ToScreen($Y, $virtualTop), 0, 0, [Drawing.Size]::new(1, 1))
-        return $bitmap.GetPixel(0, 0).ToArgb()
-    } finally {
-        if ($dpi -ne [IntPtr]::Zero) { [void][PocSmoke]::SetThreadDpiAwarenessContext($dpi) }
-        $graphics.Dispose(); $bitmap.Dispose()
-    }
+    return [PocSmoke]::PhysicalPixel([PocSmoke]::ToScreen($X, $virtualLeft), [PocSmoke]::ToScreen($Y, $virtualTop))
 }
 function ProbeToolKeys([bool]$ShouldBeAvailable) {
     foreach ($key in @(0x50, 0x4c, 0x52)) {
