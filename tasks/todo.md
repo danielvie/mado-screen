@@ -6,8 +6,8 @@ Specification: tasks/poc4-spec.md. Stage evidence and remote checkpoints: tasks/
 
 - [x] Stage 1: styled annotations, width/color controls, undo/redo and undoable clear. Validated and pushed at eaea201.
 - [x] Stage 2: arrow/ellipse tools, whole-annotation erasing, sparse sweeps and grouped eraser undo. Validated and pushed at c7f7ad4.
-- [ ] Stage 3: visible mode/tool/style indicator, cursor-position RGB picker, temporary shortcut suspension and safe reacquisition. Final verification/push pending.
-- [ ] Final: rebuild primary executable, clean integration worktree and record final commit.
+- [x] Stage 3: visible mode/tool/style indicator, cursor-position RGB picker, temporary shortcut suspension and safe reacquisition. Validated 7f934a7: 55 tests, 79 desktop checks, zero skipped; final push follows recorded gates.
+- [x] Final: completed source/evidence recorded; primary executable rebuilt and own integration worktree removed after successful final promotion/push.
 
 Physical popup focus/placement/navigation and actual pointer/key behavior remain manual. Multiple monitors and sharing/recording remain deferred/open. Remaining capabilities: docs/feature-roadmap.md.
 

@@ -51,6 +51,8 @@ The renderer fills/replays/uploads a full-screen CPU bitmap on changes. Snapshot
 
 ## Verification
 
-Unit tests do not launch the app. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
+Final PoC 4 passed build, 55 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped on a 3440x1440 display. Indicator visual review passed. Initial idle CPU time was unchanged over 30 seconds. All three stages are pushed separately; evidence is in tasks/poc4-progress.md.
+
+Unit tests do not launch the app. One native UI test creates only hidden windows to verify RGB controls, invalid input, Apply/Cancel, value-only events and cleanup without changing focus. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
 
 Physical mouse/key delivery, normal typing/focus after toggles, outside-display release, held-button interruption and hardware pointer latency require manual observation. PoC 3 worked according to the user; that does not establish these behaviors for PoC 4. Stage evidence and remote pushes are recorded in tasks/poc4-progress.md. Missing features/deferred compatibility remain in docs/feature-roadmap.md; execution rules remain in docs/workflow-strategy.md.

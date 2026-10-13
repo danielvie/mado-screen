@@ -12,7 +12,7 @@ PoC 4 covers:
 - Visible click-through/nonactivating mode/tool/style indicator.
 - Drawing-only C opens a modeless RGB picker at the mouse, clamped to the work area, with presets and arbitrary RGB inputs.
 
-Stage1styledhistory andstage2geometry/eraser are validated and pushed. Stage3UI validation is tracked in the stage ledger. This document does not replace those checks.
+All three stages are implemented and validated. Final code 7f934a7 passed 55 tests and 79 desktop checks with zero skipped, plus hidden native picker/control checks and visible indicator review. Stage pushes and manual limits are recorded in tasks/poc4-progress.md. This document does not replace those checks.
 
 ## Missing capabilities
 

@@ -6,7 +6,7 @@ Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use
 
 ## Current increment: PoC 4
 
-User authorizes autonomous implementation of undo/redo, color/thickness, status indicator, arrow/ellipse tools, whole-annotation erasing and a C color picker at the mouse. Contracts, scope and staged build order are in tasks/poc4-spec.md. Completed stage validation and remote checkpoints are in tasks/poc4-progress.md. Multi-monitor work remains deferred; no hardware is available. Each usable stage is validated, promoted and pushed to origin/main without force. Historical display/capture checks remain open.
+PoC 4 implemented. Final code 7f934a7 passed build, 55 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped, plus indicator visual review. User authorized autonomous implementation of undo/redo, color/thickness, status indicator, arrow/ellipse tools, whole-annotation erasing and a C color picker at the mouse. Contracts, scope and staged build order are in tasks/poc4-spec.md. Completed stage validation and remote checkpoints are in tasks/poc4-progress.md. Multi-monitor work remains deferred; no hardware is available. Each usable stage is validated, promoted and pushed to origin/main without force. Historical display/capture checks remain open.
 
 ## PoC 3 history: line and rectangle tools
 
