@@ -2,6 +2,7 @@ mod controls;
 mod drawing;
 mod input;
 mod overlay;
+mod picker;
 mod strokes;
 mod surface;
 mod ui;
@@ -45,7 +46,7 @@ fn main() -> Result<()> {
         println!("Drawing only: A arrow, O ellipse, E whole-annotation eraser.");
     }
     println!(
-        "Drawing only: C opens the color picker at the mouse. Apply RGB or cancel with Escape."
+        "Drawing only: C opens the disk picker at the mouse. Apply color or cancel with Escape."
     );
     println!("Primary display: {width} x {height} physical pixels.");
     println!("Mode: click-through.");

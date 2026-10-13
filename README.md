@@ -1,6 +1,6 @@
 # Mado Screen PoC 4
 
-Native Rust/Win32 annotation overlay for the primary display. Startup is empty and click-through. PoC 4 adds history, styled pen/line/rectangle/arrow/ellipse annotations, whole-annotation erasing, a visible status indicator and a mouse-position RGB picker. Delivery evidence is in tasks/poc4-progress.md; specification is in tasks/poc4-spec.md.
+Native Rust/Win32 annotation overlay for the primary display. Startup is empty and click-through. PoC 4 adds history, styled pen/line/rectangle/arrow/ellipse annotations, whole-annotation erasing, a visible status indicator and a mouse-position disk color picker. Delivery evidence is in tasks/poc4-progress.md; specification is in tasks/poc4-spec.md.
 
 ## Commands
 
@@ -29,7 +29,7 @@ Drawing-mode-only controls:
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
-- `C` opens the color picker at the current mouse position, clamped to the nearest monitor work area. Use presets or enter red/green/blue values from 0 to 255, then Apply. Cancel or Escape preserves the old color.
+- `C` opens the disk color picker at the mouse, clamped to the nearest monitor work area. Drag around the disk for hue and toward its center for less saturation. Adjust brightness below it, use a preset, or enter `#RRGGBB`. Apply or Enter commits; Cancel, Escape, close or an outside click preserves the old color.
 
 Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Same-tool or same-style selection does not interrupt a gesture.
 
@@ -39,7 +39,7 @@ Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. T
 
 The top-right indicator shows drawing/click-through mode, selected tool, brush width and color swatch. It is click-through and nonactivating.
 
-The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its RGB controls and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
+The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
 
 ## Behavior and limits
 
@@ -53,6 +53,6 @@ The renderer fills/replays/uploads a full-screen CPU bitmap on changes. Snapshot
 
 Final PoC 4 passed build, 55 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped on a 3440x1440 display. Indicator visual review passed. Initial idle CPU time was unchanged over 30 seconds. All three stages are pushed separately; evidence is in tasks/poc4-progress.md.
 
-Unit tests do not launch the app. One native UI test creates only hidden windows to verify RGB controls, invalid input, Apply/Cancel, value-only events and cleanup without changing focus. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
+Unit tests do not launch the app. Native UI checks create only hidden windows to verify picker controls, invalid input, Apply/Cancel, value-only events and cleanup without changing focus. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
 
 Physical mouse/key delivery, normal typing/focus after toggles, outside-display release, held-button interruption and hardware pointer latency require manual observation. PoC 3 worked according to the user; that does not establish these behaviors for PoC 4. Stage evidence and remote pushes are recorded in tasks/poc4-progress.md. Missing features/deferred compatibility remain in docs/feature-roadmap.md; execution rules remain in docs/workflow-strategy.md.

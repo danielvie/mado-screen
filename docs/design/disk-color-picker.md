@@ -1,6 +1,6 @@
 # Disk color picker proposal
 
-Status: design proposal only, awaiting review. No application code changed.
+Status: approved by the user for implementation. Source and validation are tracked in tasks/disk-picker.md. The Excalidraw drawing remains the design reference.
 
 Editable design: disk-color-picker.excalidraw. Preview: disk-color-picker.png. Drop the Excalidraw file into https://excalidraw.com to inspect or edit it. The disk is grouped native polygon geometry, not an embedded reference image; ungroup it to edit individual sectors. All text uses Excalifont. The PNG previews the layout with Segoe UI rather than the Excalidraw font.
 
@@ -21,4 +21,4 @@ Approximate popup size: 300 by 460 logical pixels. It opens near the mouse on dr
 
 Screen eyedropper/sampling, opacity and thickness controls are not part of this picker change. The reference pipette is treated as an illustration, not an additional requested feature.
 
-Review the visual layout and confirmation behavior before implementation. This proposal does not claim native focus, performance or accessibility acceptance.
+The user approved this layout and confirmation behavior. Native focus, performance and accessibility acceptance require explicit evidence; the design drawing alone does not establish them.

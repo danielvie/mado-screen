@@ -1,5 +1,14 @@
 # Windows prototype tasks
 
+## Disk color picker follow-up
+
+User reports PoC 4 works fine and approved the disk design in docs/design/disk-color-picker.excalidraw. Implementation contract and final evidence: tasks/disk-picker.md. Scope is the picker pane only; existing annotation/history/control behavior is preserved.
+
+- [ ] Pure HSV/ARGB/hex math and bounded disk selection.
+- [ ] Dark DPI-scaled disk pane, brightness, candidate/hex/presets and Apply/Cancel.
+- [ ] Hidden native checks, offscreen visual review, combined build/test/check/desktop smoke.
+- [ ] Validated promotion, origin/main push, primary executable rebuild and integration cleanup.
+
 ## PoC 4: editing, styles and native UI
 
 Specification: tasks/poc4-spec.md. Stage evidence and remote checkpoints: tasks/poc4-progress.md. User authorized autonomous delivery and a remote push after each completed stage.
