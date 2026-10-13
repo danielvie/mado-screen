@@ -218,6 +218,23 @@ try {
             Start-Sleep -Milliseconds 200
             Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 520) $ly) -eq $blue) 'Undo clear restores the mixed styled scene'
             Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore orange five-pixel style'
+            if ($startup.Contains('stage 2') -or $startup.Contains('stage 3')) {
+                Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), $ly, ($lx + 640), $ly, ($lx + 680), $ly))) 'Arrow gesture queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 680) $ly) -eq $ink) 'Arrow shaft and tip rendered'
+                Check ([PocSmoke]::PostDrag($window, $thread, 17, 0, [int[]]@(($lx + 800), ($ly + 120), ($lx + 720), ($ly + 60), ($lx + 720), ($ly + 60)))) 'Reverse-direction ellipse queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink -and (Pixel ($lx + 760) ($ly + 90)) -ne $ink) 'Ellipse outline bounds rendered with empty interior'
+                Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 520), $ly, ($lx + 520), $ly, ($lx + 520), $ly))) 'Whole-annotation eraser queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 500) $ly) -ne $blue -and (Pixel ($lx + 540) $ly) -ne $blue -and (Pixel $lx $ly) -eq $ink) 'Eraser removes the whole touched annotation only'
+                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(7), [IntPtr]::Zero)) 'Undo erasing queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 500) $ly) -eq $blue -and (Pixel ($lx + 540) $ly) -eq $blue) 'Undo restores entire erased annotation and style'
+                Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90)))) 'Eraser gesture inside ellipse queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink) 'Eraser ignores empty shape interiors'
+            }
             # Queue cancellation in the same burst, before the physical-release watchdog.
             Check ([PocSmoke]::PostDrag($window, $thread, 5, 6, [int[]]@(($lx + 300), $ly, ($lx + 360), $ly, ($lx + 360), $ly))) 'Line selection, unfinished line, tool cancellation and stale release queued'
             Start-Sleep -Milliseconds 300

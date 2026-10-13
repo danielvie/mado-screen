@@ -117,17 +117,26 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
         _ => None,
     };
     if let Some(color) = color {
+        if strokes.style().color == color { return false; }
         drop(drag.take());
         return strokes.set_color(color);
     }
+    let thickness = match action {
+        Action::Thinner => Some(strokes.style().thickness.saturating_sub(2).max(1)),
+        Action::Thicker => Some((strokes.style().thickness + 2).min(31)),
+        _ => None,
+    };
+    if let Some(thickness) = thickness {
+        if strokes.style().thickness == thickness { return false; }
+        drop(drag.take());
+        return strokes.set_thickness(thickness);
+    }
     match action {
-        Action::Undo | Action::Redo | Action::Thinner | Action::Thicker => {
+        Action::Undo | Action::Redo => {
             drop(drag.take());
             match action {
                 Action::Undo => strokes.undo(),
                 Action::Redo => strokes.redo(),
-                Action::Thinner => strokes.set_thickness(strokes.style().thickness.saturating_sub(2)),
-                Action::Thicker => strokes.set_thickness(strokes.style().thickness + 2),
                 _ => unreachable!(),
             }
         }
