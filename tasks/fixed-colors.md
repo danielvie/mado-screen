@@ -16,4 +16,6 @@ Checks passed:
 - cargo clippy --all-targets -- -D warnings.
 - git diff --check.
 
-No full suite, desktop smoke, visible app launch, real input injection or cursor movement. Physical acceptance remains for the user. Promote serially and copy only the local target/release executable; do not install or push remotely.
+No full suite, desktop smoke, visible app launch, real input injection or cursor movement. Physical acceptance remains for the user. Code promoted at cc813ce. Copying to target/release/mado-screen-poc.exe was blocked by a file lock; no process was stopped. The new build is target/release/mado-screen-fixed-colors.exe instead. Installed app is unchanged and no remote push ran.
+
+Local README.md/Taskfile.yml install edits were verified unchanged. Neither Excalidraw file was edited by this task. The untracked panel-layout drawing's hash changed during the task; its current contents were left alone.
