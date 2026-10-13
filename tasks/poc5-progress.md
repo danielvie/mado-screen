@@ -10,12 +10,15 @@ Main starts at a77dc9a. Existing uncommitted README.md/Taskfile.yml install chan
 
 - Specification checkpoint: 56655e7.
 - Composition: original 13f4765 -> 5ccd6fa, main startup reporting, primary-monitor indicator placement, cross-monitor shared-style/history regression and documentation. Tracking record ba9080f -> 3bdf8e6. One focused shared-history test passed after overlay API integration; rustfmt and diff whitespace checks passed.
-- Overlay bounds integrated at d8c0600. Three focused bound tests cover negative/above/positive origins, invalid dimensions and overflow.
-- Surface placement and desktop smoke deliveries are pending integration.
+- Overlay bounds d8c0600 -> d8c0600. Five focused overlay tests passed, including three bound tests for negative/above/positive origins, invalid dimensions and overflow; scoped rustfmt/Clippy passed.
+- Surface placement 4471dae -> 9888f07. Four focused tests and scoped rustfmt/Clippy passed. Hidden native tests preserve positive/negative screen positions during uploads and verify window/class cleanup; raster test covers negative/outside canvas points. Restoring the old destination made the placement regression fail as expected.
+- Desktop smoke df7a85e -> 324aee8 adds DPI-aware physical monitor enumeration, canvas/screen translation, exact virtual bounds, per-monitor and adjacent-seam posted history/erase checks. Parse and pure self-check passed before delivery.
+
+Read-only design review found no concrete composition blocker. Per-monitor-v2 awareness, canvas-local coordinates and screen-relative owned popups are consistent; physical seam capture, mixed-DPI alignment and picker focus still need manual observation.
 
 ## Gates
 
-Combined build/test/check and safe desktop smoke are pending. No PoC 5 desktop pass is claimed yet. Read-only DPI-aware metrics report virtual origin (-1920, 0), extent 5760x1200, primary 1920x1080. Early System.Windows.Forms enumeration was DPI-virtualized and is not used as physical geometry evidence; final smoke will enumerate native monitor bounds.
+First combined gate at 324aee8: task build passed, task test 68 passed, task check formatting/Clippy passed, smoke self-check passed. Desktop smoke confirmed exact virtual bounds and visible owned status, then failed at the first CopyFromScreen call with an invalid-handle error. Copied child cleanup ran; no full desktop pass is claimed. A focused sampling repair is assigned without weakening assertions. Read-only DPI-aware metrics report virtual origin (-1920, 0), extent 5760x1200, primary 1920x1080. Early System.Windows.Forms enumeration was DPI-virtualized and is not used as physical geometry evidence; final smoke will enumerate native monitor bounds.
 
 ## Manual acceptance
 
