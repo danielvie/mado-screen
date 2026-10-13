@@ -4,7 +4,7 @@
 
 User reported PoC 1 works and approved this increment. No PoC 2 behavior has been validated yet.
 
-- [ ] P2-state: `strokes.rs` stores separate paths and active drag, rejects hover/duplicate points, preserves ink on finish, clears safely. Dependencies: PoC 1. Verify pure state tests. Owns only strokes.rs.
+- [x] P2-state: `strokes.rs` stores separate paths and active drag, rejects hover/duplicate points, preserves ink on finish, clears safely. Implemented and integrated; seven pure state tests passed. Dependencies: PoC 1. Owns only strokes.rs.
 - [ ] P2-render: replace automatic shapes with dots and connected freehand paths in drawing.rs/surface.rs. Dependencies: fixed state/path contract, not state implementation. Verify empty startup, dots, sparse interpolation, separate paths, clipped points, mode alpha and GDI cleanup. Owns only drawing.rs/surface.rs.
 - [ ] P2-input: input.rs decodes mouse/timer/cancel messages and owns active-only native capture watchdog; overlay.rs drops obsolete logging. Dependencies: PoC 1. Verify signed coordinates, HWND/timer filtering, primary-button semantics and guard cleanup without visible desktop interaction. Owns only input.rs/overlay.rs.
 - [ ] P2-compose: main owns stroke/mode/drag guard, draws on changed points, keeps ink in click-through, clears/ends/releases safely; README and smoke match new empty startup. Dependencies: P2-state, P2-render, P2-input integrated. Owns main.rs/README.md/scripts/smoke.ps1. Verify build/test/check and safe app-local smoke, no injected system input.
@@ -22,7 +22,14 @@ User reported PoC 1 works and approved this increment. No PoC 2 behavior has bee
 
 ### PoC 2 results
 
-Pending. PoC 1 historical results and deferred multi-display/presentation tasks remain below.
+P2-state integrated from worker commit `955bfd254a914fd3d7c514b6472ab15a785a8f12`. Source changes are limited to `src/strokes.rs`; no conflicts or main adapter were needed.
+
+- `cargo test --bin module_check`: 15 passed, including seven state regressions and existing drawing/surface/overlay/controls checks. No input module exists yet.
+- `cargo check --bin module_check`: passed. The temporary path-import harness was deleted afterward.
+- `task build`: passed; `task test`: nine existing application tests passed after harness removal.
+- State is not wired into main until P2-compose. No app launch, desktop or hardware acceptance checks performed. Other PoC 2 tasks remain pending.
+
+PoC 1 historical results and deferred multi-display/presentation tasks remain below.
 
 ## PoC 1 history
 
