@@ -1,8 +1,15 @@
 # Windows prototype tasks
 
-## Backlog and next increment
+## PoC 4: editing, styles and native UI
 
-PoC4 approved for autonomous staged implementation. Specification: tasks/poc4-spec.md. Evidence and remote checkpoints: tasks/poc4-progress.md. Stage1 styled history is validated; stages2geometry/eraser and3nativeUI follow. Multi-monitor and sharing/recording validation remain deferred/open.
+Specification: tasks/poc4-spec.md. Stage evidence and remote checkpoints: tasks/poc4-progress.md. User authorized autonomous delivery and a remote push after each completed stage.
+
+- [x] Stage 1: styled annotations, width/color controls, undo/redo and undoable clear. Validated and pushed at eaea201.
+- [x] Stage 2: arrow/ellipse tools, whole-annotation erasing, sparse sweeps and grouped eraser undo. Validated and pushed at c7f7ad4.
+- [ ] Stage 3: visible mode/tool/style indicator, cursor-position RGB picker, temporary shortcut suspension and safe reacquisition. Final verification/push pending.
+- [ ] Final: rebuild primary executable, clean integration worktree and record final commit.
+
+Physical popup focus/placement/navigation and actual pointer/key behavior remain manual. Multiple monitors and sharing/recording remain deferred/open. Remaining capabilities: docs/feature-roadmap.md.
 
 ## PoC 3: tool selection and shape previews
 
