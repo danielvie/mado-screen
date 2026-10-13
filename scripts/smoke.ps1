@@ -56,7 +56,7 @@ if ($SelfCheck) {
     return
 }
 $oldDpi = [PocSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-$directory = Join-Path $env:TEMP ("mado-poc3-" + [Guid]::NewGuid())
+$directory = Join-Path $env:TEMP ("mado-poc4-" + [Guid]::NewGuid())
 New-Item -ItemType Directory $directory | Out-Null
 $copy = Join-Path $directory 'overlay-smoke.exe'
 Copy-Item (Resolve-Path $Exe).Path $copy
@@ -162,7 +162,7 @@ try {
     Start-Sleep -Milliseconds 300
     $ink = [Drawing.Color]::FromArgb(255, 249, 115, 22).ToArgb()
     CheckEmptyCanvas 'Empty startup leaves sampled desktop pixels unchanged'
-    Check ($startup.Contains('PoC 3: empty canvas')) 'Empty-canvas startup reported'
+    Check ($startup.Contains('PoC 4:')) 'PoC 4 startup reported'
     ProbeToolKeys $true
     $process.Refresh()
     $cpuStart = $process.TotalProcessorTime.TotalSeconds
@@ -200,6 +200,24 @@ try {
             Start-Sleep -Milliseconds 300
             Check ((Pixel ($lx + 160) ($ly + 60)) -eq $ink -and (Pixel ($lx + 240) ($ly + 60)) -eq $ink -and (Pixel ($lx + 160) ($ly + 120)) -eq $ink -and (Pixel ($lx + 240) ($ly + 120)) -eq $ink) 'Rectangle has all four corners'
             Check ((Pixel ($lx + 200) ($ly + 90)) -ne $ink) 'Rectangle interior remains unfilled'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(11), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Blue color and thicker brush queued'
+            Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 500), $ly, ($lx + 520), $ly, ($lx + 540), $ly))) 'Styled pen queued'
+            Start-Sleep -Milliseconds 200
+            $blue = [Drawing.Color]::FromArgb(255, 59, 130, 246).ToArgb()
+            Check ((Pixel ($lx + 520) $ly) -eq $blue -and (Pixel ($lx + 520) ($ly + 3)) -eq $blue -and (Pixel $lx $ly) -eq $ink) 'New stroke is blue and seven pixels thick; old ink retains its style'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(7), [IntPtr]::Zero)) 'Undo queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 520) $ly) -ne $blue -and (Pixel $lx $ly) -eq $ink) 'Undo removes only the last annotation'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(8), [IntPtr]::Zero)) 'Redo queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 520) $ly) -eq $blue) 'Redo restores color and thickness'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(2), [IntPtr]::Zero)) 'Undoable clear queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel $lx $ly) -ne $ink -and (Pixel ($lx + 520) $ly) -ne $blue) 'Clear removes mixed styled annotations'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(7), [IntPtr]::Zero)) 'Undo clear queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 520) $ly) -eq $blue) 'Undo clear restores the mixed styled scene'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore orange five-pixel style'
             # Queue cancellation in the same burst, before the physical-release watchdog.
             Check ([PocSmoke]::PostDrag($window, $thread, 5, 6, [int[]]@(($lx + 300), $ly, ($lx + 360), $ly, ($lx + 360), $ly))) 'Line selection, unfinished line, tool cancellation and stale release queued'
             Start-Sleep -Milliseconds 300
