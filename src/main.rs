@@ -57,7 +57,7 @@ fn main() -> Result<()> {
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    println!("PoC 7: stage {STAGE}, rounded ink, one-second fading and larger arrowheads.");
+    println!("PoC 7: stage {STAGE}, Bézier pens, rounded ink and one-second fading.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
     println!("Drawing only: P selects pen; repeat P toggles fading temporary ink (1 second).");
     println!("L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
@@ -684,7 +684,7 @@ mod tests {
         assert!(route(movement((3, 4), true), true, &mut strokes));
         assert!(route(Event::Up((5, 6)), true, &mut strokes));
         assert!(!strokes.is_active());
-        assert_eq!(strokes.annotations()[0].paths[0], [(1, 2), (3, 4), (5, 6)]);
+        assert_eq!(strokes.annotations()[0].paths[0], [(1, 2), (4, 5), (5, 6)]);
         assert!(!route(Event::Up((7, 8)), true, &mut strokes));
         for ending in [Event::Cancel, movement((9, 10), false)] {
             strokes.begin((7, 8));

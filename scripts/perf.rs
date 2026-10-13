@@ -1,4 +1,6 @@
 //! Offscreen release-mode measurement. No windows, input injection or DIB upload.
+#[path = "../src/bezier.rs"]
+mod bezier;
 #[path = "../src/drawing.rs"]
 mod drawing;
 #[path = "../src/strokes.rs"]

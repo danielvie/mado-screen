@@ -37,4 +37,36 @@ The certainty margin 0.531px exceeds the distance from a pixel center to every s
 
 Working branches integration/bezier and worker/bezier use isolated sibling worktrees. The supervisor owns rendering and measurement; the worker owns Bézier helper and pen models. Serial integration only after worker delivery. User local README.md and Taskfile.yml install edits remain separate.
 
-Run only Bézier tests and directly affected renderer/pen/trail/history/eraser regressions, plus optimized build and formatting/Clippy. No full test suite or desktop smoke. Record final smoothed measurements and any failures below before promotion.
+Run only Bézier tests and directly affected renderer/pen/trail/history/eraser regressions, plus optimized build and formatting/Clippy. No full test suite or desktop smoke.
+
+Worker commit dedd3cf was rebased serially onto integration/bezier to bdcdb3a. It owns src/bezier.rs, strokes.rs, trail.rs and only the module declaration in main.rs. Supervisor reviewed the actual code, updated one obsolete raw-path expectation in the queued-input regression and added the Bézier module to the standalone measurement program. Main install edits and an independently created untracked Excalidraw file remain untouched.
+
+## Combined Bézier results
+
+Same workload and optimization, two independent runs, nine samples per case after two warmups:
+
+| Fading workload | Baseline median range | Final Bézier plus optimized rendering |
+| --- | --- | --- |
+| 1920-wide, 24 points, 5px | 7.50–7.86 ms | 6.58–6.80 ms |
+| 1920-wide, 240 points, 21px | 23.04–23.82 ms | 13.52–14.77 ms |
+| 5760-wide, 24 points, 5px | 21.25–21.93 ms | 16.86–16.93 ms |
+| 5760-wide, 240 points, 21px | 47.45–49.81 ms | 26.83–26.86 ms |
+
+Smoothing itself adds work, especially for sparse loops requiring more subdivisions. Its model-construction medians are 0.004–0.015ms for the measured inputs. The separate optimized unsmoothed measurements above isolate the extra raster cost. This does not justify claiming Bézier smoothing is a speed optimization. It is a visual change, accompanied by a measured coverage-equivalent renderer improvement.
+
+The heavy final 5760-wide case has maxima of 31.30 and 32.57ms in these runs, before upload. The 32ms timer interval is not a guaranteed rendering deadline. Full-desktop clearing, permanent replay and upload remain potential costs. If release interaction still lags, measure native presentation next, then consider caching unchanged permanent ink. No cache or new backend is introduced speculatively.
+
+## Smoothing details and check results
+
+Midpoints and control points use f64 to avoid i32 overflow. Flattening uses a 0.5px pre-rounding control-to-chord budget and a depth-12 ceiling, at most 4096 edges per quadratic. Integer rounding adds up to about 0.71px. Extreme coordinates can exceed the flatness budget at the ceiling. Reversals split rather than collapsing to a dot. A two-point gesture stays a straight line.
+
+Permanent Pen finalizes only the previous tail and retains its prior path prefix, style and one history action. Temporary finalized pieces inherit the replaced tail's birth; new dots/live tails use the current input time. Duplicate points and release do not refresh ink. A one-second pause creates a separate dot rather than reconnecting expired ink. Piece opacity still has one birth time, not distance-interpolated ages; the one-second lifetime and sizes are unchanged.
+
+Passed checks:
+- Supervisor renderer checks, `cargo test drawing::`, 17 tests, including coverage comparison against the unclipped reference.
+- Worker: `cargo test bezier_`, 9; `cargo test trail::tests`, 16; pen_ 5, history_ 6, eraser_ 8, temporary_ 7, styles_are_ 3, clear_ 5, variant_toggles_ 3, poc7_ticks_ 1. Filters overlap; these are not a unique full-suite count.
+- Assembled integration: `cargo test bezier_`, 9, and `cargo test queued_events_ignore_hover_and_only_redraw_changed_points`, 1. The latter previously failed only because it expected the original raw triple; updated exact expected smoothed geometry and reran successfully.
+- `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` and `git diff --check`.
+- `task --list` exposes perf and run-release.
+
+Full suite, desktop smoke, real mouse delivery, visual curve acceptance and native upload timing remain untested for this follow-up. Intermittent Git Bash launch failures occurred before commands started; failed launches did not count as checks.
