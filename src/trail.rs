@@ -1,18 +1,31 @@
-use crate::strokes::{Annotation, Point, Style};
+use crate::{
+    bezier::{CurvePoint, append_quadratic, midpoint},
+    strokes::{Annotation, Point, Style},
+};
 use std::{collections::VecDeque, time::Duration};
 
 const LIFETIME: Duration = Duration::from_secs(1);
+
+#[derive(Copy, Clone)]
+struct Active {
+    last: Point,
+    style: Style,
+    then: Duration,
+    start: CurvePoint,
+    live: bool,
+}
 
 /// Temporary ink with caller-supplied monotonic elapsed times, independent of history.
 #[derive(Default)]
 pub struct Trail {
     parts: VecDeque<(Duration, u64, Annotation)>,
-    active: Option<(Point, Style, Duration)>,
+    active: Option<Active>,
     gesture: u64,
 }
 
 impl Trail {
     pub fn begin(&mut self, point: Point, style: Style, now: Duration) -> bool {
+        let now = self.parts.back().map_or(now, |part| now.max(part.0));
         self.gesture += 1;
         self.parts.push_back((
             now,
@@ -22,33 +35,76 @@ impl Trail {
                 style,
             },
         ));
-        self.active = Some((point, style, now));
+        self.active = Some(Active {
+            last: point,
+            style,
+            then: now,
+            start: midpoint(point, point),
+            live: false,
+        });
         true
     }
 
     pub fn append(&mut self, point: Point, now: Duration) -> bool {
-        let Some((last, style, then)) = self.active else {
+        let Some(mut active) = self.active else {
             return false;
         };
-        if point == last {
+        if point == active.last {
             return false;
         }
-        let path = if now.saturating_sub(then) >= LIFETIME {
+        let now = now.max(active.then);
+        let path = if now.saturating_sub(active.then) >= LIFETIME {
+            // A pause starts an isolated dot, not a curve from expired ink.
+            active.start = midpoint(point, point);
+            active.live = false;
             vec![point]
         } else {
-            vec![last, point]
+            if active.live {
+                // Expiry can already have removed the replaceable back part.
+                if self
+                    .parts
+                    .back()
+                    .is_some_and(|part| part.0 == active.then && part.1 == self.gesture)
+                {
+                    self.parts.pop_back();
+                }
+                let end = midpoint(active.last, point);
+                let mut path = vec![(active.start.0.round() as i32, active.start.1.round() as i32)];
+                append_quadratic(&mut path, active.start, active.last, end);
+                // The finalized curve inherits the replaced tail's birth, never
+                // the current sample's time. Older finalized pieces stay untouched.
+                self.parts.push_back((
+                    active.then,
+                    self.gesture,
+                    Annotation {
+                        paths: vec![path],
+                        style: active.style,
+                    },
+                ));
+                active.start = end;
+            }
+            active.live = true;
+            let start = (active.start.0.round() as i32, active.start.1.round() as i32);
+            if start == point {
+                vec![point]
+            } else {
+                vec![start, point]
+            }
         };
-        // ponytail: each input segment expires together, even with sparse events;
-        // subdivide and interpolate birth times if per-distance expiry is needed.
+        // Dots and new live tails are born at their input time. Each part expires
+        // together after one second, including sparse-event curves. ponytail:
+        // interpolate births along a piece if per-distance expiry is later needed.
         self.parts.push_back((
             now,
             self.gesture,
             Annotation {
                 paths: vec![path],
-                style,
+                style: active.style,
             },
         ));
-        self.active = Some((point, style, now));
+        active.last = point;
+        active.then = now;
+        self.active = Some(active);
         true
     }
 
@@ -152,6 +208,132 @@ mod tests {
     }
 
     #[test]
+    fn bezier_temporary_live_tail_curve_births_and_finish() {
+        let mut trail = Trail::default();
+        let style = Style {
+            color: 0xff123456,
+            thickness: 11,
+        };
+        trail.begin((0, 0), style, ms(0));
+        trail.append((100, 100), ms(100));
+        trail.append((200, 0), ms(200));
+        assert_eq!(
+            trail.parts.iter().map(|part| part.0).collect::<Vec<_>>(),
+            [ms(0), ms(100), ms(200)]
+        );
+        let curve = trail.parts[1].2.clone();
+        assert_eq!(curve.paths[0].first(), Some(&(0, 0)));
+        assert_eq!(curve.paths[0].last(), Some(&(150, 50)));
+        assert!(!curve.paths[0].contains(&(100, 100)));
+        assert!(
+            curve.paths[0]
+                .iter()
+                .any(|&(x, y)| x > y && y > 0 && x < 150)
+        );
+        assert_eq!(trail.parts[2].2.paths[0], [(150, 50), (200, 0)]);
+        trail.append((250, 100), ms(300));
+        assert_eq!(trail.parts[1].2, curve); // No re-tessellation or age refresh.
+        assert_eq!(trail.parts[2].0, ms(200));
+        assert_eq!(trail.parts[3].2.paths[0], [(225, 50), (250, 100)]);
+        assert!(trail.annotations().all(|part| part.style == style));
+        let groups = trail
+            .paint_parts(ms(300))
+            .map(|part| part.0)
+            .collect::<Vec<_>>();
+        assert!(groups.iter().all(|group| *group == groups[0]));
+        let preview = paths(&trail);
+        trail.finish();
+        assert_eq!(paths(&trail), preview);
+        assert!(!trail.append((300, 0), ms(400)));
+        assert!(trail.expire(ms(1100)));
+        assert_eq!(
+            trail.parts.iter().map(|part| part.0).collect::<Vec<_>>(),
+            [ms(200), ms(300)]
+        );
+        assert!(!trail.expire(ms(1199)));
+        assert!(trail.expire(ms(1200)));
+        assert_eq!(paths(&trail), [vec![(225, 50), (250, 100)]]);
+        assert!(trail.expire(ms(1300)));
+        assert!(trail.is_empty());
+    }
+
+    #[test]
+    fn bezier_temporary_pause_expiry_duplicates_and_isolated_restart() {
+        for expire_first in [false, true] {
+            let mut trail = Trail::default();
+            trail.begin((0, 0), Style::default(), ms(0));
+            trail.append((100, 100), ms(100));
+            trail.append((200, 0), ms(200));
+            let parts = trail.parts.clone();
+            assert!(!trail.append((200, 0), ms(1199)));
+            assert_eq!(trail.parts, parts);
+            if expire_first {
+                assert!(trail.expire(ms(1200)));
+                assert!(trail.is_empty());
+            }
+            assert!(!trail.append((200, 0), ms(1200)));
+            trail.append((400, 0), ms(1200));
+            assert_eq!(trail.parts.back().unwrap().2.paths[0], [(400, 0)]);
+            trail.expire(ms(1200));
+            assert_eq!(paths(&trail), [vec![(400, 0)]]);
+            trail.append((500, 100), ms(1201));
+            trail.append((600, 0), ms(1202));
+            assert!(
+                trail
+                    .annotations()
+                    .flat_map(|part| &part.paths[0])
+                    .all(|point| point.0 >= 400)
+            );
+            assert_eq!(
+                trail.parts.back().unwrap().2.paths[0].last(),
+                Some(&(600, 0))
+            );
+        }
+    }
+
+    #[test]
+    fn bezier_temporary_independent_gestures_and_monotonic_births() {
+        let mut trail = Trail::default();
+        for (start, now) in [
+            ((0, 0), ms(100)),
+            ((100, 100), ms(90)),
+            ((200, 200), ms(105)),
+        ] {
+            trail.begin(start, Style::default(), now);
+            trail.append((start.0 + 100, start.1 + 100), now);
+            trail.append((start.0 + 200, start.1), now);
+        }
+        let parts = trail.parts.iter().collect::<Vec<_>>();
+        assert!(parts.windows(2).all(|pair| pair[0].0 <= pair[1].0));
+        assert_eq!(parts.len(), 9);
+        for (index, start) in [(0, 0), (100, 100), (200, 200)].into_iter().enumerate() {
+            let group = &parts[index * 3..index * 3 + 3];
+            assert_eq!(group[0].2.paths[0], [start]);
+            assert_eq!(group[1].2.paths[0].first(), Some(&start));
+            assert!(group.iter().all(|part| part.1 == index as u64 + 1));
+        }
+        assert!(trail.clear());
+        assert!(!trail.is_active());
+        assert!(!trail.append((999, 999), ms(200)));
+    }
+
+    #[test]
+    fn bezier_temporary_small_signed_reversals_preserve_press_and_turn() {
+        for (start, turn) in [((-1, -1), (0, 0)), ((1, 1), (0, 0))] {
+            let mut trail = Trail::default();
+            trail.begin(start, Style::default(), ms(0));
+            trail.append(turn, ms(1));
+            trail.append(start, ms(2));
+            assert_eq!(trail.parts[0].2.paths[0], [start]);
+            assert!(trail.parts[1].2.paths[0].len() > 1);
+            assert_eq!(trail.parts.back().unwrap().2.paths[0].last(), Some(&start));
+            let preview = paths(&trail);
+            trail.finish();
+            assert_eq!(paths(&trail), preview);
+        }
+    }
+
+    #[test]
     fn defaults_hover_duplicates_and_release() {
         let mut trail = Trail::default();
         assert!(trail.is_empty());
@@ -183,10 +365,10 @@ mod tests {
         assert!(!trail.expire(ms(999)));
         assert_eq!(trail.annotations().count(), 3);
         assert!(trail.expire(ms(1000)));
-        assert_eq!(paths(&trail), [vec![(0, 0), (1, 0)], vec![(1, 0), (2, 0)]]);
+        assert_eq!(paths(&trail), [vec![(0, 0), (2, 0)], vec![(2, 0)]]);
         assert!(!trail.expire(ms(1249)));
         assert!(trail.expire(ms(1250)));
-        assert_eq!(paths(&trail), [vec![(1, 0), (2, 0)]]);
+        assert_eq!(paths(&trail), [vec![(2, 0)]]);
         assert!(!trail.expire(ms(1499)));
         assert!(trail.expire(ms(1500)));
         assert!(trail.is_empty());
@@ -236,7 +418,11 @@ mod tests {
                 assert!(trail.append((20, 0), ms(gap + 1)));
                 assert_eq!(
                     trail.annotations().last().unwrap().paths,
-                    [vec![(10, 0), (20, 0)]]
+                    [if gap < 1000 {
+                        vec![(15, 0), (20, 0)]
+                    } else {
+                        vec![(10, 0), (20, 0)]
+                    }]
                 );
             }
         }

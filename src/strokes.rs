@@ -1,3 +1,5 @@
+use crate::bezier::{CurvePoint, append_quadratic, midpoint};
+
 pub type Point = (i32, i32);
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
@@ -42,6 +44,8 @@ pub struct Strokes {
     before: Option<Vec<Annotation>>,
     anchor: Point,
     last: Point,
+    pen_tail: usize,
+    pen_start: CurvePoint,
     // ponytail: full snapshots cost O(total scene points) memory per history action;
     // replace with insertion/removal deltas if long sessions exceed the PoC memory budget.
     undo: Vec<Vec<Annotation>>,
@@ -123,6 +127,8 @@ impl Strokes {
         self.before = Some(self.annotations.clone());
         self.anchor = point;
         self.last = point;
+        self.pen_tail = 0;
+        self.pen_start = midpoint(point, point);
         if self.tool == Tool::Eraser {
             self.erase(point, point);
         } else {
@@ -151,7 +157,22 @@ impl Strokes {
         // Non-eraser gestures always own the last annotation created by begin.
         let annotation = self.annotations.last_mut().unwrap();
         if self.tool == Tool::Pen {
-            annotation.paths[0].push(point);
+            let path = &mut annotation.paths[0];
+            // Keep a two-sample gesture as a straight line. Subsequent samples
+            // finalize only the previous tail, never re-tessellate older ink.
+            if self.pen_tail == 0 {
+                path.push(point);
+                self.pen_tail = 1;
+                return true;
+            }
+            path.truncate(self.pen_tail);
+            let end = midpoint(previous, point);
+            append_quadratic(path, self.pen_start, previous, end);
+            self.pen_start = end;
+            self.pen_tail = path.len();
+            if path.last() != Some(&point) {
+                path.push(point);
+            }
             return true;
         }
         let (start, end) = if self.tool == Tool::Arrow && self.arrow_tail_first {
@@ -578,10 +599,12 @@ mod tests {
         assert!(!strokes.cancel());
         assert!(!strokes.is_active());
         assert!(!strokes.append((5, 6)));
-        assert_eq!(
-            strokes.annotations()[0].paths,
-            [vec![(-12, 4), (3, 4), (-12, 4)]]
-        );
+        let path = &strokes.annotations()[0].paths[0];
+        assert_eq!(path.first(), Some(&(-12, 4)));
+        assert_eq!(path.last(), Some(&(-12, 4)));
+        assert!(path.iter().any(|point| point.0 > -12));
+        assert!(path.iter().all(|point| point.1 == 4));
+        assert!(path.windows(2).all(|pair| pair[0] != pair[1]));
         assert!(strokes.undo());
         assert!(strokes.annotations().is_empty());
         assert!(strokes.redo());
@@ -592,6 +615,94 @@ mod tests {
         assert_eq!(strokes.annotations().len(), 3);
         assert_eq!(strokes.annotations()[1].paths, [vec![(5, 6)]]);
         assert_eq!(strokes.annotations()[2].paths, [vec![(7, 8)]]);
+    }
+
+    #[test]
+    fn bezier_pen_live_tail_finish_and_frozen_prefix() {
+        let mut strokes = Strokes::default();
+        strokes.begin((0, 0));
+        strokes.append((100, 100));
+        assert_eq!(strokes.annotations()[0].paths[0], [(0, 0), (100, 100)]);
+        strokes.set_color(0xffabcdef);
+        strokes.set_thickness(31);
+        strokes.append((200, 0));
+        let path = &strokes.annotations()[0].paths[0];
+        assert_eq!(path.first(), Some(&(0, 0)));
+        assert_eq!(path.last(), Some(&(200, 0)));
+        assert!(!path.contains(&(100, 100)));
+        assert!(path.iter().any(|&(x, y)| x > y && y > 0 && x < 150));
+        let finalized = path[..strokes.pen_tail].to_vec();
+        strokes.append((250, 100));
+        assert!(strokes.annotations()[0].paths[0].starts_with(&finalized));
+        assert_eq!(strokes.annotations()[0].paths[0].last(), Some(&(250, 100)));
+        let preview = strokes.annotations().to_vec();
+        strokes.finish();
+        strokes.finish();
+        assert_eq!(strokes.annotations(), preview);
+        assert_eq!(strokes.annotations()[0].style, Style::default());
+        assert_eq!(strokes.undo.len(), 1);
+        assert!(strokes.undo());
+        assert!(strokes.annotations().is_empty());
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), preview);
+    }
+
+    #[test]
+    fn bezier_pen_independent_gestures_and_small_reversals() {
+        let mut strokes = Strokes::default();
+        for (start, turn) in [
+            ((0, 0), (1, -1)),
+            ((100, 100), (101, 99)),
+            ((-1, -1), (0, 0)),
+            ((1, 1), (0, 0)),
+            ((i32::MIN, i32::MAX), (i32::MIN + 1, i32::MAX - 1)),
+        ] {
+            strokes.begin(start);
+            assert!(!strokes.append(start));
+            strokes.append(turn);
+            strokes.append(start);
+            let path = &strokes.annotations().last().unwrap().paths[0];
+            assert_eq!(path.first(), Some(&start));
+            assert_eq!(path.last(), Some(&start));
+            assert!(path.len() > 1);
+            assert!(path.windows(2).all(|pair| pair[0] != pair[1]));
+            strokes.cancel();
+        }
+        assert_eq!(strokes.annotations().len(), 5);
+        assert_eq!(strokes.undo.len(), 5);
+    }
+
+    #[test]
+    fn bezier_eraser_hits_curve_not_raw_joint_and_restores_history() {
+        let mut strokes = Strokes::default();
+        draw(&mut strokes, Tool::Line, (-100, -100), (-50, -100));
+        strokes.select(Tool::Pen);
+        strokes.set_thickness(1);
+        strokes.set_color(0xff123456);
+        strokes.begin((0, 0));
+        strokes.append((100, 100));
+        strokes.append((200, 0));
+        strokes.finish();
+        let original = strokes.annotations().to_vec();
+        let target = original[1].paths[0]
+            .iter()
+            .copied()
+            .find(|&(x, y)| x > y + 10 && x < 125)
+            .unwrap();
+        assert!(point_distance_squared(target, (0, 0), (100, 100)) > 4.5_f64.powi(2));
+        assert!(point_distance_squared(target, (100, 100), (200, 0)) > 4.5_f64.powi(2));
+        strokes.select(Tool::Eraser);
+        assert!(!strokes.begin((100, 100)));
+        strokes.finish();
+        let history_len = strokes.undo.len();
+        assert!(strokes.begin(target));
+        strokes.finish();
+        assert_eq!(strokes.annotations(), &original[..1]);
+        assert_eq!(strokes.undo.len(), history_len + 1);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), original);
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), &original[..1]);
     }
 
     #[test]

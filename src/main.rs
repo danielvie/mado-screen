@@ -1,3 +1,4 @@
+mod bezier;
 mod controls;
 mod drawing;
 mod input;
