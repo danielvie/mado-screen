@@ -6,6 +6,8 @@ use windows::{
 pub struct Overlay {
     hwnd: HWND,
     instance: HINSTANCE,
+    x: i32,
+    y: i32,
     width: i32,
     height: i32,
 }
@@ -13,14 +15,13 @@ pub struct Overlay {
 impl Overlay {
     pub fn new() -> Result<Self> {
         unsafe {
-            let width = GetSystemMetrics(SM_CXSCREEN);
-            let height = GetSystemMetrics(SM_CYSCREEN);
-            if width <= 0 || height <= 0 {
-                return Err(Error::new(
-                    E_FAIL,
-                    "Primary display has no usable dimensions",
-                ));
-            }
+            // The virtual desktop origin can be negative; drawing stays canvas-local.
+            // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
+            let x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            let y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            let height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            validate_bounds(x, y, width, height)?;
             let instance = HINSTANCE(GetModuleHandleW(None)?.0);
             let class = WNDCLASSW {
                 lpfnWndProc: Some(window_proc),
@@ -36,6 +37,8 @@ impl Overlay {
             let mut overlay = Self {
                 hwnd: HWND::default(),
                 instance,
+                x,
+                y,
                 width,
                 height,
             };
@@ -49,8 +52,8 @@ impl Overlay {
                 class.lpszClassName,
                 w!("Mado Screen PoC 1"),
                 WS_POPUP, // Hidden until show(), after rendering and shortcut registration.
-                0,
-                0,
+                x,
+                y,
                 width,
                 height,
                 None,
@@ -70,13 +73,18 @@ impl Overlay {
         (self.width, self.height)
     }
 
+    pub fn origin(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
     pub fn show(&self) -> Result<()> {
+        let (x, y) = self.origin();
         unsafe {
             SetWindowPos(
                 self.hwnd,
                 Some(HWND_TOPMOST),
-                0,
-                0,
+                x,
+                y,
                 self.width,
                 self.height,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
@@ -107,6 +115,25 @@ impl Overlay {
             )
         }
     }
+}
+
+fn validate_bounds(x: i32, y: i32, width: i32, height: i32) -> Result<()> {
+    // Mouse messages use signed 16-bit client coordinates.
+    // https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
+    let dimensions = 1..=i16::MAX as i32;
+    if !dimensions.contains(&width) || !dimensions.contains(&height) {
+        return Err(Error::new(
+            E_FAIL,
+            "Virtual desktop dimensions must be 1..=32767 pixels per axis for signed client mouse coordinates",
+        ));
+    }
+    if x.checked_add(width).is_none() || y.checked_add(height).is_none() {
+        return Err(Error::new(
+            E_FAIL,
+            "Virtual desktop origin plus dimensions overflows screen coordinates",
+        ));
+    }
+    Ok(())
 }
 
 fn capture_style(current: isize, capture: bool) -> isize {
@@ -145,6 +172,46 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn virtual_bounds_accept_negative_left_above_and_positive_origins() {
+        for (x, y, width, height) in [
+            (-1920, 0, 3840, 1080),
+            (0, -1080, 1920, 2160),
+            (-1920, -1080, 3840, 2160),
+            (100, 200, 1920, 1080),
+            (0, 0, 1, 1),
+            (0, 0, 32767, 32767),
+            (i32::MIN, i32::MIN, 1, 1),
+            (i32::MAX - 1, i32::MAX - 1, 1, 1),
+        ] {
+            assert!(validate_bounds(x, y, width, height).is_ok());
+        }
+    }
+
+    #[test]
+    fn virtual_bounds_reject_unusable_and_oversized_dimensions() {
+        for invalid in [i32::MIN, -1, 0, 32768, i32::MAX] {
+            for (width, height) in [(invalid, 1080), (1920, invalid)] {
+                let error = validate_bounds(0, 0, width, height).unwrap_err();
+                assert!(error.message().contains("1..=32767"));
+                assert!(error.message().contains("signed client mouse coordinates"));
+            }
+        }
+    }
+
+    #[test]
+    fn virtual_bounds_reject_origin_plus_dimension_overflow() {
+        for (x, y, width, height) in [
+            (i32::MAX, 0, 1, 1),
+            (0, i32::MAX, 1, 1),
+            (i32::MAX - 32766, 0, 32767, 1),
+            (0, i32::MAX - 32766, 1, 32767),
+        ] {
+            let error = validate_bounds(x, y, width, height).unwrap_err();
+            assert!(error.message().contains("overflows screen coordinates"));
+        }
+    }
 
     #[test]
     fn capture_changes_only_transparency_and_is_idempotent() {
