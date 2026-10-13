@@ -1,4 +1,3 @@
-use std::io::Write;
 use windows::{
     Win32::{Foundation::*, System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*},
     core::{Error, Result, w},
@@ -133,19 +132,6 @@ impl Drop for Overlay {
 unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match message {
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
-        WM_LBUTTONDOWN | WM_LBUTTONUP | WM_MOUSEWHEEL => {
-            // Signed 16-bit coordinates; wheel uses screen, clicks use client coordinates.
-            let x = l.0 as i16;
-            let y = (l.0 >> 16) as i16;
-            let action = match message {
-                WM_LBUTTONDOWN => "left down, client",
-                WM_LBUTTONUP => "left up, client",
-                _ => "wheel, screen",
-            };
-            // Never panic across the Win32 callback if the console pipe closes.
-            let _ = writeln!(std::io::stdout(), "Mouse {action}: ({x}, {y})");
-            LRESULT(0)
-        }
         WM_CLOSE => {
             unsafe {
                 PostQuitMessage(0);
