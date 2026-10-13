@@ -41,7 +41,12 @@ impl Overlay {
                 height,
             };
             overlay.hwnd = CreateWindowExW(
-                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                // Set topmost before the first bitmap upload, not only when showing.
+                WS_EX_TOPMOST
+                    | WS_EX_LAYERED
+                    | WS_EX_TRANSPARENT
+                    | WS_EX_NOACTIVATE
+                    | WS_EX_TOOLWINDOW,
                 class.lpszClassName,
                 w!("Mado Screen PoC 1"),
                 WS_POPUP, // Hidden until show(), after rendering and shortcut registration.
@@ -158,8 +163,12 @@ mod tests {
     #[test]
     fn capture_changes_only_transparency_and_is_idempotent() {
         let transparent = WS_EX_TRANSPARENT.0 as isize;
-        let initial =
-            (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW).0 as isize;
+        let initial = (WS_EX_TOPMOST
+            | WS_EX_LAYERED
+            | WS_EX_TRANSPARENT
+            | WS_EX_NOACTIVATE
+            | WS_EX_TOOLWINDOW)
+            .0 as isize;
         for current in [0, initial, -1, isize::MIN, isize::MAX] {
             for capture in [false, true] {
                 let style = capture_style(current, capture);
