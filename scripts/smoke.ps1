@@ -12,6 +12,9 @@ using System.Runtime.InteropServices;
 public static class PocSmoke {
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+    // PowerShell converts $null to an empty string; pass the null class from C#.
+    public static IntPtr FindWindowByTitle(string title) { return FindWindow(null, title); }
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
@@ -163,14 +166,20 @@ try {
     Check (($style -band 0x080800a8) -eq 0x080800a8) ('Topmost layered click-through nonactivating tool window styles: 0x{0:x}' -f $style)
     Start-Sleep -Milliseconds 300
     $ink = [Drawing.Color]::FromArgb(255, 249, 115, 22).ToArgb()
+    if ($startup.Contains('stage 3')) {
+        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado status')
+        [uint32]$statusOwner = 0
+        [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
+        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible before canvas sampling'
+    }
     CheckEmptyCanvas 'Empty startup leaves sampled desktop pixels unchanged'
     Check ($startup.Contains('PoC 4:')) 'PoC 4 startup reported'
     ProbeToolKeys $true
     if ($startup.Contains('stage 3')) {
-        $statusWindow = [PocSmoke]::FindWindow($null, 'Mado status')
+        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado status')
         [uint32]$statusOwner = 0
         [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
-        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id) 'Owned status indicator is visible'
+        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible'
         $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
         Check (($statusStyle -band 0x080800a8) -eq 0x080800a8) 'Status indicator is topmost layered click-through and nonactivating'
         $statusBounds = [PocSmoke+Rect]::new()
