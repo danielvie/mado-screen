@@ -124,26 +124,34 @@ fn paint_group(
     let radius = f64::from(style.thickness.clamp(1, 31) | 1) / 2.0;
     let reach = radius + OFFSETS[3];
     let height = pixels.len() / width;
-    let (mut top, mut bottom) = (height, 0);
-    for segment in segments {
+    let mut rows = vec![Vec::new(); height];
+    for (index, segment) in segments.iter().enumerate() {
         let (x, y) = segment.start;
         let (end_x, end_y) = (x + segment.delta.0, y + segment.delta.1);
         if x.max(end_x) + reach < 0.0 || x.min(end_x) - reach > (width - 1) as f64 {
             continue;
         }
-        top = top.min((y.min(end_y) - reach).ceil().clamp(0.0, height as f64) as usize);
-        bottom = bottom.max(
-            (y.max(end_y) + reach + 1.0)
-                .floor()
-                .clamp(0.0, height as f64) as usize,
-        );
+        let top = (y.min(end_y) - reach).ceil().clamp(0.0, height as f64) as usize;
+        let bottom = (y.max(end_y) + reach + 1.0)
+            .floor()
+            .clamp(0.0, height as f64) as usize;
+        for (y, row) in rows.iter_mut().enumerate().take(bottom).skip(top) {
+            let range = segment.x_range(y as f64, reach, width);
+            if !range.is_empty() {
+                row.push((index, range));
+            }
+        }
     }
-    // ponytail: O(viewport-clipped row span * group segments), plus covered samples;
-    // bin segments by row if long gestures make this scan the replay bottleneck.
-    for y in top..bottom {
-        samples.fill(0);
-        for segment in segments {
-            for x in segment.x_range(y as f64, reach, width) {
+    // Bin by visible row and resolve only the touched span, not the full desktop width.
+    // ponytail: widely separated segments still resolve their shared span;
+    // split spans into tiles if measured sparse-scene cost justifies it.
+    for (y, row) in rows.iter().enumerate().filter(|(_, row)| !row.is_empty()) {
+        let left = row.iter().map(|(_, range)| range.start).min().unwrap();
+        let right = row.iter().map(|(_, range)| range.end).max().unwrap();
+        samples[left * 16..right * 16].fill(0);
+        for (index, range) in row {
+            let segment = &segments[*index];
+            for x in range.clone() {
                 for (sy, oy) in OFFSETS.iter().enumerate() {
                     for (sx, ox) in OFFSETS.iter().enumerate() {
                         let sample = &mut samples[x * 16 + sy * 4 + sx];
@@ -158,9 +166,9 @@ fn paint_group(
                 }
             }
         }
-        for (pixel, coverage) in pixels[y * width..(y + 1) * width]
+        for (pixel, coverage) in pixels[y * width + left..y * width + right]
             .iter_mut()
-            .zip(samples.as_chunks::<16>().0)
+            .zip(samples[left * 16..right * 16].as_chunks::<16>().0)
         {
             let alpha = (coverage.iter().map(|&v| u32::from(v)).sum::<u32>() + 8) / 16;
             if alpha != 0 {
