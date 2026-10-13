@@ -2,9 +2,9 @@
 
 ## PoC 3: tool selection and shape previews
 
-- [ ] P3-state: pen/line/rectangle gesture geometry in strokes.rs with focused regression tests. Independent worker.
-- [ ] P3-controls: drawing-only P/L/R registration guard and IDs/actions in controls.rs with focused tests. Independent worker.
-- [ ] P3-compose: main/input mode, tool selection, commit/cancel routing; README and smoke coverage. Supervisor in persistent integration worktree.
+- [x] P3-state: pen/line/rectangle gesture geometry in strokes.rs. Worker 21fbbe1, 15 focused tests passed; integrated unchanged via serial rebase/fast-forward.
+- [x] P3-controls: drawing-only P/L/R registration guard and IDs/actions. Worker 45f1e05, 3 focused tests and scoped Clippy passed; rebased to 19d2ef6 and integrated after state. Full old-main test lint was correctly reported blocked before composition.
+- [x] P3-compose: main/input mode, tool selection, commit/cancel routing, recoverable key conflicts; README and smoke coverage. Supervisor in the same persistent integration worktree.
 - [ ] P3-validation: after all deliveries, build/test/check and applicable desktop smoke; worker fix loop if needed.
 - [ ] P3-promotion: record verified HEAD and fast-forward main only after gates pass.
 
@@ -19,7 +19,7 @@
 
 ### PoC 3 results
 
-Pending. New strategy: main remains at fcbe14a during assembly; one integration worktree, serial rebases, no checks per delivery, full validation at the end.
+Assembly complete; combined validation pending. Main remains at fcbe14a. Exactly two independent worker tasks were used; the supervisor composed and integrated in one persistent worktree. State arrived first, then controls. Original/rebased deliveries: 21fbbe1 -> 21fbbe1; 45f1e05 -> 19d2ef6. No conflicts and no per-delivery build/test/lint commands. Worker checks remained isolated; final validation follows all assembled code.
 
 ## PoC 2: freehand drawing
 

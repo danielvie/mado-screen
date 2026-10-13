@@ -76,11 +76,15 @@ impl DragCapture {
         }
     }
 
+    pub fn has_capture(&self) -> bool {
+        unsafe { GetCapture() == self.hwnd }
+    }
+
     pub fn lost_or_released(&self) -> bool {
         unsafe {
             // Async state uses physical buttons, unlike logical primary-button messages.
             let key = primary_button(GetSystemMetrics(SM_SWAPBUTTON));
-            GetCapture() != self.hwnd || GetAsyncKeyState(key.0 as i32) >= 0
+            !self.has_capture() || GetAsyncKeyState(key.0 as i32) >= 0
         }
     }
 }

@@ -1,6 +1,6 @@
-# Mado Screen PoC 2
+# Mado Screen PoC 3
 
-Small native Win32 overlay in Rust. Startup shows an empty, click-through canvas on the primary display. Drawing uses one fixed orange 5-pixel freehand pen. There is no toolbar, undo, shape tool, persistence or GUI framework.
+Small native Win32 overlay in Rust. Startup shows an empty, click-through canvas on the primary display. Choose a fixed orange 5-pixel pen, straight line or outline rectangle. There is no toolbar, undo, fill, snapping, persistence or GUI framework.
 
 ## Requirements and commands
 
@@ -21,13 +21,17 @@ Windows 10 version 1703 or newer, or Windows 11, for Per-Monitor V2 DPI awarenes
 
 The overlay starts click-through and does not activate itself. Shortcuts are global and registered before the window is shown. A shortcut conflict aborts startup and releases any shortcuts already registered.
 
-- `Ctrl+Alt+D` toggles click-through and drawing. In drawing mode, drag the logical primary mouse button to draw, or click for a dot. Switching mode ends a partial stroke and preserves its visible points.
+- `Ctrl+Alt+D` toggles click-through and drawing. Drag the logical primary mouse button to draw. Switching mode preserves pen ink and completed annotations, but cancels an unfinished line/rectangle preview.
+- In drawing mode only, unmodified `P` selects pen, `L` selects straight line and `R` selects outline rectangle. Lines and rectangles preview during dragging and commit on release. Rectangles work in every drag direction; zero-size gestures may draw a dot.
+- Changing tools cancels an unfinished shape and ends the drag. Selecting the current tool does not interrupt it. The selected tool survives clear and mode changes.
 - `Ctrl+Alt+C` ends the current drag and clears all strokes without changing mode. Holding the button after clear does not resume drawing until a fresh press.
 - `Ctrl+Alt+Q` quits and releases drag capture, its timer, the window, bitmap, device context and shortcuts.
 
+P/L/R are temporary global shortcuts registered only in drawing mode; they select tools instead of typing into the focused application. Other keys still reach that application, without moving keyboard focus. Click-through and exit release P/L/R for normal typing. If one is reserved by another application, drawing-mode entry reports the conflict and stays click-through with existing ink intact. Partial registrations are rolled back; permanent toggle/clear/quit remain available.
+
 Fully transparent layered-window pixels pass mouse input through, so drawing mode uses black background alpha 1/255. This near-transparent background can slightly darken the desktop. Toggle back to click-through to interact with applications beneath the overlay.
 
-Button-up appends its final point and ends the stroke. Cancellation or capture loss ends it without discarding visible points. A move without the primary button also ends the drag. A 32ms watchdog runs only during an active drag, checking capture ownership and physical primary-button state, including swapped buttons. This covers capture-loss messages delivered synchronously to the window callback and outside-display releases that a nonactivating background window may not receive. Unavailable input state conservatively ends the stroke; stale timer messages do nothing. The interval is not a guaranteed release latency because a busy message loop can delay timers. Outside-release behavior still needs a physical desktop check.
+Button-up applies its final point and commits the gesture. Cancellation or capture loss removes an unfinished shape but preserves pen ink. A move without the primary button commits the last preview. The outside-release watchdog also commits that preview when capture is still owned; lost ownership cancels it. A 32ms watchdog runs only during an active drag, checking capture ownership and physical primary-button state, including swapped buttons. This covers capture-loss messages delivered synchronously to the window callback and outside-display releases that a nonactivating background window may not receive. Unavailable input state conservatively ends the stroke; stale timer messages do nothing. The interval is not a guaranteed release latency because a busy message loop can delay timers. Outside-release behavior still needs a physical desktop check.
 
 ## Scope and validation
 
@@ -35,8 +39,8 @@ Only the primary display is covered. Restart after display-layout changes. Multi
 
 Rendering occurs at startup, mode changes, clear and changed stroke points. Hover and duplicate points do not redraw. The message loop blocks while idle, with no permanent polling timer. Each changed event fills the full-screen CPU bitmap, replays all paths in O(total stroke points), then uploads the whole bitmap. Long drawings and high resolutions can cause lag. Measure on the user's display before choosing another renderer; unit tests and CPU timings do not establish hardware input latency.
 
-Unit tests do not launch the overlay. The optional desktop smoke check needs 64-bit Windows PowerShell and an unlocked, visually stable desktop with no existing PoC instance. It launches a copied executable, compares empty-startup desktop samples, measures idle CPU, queues clear/quit actions, and checks shortcut-conflict cleanup. Add `-PostedStroke` when invoking `scripts/smoke.ps1` to briefly enter drawing mode and queue app-local down/move/up messages, verify orange pixels, return to click-through, and clear. Drawing-mode waits are bounded and failure cleanup terminates the copied process. No real mouse or keyboard input is injected and the cursor is not moved. Logs and results are saved under `%TEMP%`.
+Unit tests do not launch the overlay. The optional desktop smoke check needs 64-bit Windows PowerShell and an unlocked, visually stable desktop with no existing PoC instance. It launches a copied executable, compares empty-startup desktop samples, measures idle CPU, queues clear/quit actions, and checks shortcut-conflict cleanup. Add `-PostedStroke` when invoking `scripts/smoke.ps1` to briefly enter drawing mode and queue app-local pen/line/rectangle gestures, tool/mode cancellation, and a recoverable bare-key registration conflict. This also checks P/L/R registration scope and preservation of committed annotations before clearing. Drawing-mode waits are bounded and failure cleanup terminates the copied process. No real mouse or keyboard input is injected and the cursor is not moved. Logs and results are saved under `%TEMP%`.
 
-Build, formatting, Clippy and 26 tests passed. The desktop smoke check with `-PostedStroke` passed 22 checks on a 3440x1440 display, including stroke rendering, persistence after mode change and clearing. Initial process CPU time was unchanged over a 30-second idle sample.
+PoC 3 validation results are recorded in `tasks/todo.md`. Workers ran focused tests; combined build/test/formatting/Clippy and applicable smoke checks run only after all deliveries arrive, using the persistent integration strategy in `docs/workflow-strategy.md`.
 
-Queued messages prove application routing, not physical hardware, global shortcut routing, focus preservation or outside-release behavior. PoC 2 hardware latency and focus checks have not passed acceptance here. Manual acceptance remains: draw over Notepad, switch and type/click normally, resume drawing; release outside the primary display; clear/toggle/quit while dragging; observe lag at the user's resolution. Module responsibilities and remaining work are in `tasks/plan.md` and `tasks/todo.md`.
+Queued messages prove application routing and registration scope, not physical hardware, actual character typing, global shortcut delivery, focus preservation or outside-release behavior. Hardware latency and focus checks need manual acceptance. Manual acceptance remains: draw over Notepad, switch and type/click normally, resume drawing; release outside the primary display; clear/toggle/quit while dragging; observe lag at the user's resolution. Module responsibilities and remaining work are in `tasks/plan.md` and `tasks/todo.md`.

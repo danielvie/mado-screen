@@ -8,7 +8,7 @@ mod surface;
 use controls::{Action, Hotkeys};
 use input::{DragCapture, Event};
 use overlay::Overlay;
-use strokes::Strokes;
+use strokes::{Strokes, Tool};
 use surface::Surface;
 use windows::{
     Win32::UI::{HiDpi::*, WindowsAndMessaging::*},
@@ -28,12 +28,14 @@ fn main() -> Result<()> {
     let mut drawing = false;
     let mut strokes = Strokes::default();
     // Declared after the window so capture/timer cleanup precedes window destruction.
+    let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     surface.present(overlay.hwnd(), drawing, strokes.paths())?;
     overlay.show()?;
 
-    println!("PoC 2: empty canvas, fixed orange 5-pixel freehand pen.");
+    println!("PoC 3: empty canvas, fixed orange 5-pixel pen, line and rectangle.");
     println!("Ctrl+Alt+D: toggle drawing; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
+    println!("Drawing mode only: P pen, L line, R rectangle. Drag to preview; release to commit.");
     println!("Primary display: {width} x {height} physical pixels.");
     println!("Mode: click-through.");
 
@@ -49,7 +51,20 @@ fn main() -> Result<()> {
         if message.message == WM_HOTKEY {
             match controls::action(message.wParam.0) {
                 Some(Action::Toggle) => {
-                    strokes.finish();
+                    if !drawing {
+                        match Hotkeys::drawing_tools() {
+                            Ok(keys) => tool_keys = Some(keys),
+                            Err(error) => {
+                                eprintln!(
+                                    "Cannot enter drawing mode: {error}. Ink preserved; still click-through."
+                                );
+                                continue;
+                            }
+                        }
+                    } else {
+                        drop(tool_keys.take());
+                    }
+                    strokes.cancel();
                     drop(drag.take());
                     drawing = !drawing;
                     overlay.set_capture(drawing)?;
@@ -62,6 +77,28 @@ fn main() -> Result<()> {
                             "click-through"
                         }
                     );
+                    if drawing {
+                        println!(
+                            "Tool: {:?}. P/L/R select tools instead of typing; other keys retain focus.",
+                            strokes.tool()
+                        );
+                    }
+                }
+                Some(action @ (Action::Pen | Action::Line | Action::Rectangle)) if drawing => {
+                    let tool = match action {
+                        Action::Pen => Tool::Pen,
+                        Action::Line => Tool::Line,
+                        Action::Rectangle => Tool::Rectangle,
+                        _ => unreachable!(),
+                    };
+                    if strokes.tool() != tool {
+                        let changed = strokes.select(tool);
+                        drop(drag.take());
+                        if changed {
+                            surface.present(overlay.hwnd(), drawing, strokes.paths())?;
+                        }
+                        println!("Tool: {tool:?}.");
+                    }
                 }
                 Some(Action::Clear) => {
                     strokes.finish();
@@ -71,7 +108,8 @@ fn main() -> Result<()> {
                     println!("Strokes cleared.");
                 }
                 Some(Action::Quit) => break,
-                None => {}
+                // A selection queued before disabling drawing must not change the tool.
+                Some(Action::Pen | Action::Line | Action::Rectangle) | None => {}
             }
         } else if let Some(event) = input::event(&message, overlay.hwnd()) {
             if handle_input(event, drawing, &mut strokes, &mut drag, overlay.hwnd())? {
@@ -114,17 +152,26 @@ fn handle_input(
         }
         Event::Move {
             left_down: false, ..
-        }
-        | Event::Cancel => {
+        } => {
             strokes.finish();
             drop(drag.take());
             Ok(false)
+        }
+        Event::Cancel => {
+            let changed = strokes.cancel();
+            drop(drag.take());
+            Ok(changed)
         }
         Event::CheckRelease if drag.as_ref().is_some_and(DragCapture::lost_or_released) => {
-            // Capture loss may be synchronous to WindowProc, not queued for this loop.
-            strokes.finish();
+            // Release outside the window commits the last preview; lost capture cancels it.
+            let changed = if drag.as_ref().is_some_and(DragCapture::has_capture) {
+                strokes.finish();
+                false
+            } else {
+                strokes.cancel()
+            };
             drop(drag.take());
-            Ok(false)
+            Ok(changed)
         }
         _ => Ok(false),
     }
@@ -169,6 +216,80 @@ mod tests {
     }
 
     #[test]
+    fn shape_release_commits_but_cancel_removes_the_preview() {
+        for tool in [Tool::Line, Tool::Rectangle] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.begin((10, 10));
+            strokes.append((20, 20));
+            assert!(
+                handle_input(
+                    Event::Up((30, 30)),
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
+            assert!(!strokes.is_active());
+            let committed = strokes.paths().to_vec();
+            strokes.begin((40, 40));
+            strokes.append((50, 50));
+            assert!(
+                handle_input(
+                    Event::Cancel,
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
+            assert_eq!(strokes.paths(), committed);
+            assert!(
+                !handle_input(
+                    Event::Up((60, 60)),
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn shape_preview_replacement_and_cancellation_leave_no_pixels() {
+        for tool in [Tool::Line, Tool::Rectangle] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.begin((20, 20));
+            strokes.append((50, 50));
+            let mut pixels = vec![0; 100 * 100];
+            let old_pixel = if tool == Tool::Line {
+                35 * 100 + 35
+            } else {
+                35 * 100 + 50
+            };
+            drawing::render(&mut pixels, 100, true, strokes.paths());
+            assert_eq!(pixels[old_pixel], 0xfff97316);
+            let end = if tool == Tool::Line {
+                (70, 20)
+            } else {
+                (70, 70)
+            };
+            strokes.append(end);
+            drawing::render(&mut pixels, 100, true, strokes.paths());
+            assert_eq!(pixels[old_pixel], 0x01000000);
+            assert!(strokes.cancel());
+            drawing::render(&mut pixels, 100, true, strokes.paths());
+            assert!(pixels.iter().all(|&pixel| pixel == 0x01000000));
+        }
+    }
+
+    #[test]
     fn drag_drops_before_window_and_surface_on_quit_and_error() {
         struct Resource<'a>(&'static str, &'a RefCell<Vec<&'static str>>);
         impl Drop for Resource<'_> {
@@ -183,18 +304,22 @@ mod tests {
                 let surface;
                 let overlay = Resource("overlay", &drops);
                 surface = Resource("surface", &drops);
+                let tool_keys = Resource("tool keys", &drops);
                 let mut drag = Some(Resource("drag", &drops));
                 // Replacing a drag must release the old guard first.
                 drop(drag.take());
                 drag = Some(Resource("drag", &drops));
-                let _ = (&overlay, &surface, &drag);
+                let _ = (&overlay, &surface, &tool_keys, &drag);
                 if fail {
                     return Err(());
                 }
                 Ok(())
             })();
             assert_eq!(result.is_err(), fail);
-            assert_eq!(*drops.borrow(), ["drag", "drag", "overlay", "surface"]);
+            assert_eq!(
+                *drops.borrow(),
+                ["drag", "drag", "tool keys", "overlay", "surface"]
+            );
         }
     }
 }

@@ -18,7 +18,7 @@ public static class PocSmoke {
 }
 '@
 $oldDpi = [PocSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-$directory = Join-Path $env:TEMP ("mado-poc2-" + [Guid]::NewGuid())
+$directory = Join-Path $env:TEMP ("mado-poc3-" + [Guid]::NewGuid())
 New-Item -ItemType Directory $directory | Out-Null
 $copy = Join-Path $directory 'overlay-smoke.exe'
 Copy-Item (Resolve-Path $Exe).Path $copy
@@ -38,6 +38,16 @@ function Pixel([int]$X, [int]$Y) {
         $graphics.CopyFromScreen($X, $Y, 0, 0, [Drawing.Size]::new(1, 1))
         return $bitmap.GetPixel(0, 0).ToArgb()
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
+function ProbeToolKeys([bool]$ShouldBeAvailable) {
+    foreach ($key in @(0x50, 0x4c, 0x52)) {
+        $available = [PocSmoke]::RegisterHotKey([IntPtr]::Zero, 201, 0x4000, $key)
+        if ($available) { [void][PocSmoke]::UnregisterHotKey([IntPtr]::Zero, 201) }
+        Check ($available -eq $ShouldBeAvailable) "Tool key $key availability=$ShouldBeAvailable"
+    }
+}
+function MouseMessage([uint32]$Kind, [int]$X, [int]$Y, [uint64]$Flags) {
+    [PocSmoke]::PostMessage($window, $Kind, [UIntPtr]::new($Flags), [IntPtr]::new(($Y -shl 16) -bor ($X -band 0xffff)))
 }
 function StartOverlay([string]$Prefix) {
     $child = Start-Process $copy -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory "$Prefix-out.log") -RedirectStandardError (Join-Path $directory "$Prefix-error.log")
@@ -72,7 +82,8 @@ try {
     Start-Sleep -Milliseconds 300
     $ink = [Drawing.Color]::FromArgb(255, 249, 115, 22).ToArgb()
     Check ((Pixel $lx $ly) -eq $beforeLine -and (Pixel $rx $ry) -eq $beforeRectangle) 'Empty startup leaves sampled desktop pixels unchanged'
-    Check ($startup.Contains('PoC 2: empty canvas')) 'Empty-canvas startup reported'
+    Check ($startup.Contains('PoC 3: empty canvas')) 'Empty-canvas startup reported'
+    ProbeToolKeys $true
     $process.Refresh()
     $cpuStart = $process.TotalProcessorTime.TotalSeconds
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -95,6 +106,7 @@ try {
                 $drawingReady = ($style -band 0x20) -eq 0 -and $log.Contains('Mode: drawing;')
             } while (-not $drawingReady -and -not $process.HasExited -and $modeWait.Elapsed.TotalSeconds -lt 2)
             Check $drawingReady 'Drawing mode entered within bounded wait'
+            ProbeToolKeys $false
             # Queue the complete stroke before checking results so the physical-state watchdog
             # does not end a synthetic drag between individual messages.
             $down = [IntPtr]::new(($ly -shl 16) -bor $lx)
@@ -105,7 +117,31 @@ try {
             $queuedUp = [PocSmoke]::PostMessage($window, 0x0202, [UIntPtr]::Zero, $up)
             Check ($queuedDown -and $queuedMove -and $queuedUp) 'App-local stroke messages queued'
             Start-Sleep -Milliseconds 300
-            Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 10) $ly) -eq $ink -and (Pixel ($lx + 20) $ly) -eq $ink) 'Queued stroke paints start, move and final-up points'
+            Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 10) $ly) -eq $ink -and (Pixel ($lx + 20) $ly) -eq $ink) 'Queued pen paints start, move and final-up points'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(5), [IntPtr]::Zero)) 'Line selection queued'
+            Check ((MouseMessage 0x0201 ($lx + 60) $ly 1) -and (MouseMessage 0x0200 ($lx + 80) ($ly + 40) 1) -and (MouseMessage 0x0200 ($lx + 140) $ly 1) -and (MouseMessage 0x0202 ($lx + 140) $ly 0)) 'Line preview and release queued'
+            Start-Sleep -Milliseconds 300
+            Check ((Pixel ($lx + 100) $ly) -eq $ink -and (Pixel ($lx + 140) $ly) -eq $ink) 'Straight line committed'
+            Check ((Pixel ($lx + 70) ($ly + 20)) -ne $ink) 'Replaced line preview leaves no trail'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(6), [IntPtr]::Zero)) 'Rectangle selection queued'
+            Check ((MouseMessage 0x0201 ($lx + 240) ($ly + 120) 1) -and (MouseMessage 0x0200 ($lx + 160) ($ly + 60) 1) -and (MouseMessage 0x0202 ($lx + 160) ($ly + 60) 0)) 'Reverse-direction rectangle queued'
+            Start-Sleep -Milliseconds 300
+            Check ((Pixel ($lx + 160) ($ly + 60)) -eq $ink -and (Pixel ($lx + 240) ($ly + 60)) -eq $ink -and (Pixel ($lx + 160) ($ly + 120)) -eq $ink -and (Pixel ($lx + 240) ($ly + 120)) -eq $ink) 'Rectangle has all four corners'
+            Check ((Pixel ($lx + 200) ($ly + 90)) -ne $ink) 'Rectangle interior remains unfilled'
+            # Queue cancellation in the same burst, before the physical-release watchdog.
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(5), [IntPtr]::Zero)) 'Select line before cancellation check'
+            Check ((MouseMessage 0x0201 ($lx + 300) $ly 1) -and (MouseMessage 0x0200 ($lx + 360) $ly 1)) 'Unfinished line queued'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(6), [IntPtr]::Zero)) 'Tool change queued to cancel preview'
+            Check (MouseMessage 0x0202 ($lx + 360) $ly 0) 'Stale release queued'
+            Start-Sleep -Milliseconds 300
+            Check ((Pixel ($lx + 330) $ly) -ne $ink) 'Tool change discards unfinished line'
+            Check ((MouseMessage 0x0201 ($lx + 400) $ly 1) -and (MouseMessage 0x0200 ($lx + 460) ($ly + 40) 1)) 'Unfinished rectangle queued'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(1), [IntPtr]::Zero)) 'Mode change queued to cancel rectangle'
+            Check (MouseMessage 0x0202 ($lx + 460) ($ly + 40) 0) 'Stale shape release queued'
+            Start-Sleep -Milliseconds 300
+            $drawingRequested = $false
+            Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0) 'Mode change restores click-through'
+            Check ((Pixel ($lx + 430) $ly) -ne $ink) 'Mode change discards unfinished rectangle'
         } finally {
             if ($drawingRequested -and -not $process.HasExited) {
                 $returnQueued = [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(1), [IntPtr]::Zero)
@@ -123,7 +159,21 @@ try {
                 }
             }
         }
-        Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 20) $ly) -eq $ink) 'Returning to click-through preserves the stroke'
+        Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 20) $ly) -eq $ink -and (Pixel ($lx + 100) $ly) -eq $ink -and (Pixel ($lx + 240) ($ly + 120)) -eq $ink) 'Click-through preserves committed pen, line and rectangle'
+        ProbeToolKeys $true
+        # Reserve R only for the bounded registration-conflict attempt.
+        $toolReserved = [PocSmoke]::RegisterHotKey([IntPtr]::Zero, 202, 0x4000, 0x52)
+        Check $toolReserved 'Test reserves bare R'
+        try {
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(1), [IntPtr]::Zero)) 'Conflicting drawing-mode entry queued'
+            Start-Sleep -Milliseconds 300
+            $failure = [string](Get-Content (Join-Path $directory 'run-error.log') -Raw)
+            Check (-not $process.HasExited -and $failure.Contains('Cannot enter drawing mode:') -and $failure.Contains('Could not register R')) 'Tool conflict reports R without exiting'
+            Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0 -and (Pixel $lx $ly) -eq $ink) 'Tool conflict preserves ink and click-through'
+        } finally {
+            if ($toolReserved) { [void][PocSmoke]::UnregisterHotKey([IntPtr]::Zero, 202) }
+        }
+        ProbeToolKeys $true
     }
     # Queue clear/quit directly. This intentionally does NOT prove real keyboard routing.
     Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(2), [IntPtr]::Zero)) 'Clear action queued'
