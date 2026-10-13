@@ -24,4 +24,27 @@ Main's local README.md and Taskfile.yml edits and untracked Excalidraw are prese
 
 ## Results
 
-Pending implementation and focused verification.
+UI worker delivery dd2fcc4 was rebased serially to d11ab60 onto parent main/docs delivery 1d19b4e. Actual code, all new alpha/measurement paths and exported previews were reviewed. Main handles OpenPicker without mutating color; it shares existing picker gesture/shortcut settlement and ignores requests while the picker remains open. The drawing-only C shortcut retains its previous restriction.
+
+Panel rendering uses bounded 4x GDI supersampling, covered-sample premultiplied BGRA averaging and UpdateLayeredWindow. No global-alpha call or binary window region remains on the panel. The full picker is unchanged. Expanded width uses selected-font measurement; reviewed Pen preview is 224px and the longest tested Click-through/Arrow label 292px at100%, previously440px. Compact is still44 logical pixels. Alpha-zero corners pass through; partial alpha pixels remain occupied. Previews at100/150% over a dark background are retained under target/panel-polish-previews.
+
+Assembled integration passed:
+- cargo test ui::tests -- --test-threads=1:5 tests.
+- cargo test panel_picker_request:1 test, preserving brush color/history and temporary births while settling input.
+- cargo test recent_color_:2 directly affected regression tests.
+- cargo build --release.
+- cargo fmt --check.
+- cargo clippy --all-targets -- -D warnings.
+- git diff --check.
+
+UI checks cover the hidden ULW upload, transparent and partial-alpha corners, contiguous perimeter coverage, premultiplication, mixed icon-edge pixels, measured short/long labels at100/150%, all tool icons, immediate recents, matching-color OpenPicker, different-color Color, stale clicks and existing picker candidate/Cancel/Apply behavior.
+
+Worker reruns observed a differing global foreground HWND at the end of one hidden-panel check, with local focus/active/capture unchanged. The assertion was retained. The assembled run passed5/5 without a weakened assertion. This does not establish physical focus behavior under all concurrent desktop activity.
+
+No full suite, desktop smoke, visible app launch, real input injection or cursor movement ran. Physical appearance, hit routing and picker behavior remain user acceptance checks. Installed app and user-owned README.md/Taskfile.yml install edits and the untracked Excalidraw are unchanged.
+
+Verified official sources:
+- Layered pixel upload:https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow
+- Alpha hit-testing and SetLayeredWindowAttributes conflict:https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#layered-windows
+- Premultiplied alpha:https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-blendfunction
+- Selected-font text measurement:https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gettextextentpoint32w

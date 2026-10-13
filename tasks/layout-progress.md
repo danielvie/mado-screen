@@ -1,5 +1,7 @@
 # Compact panel and picker layout progress
 
+The later panel-polish follow-up supersedes the intermediate recent-color toggle, fixed width and binary panel region. Current rendering, interaction and validation are recorded in tasks/panel-polish.md. The original layout delivery below is historical.
+
 ## Scope and delivery
 
 Approved contract: tasks/layout-spec.md. User approved the supplied layouts, then specified tool-icon-only compact state, primary monitor top-right anchoring, expansion to the left and five distinct session-only recent colors.
