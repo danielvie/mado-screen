@@ -11,6 +11,18 @@ tasks:
     cmds:
       - cargo run
 
+  run-release:
+    desc: Run the optimized Windows overlay
+    cmds:
+      - cargo run --release
+
+  perf:
+    desc: Measure optimized offscreen input and rendering without opening an overlay
+    cmds:
+      - powershell.exe -NoProfile -Command 'New-Item -ItemType Directory -Force -Path target | Out-Null'
+      - rustc --edition 2024 -O -A dead_code scripts/perf.rs -o target/perf.exe
+      - powershell.exe -NoProfile -Command '& ./target/perf.exe'
+
   build:
     desc: Build the Windows overlay prototype
     cmds:

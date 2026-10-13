@@ -1,5 +1,9 @@
 # Features and remaining work
 
+## Bézier and performance follow-up
+
+Approved: trial streaming quadratic Bézier smoothing for both freehand pens and repeated release-mode rendering measurements. Keep shape tools, sizes and the one-second lifetime unchanged. Scope and evidence: tasks/bezier-performance.md. Offscreen CPU timings do not establish Windows upload cost or physical latency.
+
 ## PoC 7 scope
 
 Approved: rounded caps/joins and antialiased stroke edges, linear temporary fading over one second, roughly doubled open arrowhead reach and smoother ellipse subdivision. Existing tools, styles, history and multi-monitor behavior remain. No gradients, shadows, curve smoothing or new dependencies. Scope and results: tasks/poc7-spec.md and tasks/poc7-progress.md.

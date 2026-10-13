@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## PoC 7 follow-up: Bézier trial and performance
+
+The user reports release mode much better, approves a freehand Bézier trial and asks for performance measurements. Keep shape tools, arrow size, widths and one-second lifetime unchanged. Use streaming midpoint quadratics with a live tail, measure release rendering before/after, and retain only measured optimization wins. Worker owns bezier/strokes/trail; supervisor owns renderer and offscreen perf check in a persistent integration worktree. Scope, measurements and focused validation are in tasks/bezier-performance.md. No full suite or desktop smoke.
+
 ## PoC 7: rounded ink and fading
 
 Approved scope and contracts: tasks/poc7-spec.md. Renderer and shape geometry use separate sibling worker worktrees; the supervisor owns Trail/frame timing/Surface composition, documentation and serial integration. Deliver rounded rendering, one-second fading, larger open arrowheads and smoother ellipses without another backend or dependency. The user requests new-feature and affected regression tests only, plus a build and formatting/Clippy; no full suite or desktop smoke for this increment. Results and physical limits: tasks/poc7-progress.md.

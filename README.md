@@ -8,14 +8,16 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 
 | Command | Purpose |
 | --- | --- |
-| `task run` / `cargo run` | Start the overlay |
+| `task run` / `cargo run` | Start the unoptimized debug overlay |
+| `task run-release` / `cargo run --release` | Start the optimized overlay for normal use |
+| `task perf` | Measure optimized offscreen pen input and rendering |
 | `task build` / `cargo build` | Build |
 | `task test` / `cargo test` | Pure model/render/input/control and native resource checks |
 | `task check` | Formatting and Clippy |
 | `task smoke` | Copied-app desktop checks, including 30-second idle sample |
 | `task clean` / `cargo clean` | Remove build artifacts |
 
-For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe -PostedStroke`. The primary executable is `target\debug\mado-screen-poc.exe`.
+For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe -PostedStroke`. The debug executable is `target\debug\mado-screen-poc.exe`; the optimized executable is `target\release\mado-screen-poc.exe`.
 
 ## Controls
 
@@ -47,7 +49,7 @@ The modeless picker may intentionally take keyboard focus. While open, drawing-o
 
 Each temporary dot/input segment fades linearly over one second from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
 
-Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment has one age, so sparse movement can show larger steps along the fading tail. Parts of one gesture do not build up opacity at overlapping joins. Separate gestures layer normally. A timer redraws fading ink only while temporary pixels remain; it stops when empty. Permanent strokes stay opaque inside their antialiased edges. Round caps and joins preserve the pointer path without curve smoothing.
+Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment has one age, so sparse movement can show larger steps along the fading tail. Parts of one gesture do not build up opacity at overlapping joins. Separate gestures layer normally. A timer redraws fading ink only while temporary pixels remain; it stops when empty. Permanent strokes stay opaque inside their antialiased edges. Both pens use mild streaming quadratic Bézier smoothing. A live tail reaches the newest pointer point without a timed input buffer. Completed curve geometry is shared with eraser hit-testing; shape tools remain unchanged. Smoothing slightly changes freehand paths.
 
 ## Behavior and limits
 
@@ -60,6 +62,8 @@ One overlay and CPU bitmap span the virtual desktop, including gaps between moni
 The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot history and many stroke points can use substantial memory and slow drawing; extra screens and gaps increase bitmap cost. No idle redraw loop or GPU rewrite is introduced. Layouts larger than 32767 pixels on either axis are rejected to prevent signed mouse-coordinate wrapping, and surface allocation remains bounded. Physical mixed-DPI input and long-session responsiveness need user testing. Sharing/recording is deferred. Elevated applications and other topmost windows remain unverified. Exclusive fullscreen coverage is not guaranteed; secure desktop and lock screen are excluded.
 
 ## Verification
+
+The Bézier follow-up measures optimized offscreen rendering and model construction, not physical input latency or Windows bitmap upload. Reproduction and before/after results are in tasks/bezier-performance.md. Use release mode for visual and responsiveness checks.
 
 PoC 6 passed build, 89 tests, formatting/Clippy, smoke self-check and 232 posted desktop checks with zero skipped on three monitors. Results are in tasks/poc6-progress.md. Pure tests inject elapsed time for exact expiry and history checks; physical smoothness, timing and shortcut delivery require user observation. Timer dispatch may be late under load, and replaying a full virtual bitmap while ink expires can affect responsiveness.
 

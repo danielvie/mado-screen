@@ -1,5 +1,14 @@
 # Windows prototype tasks
 
+## Bézier and performance follow-up
+
+Scope and evidence: tasks/bezier-performance.md.
+
+- [x] Establish repeated release baseline and measure renderer experiments separately.
+- [x] Reject slower row bins; keep coverage-equivalent interior/exterior certainty checks.
+- [ ] Integrate streaming Bézier pens, run focused checks and measure the combined release workload.
+- [ ] User accepts curve shape and responsiveness in the optimized executable.
+
 ## PoC 7: rounded ink and fading
 
 Approved scope: tasks/poc7-spec.md. Delivery and checks: tasks/poc7-progress.md.
