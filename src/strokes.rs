@@ -232,7 +232,7 @@ impl Strokes {
         let mut changed = false;
         for index in (0..self.annotations.len()).rev() {
             let annotation = &self.annotations[index];
-            // 4px hit slop also catches painted square-brush corners, not filled interiors.
+            // 4px hit slop surrounds the painted stroke, not filled shape interiors.
             let radius = annotation.style.thickness as f64 / 2.0 + 4.0;
             let hit = annotation.paths.iter().any(|path| {
                 path.first().is_some_and(|&point| {
@@ -269,7 +269,7 @@ fn shape(tool: Tool, start: Point, end: Point, thickness: u32) -> Vec<Vec<Point>
             // Larger/thicker heads keep the V visible beyond the shaft's brush width.
             // ponytail: cap at 75% of the arrow length; extremely short thick gestures
             // can still look like a dot. A filled/tapered renderer is the upgrade path.
-            let head = (24.0 + 3.0 * f64::from(thickness.clamp(1, 31) | 1)).min(length * 0.75);
+            let head = (48.0 + 6.0 * f64::from(thickness.clamp(1, 31) | 1)).min(length * 0.75);
             let (ux, uy) = (dx / length, dy / length);
             let branch = |side: f64| {
                 (
@@ -294,10 +294,12 @@ fn shape(tool: Tool, start: Point, end: Point, thickness: u32) -> Vec<Vec<Point>
                 (bottom as f64 - top as f64) / 2.0,
             );
             let (cx, cy) = (left as f64 + rx, top as f64 + ry);
-            // ponytail: at most 128 segments bounds work but facets very large ellipses;
-            // use adaptive tessellation with a pixel-error budget if that becomes visible.
-            let steps = ((std::f64::consts::TAU * rx.max(ry) / 4.0).ceil() as usize)
-                .clamp(12, 128)
+            // Bound sagitta to 0.25px at the largest radius, before integer rounding.
+            // ponytail: 2048 segments cap work at extreme sizes, where error can exceed
+            // the budget; raise the ceiling or use adaptive tessellation if needed.
+            let max_angle = 2.0 * (1.0 - 0.25 / rx.max(ry)).acos();
+            let steps = ((std::f64::consts::TAU / max_angle).ceil() as usize)
+                .clamp(12, 2048)
                 .next_multiple_of(4);
             let mut path = Vec::with_capacity(steps + 1);
             for step in 0..steps {
@@ -675,8 +677,8 @@ mod tests {
             shape(Tool::Arrow, (0, 0), (60, 0), 5),
             [
                 vec![(0, 0), (60, 0)],
-                vec![(0, 0), (39, 20)],
-                vec![(0, 0), (39, -20)]
+                vec![(0, 0), (45, 23)],
+                vec![(0, 0), (45, -23)]
             ]
         );
         for (start, end) in [
@@ -762,8 +764,8 @@ mod tests {
             strokes.annotations()[1].paths,
             [
                 vec![(500, 200), (200, 200)],
-                vec![(500, 200), (461, 181)],
-                vec![(500, 200), (461, 220)],
+                vec![(500, 200), (422, 161)],
+                vec![(500, 200), (422, 239)],
             ]
         );
         assert_eq!(strokes.annotations()[1].style, head_first[0].style);
@@ -791,7 +793,7 @@ mod tests {
         for width in (1..=31).step_by(2) {
             let paths = shape(Tool::Arrow, (0, 0), (500, 0), width);
             let head = paths[1][1];
-            assert_eq!(head.0, 24 + 3 * width as i32);
+            assert_eq!(head.0, 48 + 6 * width as i32);
             assert!(head.0 > previous);
             assert!(head.1 * 2 > width as i32 * 3);
             assert_eq!(paths[2][1], (head.0, -head.1));
@@ -816,7 +818,7 @@ mod tests {
         strokes.begin((200, 200));
         strokes.set_thickness(31);
         assert!(strokes.append((500, 200)));
-        assert_eq!(strokes.annotations()[0].paths[1], [(200, 200), (239, 220)]);
+        assert_eq!(strokes.annotations()[0].paths[1], [(200, 200), (278, 239)]);
         assert_eq!(strokes.annotations()[0].style.thickness, 5);
         assert!(strokes.append((200, 500)));
         assert_eq!(strokes.annotations()[0].paths[0], [(200, 200), (200, 500)]);
@@ -825,7 +827,7 @@ mod tests {
         let completed = strokes.annotations().to_vec();
         strokes.begin((200, 200));
         strokes.append((500, 200));
-        assert_eq!(strokes.annotations()[1].paths[1], [(200, 200), (317, 259)]);
+        assert_eq!(strokes.annotations()[1].paths[1], [(200, 200), (425, 313)]);
         assert!(strokes.cancel());
         assert_eq!(strokes.annotations(), completed);
         assert!(strokes.undo());
@@ -852,7 +854,7 @@ mod tests {
             let paths = shape(Tool::Ellipse, start, end, 5);
             let path = &paths[0];
             assert_eq!(path.first(), path.last());
-            assert!((13..=129).contains(&path.len()));
+            assert!((13..=2049).contains(&path.len()));
             assert!(
                 path.iter()
                     .all(|&(x, y)| x >= start.0 && x <= end.0 && y >= start.1 && y <= end.1)
@@ -867,6 +869,192 @@ mod tests {
                 shape(Tool::Ellipse, (0, 0), end, 5),
                 [vec![(0, 0), end, (0, 0)]]
             );
+        }
+    }
+
+    #[test]
+    fn poc7_arrow_heads_use_larger_normalized_widths_and_keep_short_cap() {
+        assert_eq!(Style::default().thickness, 5);
+        for (width, reach) in [
+            (0, 54),
+            (4, 78),
+            (5, 78),
+            (30, 234),
+            (31, 234),
+            (u32::MAX, 234),
+        ] {
+            assert_eq!(
+                shape(Tool::Arrow, (0, 0), (1000, 0), width),
+                [
+                    vec![(0, 0), (1000, 0)],
+                    vec![(0, 0), (reach, reach / 2)],
+                    vec![(0, 0), (reach, -reach / 2)],
+                ]
+            );
+            assert_eq!(
+                shape(Tool::Arrow, (0, 0), (80, 0), width),
+                [
+                    vec![(0, 0), (80, 0)],
+                    vec![(0, 0), (reach.min(60), reach.min(60) / 2)],
+                    vec![(0, 0), (reach.min(60), -reach.min(60) / 2)],
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn poc7_arrow_wings_have_larger_dimensions_in_all_directions_and_tail_first() {
+        let anchor = (23, -41);
+        for (width, reach) in [(5, 78.0), (31, 234.0)] {
+            for tail_first in [false, true] {
+                for (dx, dy) in [
+                    (1, 0),
+                    (1, 1),
+                    (0, 1),
+                    (-1, 1),
+                    (-1, 0),
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                ] {
+                    let mut strokes = Strokes::default();
+                    strokes.set_thickness(width);
+                    if tail_first {
+                        strokes.toggle_arrow_direction();
+                    }
+                    let end = (anchor.0 + dx * 700, anchor.1 + dy * 700);
+                    draw(&mut strokes, Tool::Arrow, anchor, end);
+                    let (head, tail) = if tail_first {
+                        (end, anchor)
+                    } else {
+                        (anchor, end)
+                    };
+                    let paths = &strokes.annotations()[0].paths;
+                    assert_eq!(paths.len(), 3);
+                    assert_eq!(paths[0], [head, tail]);
+                    let (vx, vy) = ((tail.0 - head.0) as f64, (tail.1 - head.1) as f64);
+                    let length = vx.hypot(vy);
+                    for (wing, side) in paths[1..].iter().zip([1.0, -1.0]) {
+                        assert_eq!(wing.len(), 2);
+                        assert_eq!(wing[0], head);
+                        let (x, y) = ((wing[1].0 - head.0) as f64, (wing[1].1 - head.1) as f64);
+                        assert!(((x * vx + y * vy) / length - reach).abs() <= 0.71);
+                        assert!(((y * vx - x * vy) / length - side * reach / 2.0).abs() <= 0.71);
+                    }
+                    assert_ne!(paths[1][1], paths[2][1]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn poc7_large_ellipses_bound_error_rounding_and_preserve_closure_extrema() {
+        for (rx, ry) in [(10000, 3000), (3000, 10000), (200000, 50000)] {
+            let canonical = shape(Tool::Ellipse, (-rx, -ry), (rx, ry), 5);
+            for (start, end) in [
+                ((-rx, -ry), (rx, ry)),
+                ((rx, ry), (-rx, -ry)),
+                ((-rx, ry), (rx, -ry)),
+                ((rx, -ry), (-rx, ry)),
+            ] {
+                assert_eq!(shape(Tool::Ellipse, start, end, 5), canonical);
+            }
+            let path = &canonical[0];
+            let steps = path.len() - 1;
+            assert!((132..=2048).contains(&steps));
+            assert_eq!(steps % 4, 0);
+            assert_eq!(path.first(), path.last());
+            assert_eq!(path[0], (rx, 0));
+            assert_eq!(path[steps / 4], (0, ry));
+            assert_eq!(path[steps / 2], (-rx, 0));
+            assert_eq!(path[3 * steps / 4], (0, -ry));
+            assert!(
+                f64::from(rx.max(ry)) * (1.0 - (std::f64::consts::PI / steps as f64).cos()) <= 0.25
+            );
+            for (step, segment) in path.windows(2).enumerate() {
+                let angle = std::f64::consts::TAU * step as f64 / steps as f64;
+                assert!((f64::from(segment[0].0) - f64::from(rx) * angle.cos()).abs() <= 0.500001);
+                assert!((f64::from(segment[0].1) - f64::from(ry) * angle.sin()).abs() <= 0.500001);
+                let midpoint_angle = angle + std::f64::consts::PI / steps as f64;
+                let chord_x = (f64::from(segment[0].0) + f64::from(segment[1].0)) / 2.0;
+                let chord_y = (f64::from(segment[0].1) + f64::from(segment[1].1)) / 2.0;
+                let error = (chord_x - f64::from(rx) * midpoint_angle.cos())
+                    .hypot(chord_y - f64::from(ry) * midpoint_angle.sin());
+                // Integer rounding adds at most sqrt(0.5)px to the tessellation budget.
+                assert!(error <= 0.25 + 0.5_f64.sqrt() + 0.000001);
+            }
+        }
+        assert_eq!(shape(Tool::Ellipse, (-1, -1), (1, 1), 5)[0].len(), 13);
+        let extreme = shape(Tool::Ellipse, (i32::MIN, i32::MIN), (i32::MAX, i32::MAX), 5);
+        assert_eq!(extreme[0].len(), 2049);
+        assert_eq!(extreme[0].first(), extreme[0].last());
+        assert_eq!(extreme[0][0].0, i32::MAX);
+        assert_eq!(extreme[0][512].1, i32::MAX);
+        assert_eq!(extreme[0][1024].0, i32::MIN);
+        assert_eq!(extreme[0][1536].1, i32::MIN);
+    }
+
+    #[test]
+    fn poc7_eraser_hits_new_arrow_wings_and_restores_frozen_geometry_and_history() {
+        for width in [5, 31] {
+            for tail_first in [false, true] {
+                let mut strokes = Strokes::default();
+                draw(&mut strokes, Tool::Line, (-1000, -1000), (-900, -1000));
+                strokes.set_color(0xff123456);
+                strokes.set_thickness(width);
+                if tail_first {
+                    strokes.toggle_arrow_direction();
+                }
+                draw(&mut strokes, Tool::Arrow, (0, 0), (1000, 0));
+                let original = strokes.annotations().to_vec();
+                strokes.set_color(0xffabcdef);
+                strokes.set_thickness(1);
+                strokes.select(Tool::Eraser);
+                for wing in &original[1].paths[1..] {
+                    let history_len = strokes.undo.len();
+                    assert!(strokes.begin(wing[1]));
+                    strokes.finish();
+                    assert_eq!(strokes.annotations(), &original[..1]);
+                    assert_eq!(strokes.undo.len(), history_len + 1);
+                    assert!(strokes.undo());
+                    assert_eq!(strokes.annotations(), original);
+                    assert!(strokes.redo());
+                    assert_eq!(strokes.annotations(), &original[..1]);
+                    assert!(strokes.undo());
+                    assert_eq!(strokes.annotations(), original);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn poc7_eraser_hits_large_ellipse_segments_and_closure_and_restores_history() {
+        let mut strokes = Strokes::default();
+        draw(&mut strokes, Tool::Line, (-1000, -1000), (-900, -1000));
+        strokes.set_color(0xff123456);
+        strokes.set_thickness(1);
+        draw(&mut strokes, Tool::Ellipse, (0, 0), (100000, 60000));
+        let original = strokes.annotations().to_vec();
+        let path = &original[1].paths[0];
+        let steps = path.len() - 1;
+        assert!(steps > 128);
+        strokes.select(Tool::Eraser);
+        for index in [steps / 256, steps / 8, steps - 1] {
+            let target = (
+                (path[index].0 + path[index + 1].0) / 2,
+                (path[index].1 + path[index + 1].1) / 2,
+            );
+            let history_len = strokes.undo.len();
+            assert!(strokes.begin(target));
+            strokes.finish();
+            assert_eq!(strokes.annotations(), &original[..1]);
+            assert_eq!(strokes.undo.len(), history_len + 1);
+            assert!(strokes.undo());
+            assert_eq!(strokes.annotations(), original);
+            assert!(strokes.redo());
+            assert_eq!(strokes.annotations(), &original[..1]);
+            assert!(strokes.undo());
+            assert_eq!(strokes.annotations(), original);
         }
     }
 
@@ -1011,8 +1199,8 @@ mod tests {
         strokes.set_thickness(1);
         draw(&mut strokes, Tool::Arrow, (0, 0), (60, 0));
         strokes.select(Tool::Eraser);
-        assert!(!strokes.begin((28, 8))); // Would hit a falsely joined branch path.
-        assert!(strokes.append((27, 14)));
+        assert!(!strokes.begin((45, 8))); // Would hit a falsely joined branch path.
+        assert!(strokes.append((45, 23)));
         assert!(strokes.annotations().is_empty());
     }
 
