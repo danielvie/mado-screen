@@ -109,7 +109,7 @@ mod tests {
 
     fn message(kind: u32, w: usize, point: (i16, i16)) -> MSG {
         MSG {
-            hwnd: HWND(1usize as *mut _),
+            hwnd: HWND(std::ptr::dangling_mut()),
             message: kind,
             wParam: WPARAM(w),
             lParam: LPARAM(((point.1 as u16 as u32) << 16 | point.0 as u16 as u32) as isize),
