@@ -77,7 +77,7 @@ impl Strokes {
         match self.tool {
             Tool::Pen if self.temporary_pen => "Temporary pen",
             Tool::Pen => "Pen",
-            Tool::Arrow if self.arrow_tail_first => "Arrow tail-first",
+            Tool::Arrow if self.arrow_tail_first() => "Arrow tail-first",
             Tool::Arrow => "Arrow head-first",
             Tool::Line => "Line",
             Tool::Rectangle => "Rectangle",

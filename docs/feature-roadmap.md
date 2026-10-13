@@ -1,5 +1,9 @@
 # Features and remaining work
 
+## PoC 6 scope
+
+Approved: solid temporary Pen, repeated P toggles permanent/temporary; repeated A toggles head-first/tail-first arrow direction. Indicator shows the variant. Temporary parts expire after about two seconds, including after release, and never enter undo/redo. Contracts/evidence: tasks/poc6-spec.md and tasks/poc6-progress.md.
+
 ## PoC 5 scope
 
 The user approved drawing across multiple monitors and confirmed hardware is available. Sharing/recording stays deferred. PoC 5 uses one virtual-desktop overlay, shared annotation history and physical-pixel strokes across screens; all PoC 4 tools remain. Restart after monitor/layout/scaling changes. Specification and results are in tasks/poc5-spec.md and tasks/poc5-progress.md.
@@ -55,4 +59,4 @@ The user deferred sharing/recording validation. When resumed, name the capture a
 
 ## Proposed next improvements
 
-PoC 5 is the approved next increment. After its automated gates, validate real multi-monitor input and responsiveness before adding more tools. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.
+PoC 6 is the approved increment. The next PoC will improve visuals, including temporary-ink fading. Validate real expiry, tool toggles and responsiveness before choosing those changes. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.

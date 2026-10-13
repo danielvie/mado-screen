@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## PoC 6: temporary pen and arrow variants
+
+User approved solid temporary ink lasting about two seconds per part, excluded from undo/redo; repeated P toggles Pen/Temporary pen and repeated A toggles head-first/tail-first arrows. Indicator displays the variant. Requirements and module contracts are in tasks/poc6-spec.md; results are in tasks/poc6-progress.md. Model and Trail workers own separate files in sibling worktrees; the supervisor composes timer/input/render/UI and integrates committed deliveries serially. Visual fading remains the next PoC, sharing deferred.
+
 ## PoC 5: multiple-monitor drawing
 
 User confirmed multi-monitor test hardware, deferred sharing/recording and approved implementation under docs/workflow-strategy.md. Scope and module contracts are in tasks/poc5-spec.md. One virtual-desktop overlay/bitmap preserves shared gestures, styles and history across screens. Monitor discovery is startup-only; restart after layout/scaling changes. Three independent workers own overlay.rs, surface.rs and scripts/smoke.ps1. The supervisor composes main/docs in a separate worktree and performs serial integration and final gates. Original/rebased commits and results are recorded in tasks/poc5-progress.md. Historical no-hardware statements below describe earlier PoCs.

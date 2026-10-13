@@ -1,5 +1,16 @@
 # Windows prototype tasks
 
+## PoC 6: temporary pen and arrow variants
+
+Approved scope: tasks/poc6-spec.md. Evidence: tasks/poc6-progress.md.
+
+- [x] Model variants, labels and frozen old arrow geometry; 26 focused tests.
+- [x] Pure two-second Trail with independent gestures/styles and no history; 10 focused tests.
+- [x] Main repeated-key/input/expiry composition, renderer and indicator.
+- [ ] Native expiry timer lifetime and combined build/test/check.
+- [ ] Updated posted desktop smoke and applicable run; preserve blocked/untested evidence.
+- [ ] User observes real temporary tail expiry, labels, both arrow directions and multi-monitor behavior.
+
 ## PoC 5: multiple-monitor drawing
 
 Approved scope: tasks/poc5-spec.md. The user now has test hardware; sharing remains deferred. Final evidence: tasks/poc5-progress.md.

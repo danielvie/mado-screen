@@ -1,6 +1,6 @@
-# Mado Screen PoC 5
+# Mado Screen PoC 6
 
-Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 4 tools, history, indicator and disk picker are preserved. PoC 5 contracts and evidence are in tasks/poc5-spec.md and tasks/poc5-progress.md.
+Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 6 adds a temporary pen and reversible arrow direction. Tools, history, indicator and disk picker are preserved. PoC 6 contracts and evidence are in tasks/poc6-spec.md and tasks/poc6-progress.md.
 
 ## Commands
 
@@ -25,21 +25,29 @@ Permanent global controls:
 - `Ctrl+Alt+Q`: quit.
 
 Drawing-mode-only controls:
-- `P` pen, `L` straight line, `R` outline rectangle, `A` arrow, `O` ellipse, `E` eraser.
+- `P` selects Pen; press `P` while Pen is selected to toggle permanent/temporary ink.
+- `A` selects Arrow; press `A` while Arrow is selected to toggle head-first/tail-first drawing.
+- `L` straight line, `R` outline rectangle, `O` ellipse, `E` eraser.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
 - `C` opens the disk color picker at the mouse, clamped to the nearest monitor work area. Drag around the disk for hue and toward its center for less saturation. Adjust brightness below it, use a preset, or enter `#RRGGBB`. Apply or Enter commits; Cancel, Escape, close or an outside click preserves the old color.
 
-Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Same-tool or same-style selection does not interrupt a gesture.
+Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Repeating P or A settles the active gesture and toggles its variant; other same-tool or same-style choices do not interrupt it. Variant choices survive tool/mode changes and clear.
 
 Undo/redo first settles any active gesture. Pen ink is committed, unfinished shapes are discarded, then history is applied. Clear is undoable; a new edit after undo discards the redo branch. Style/tool choices themselves are not history entries. All drawing-only registrations are released in click-through and on exit so underlying-app editing shortcuts work normally. Conflicts report the actual key and roll back partial registrations, preserving ink in click-through.
 
-Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. For arrows, press at the head and drag toward the tail. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
+Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. Arrows default to head-first: press at the head and drag toward the tail. Toggle A for tail-first: press at the tail and drag toward the head. Completed arrows never change direction. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
-The top-right indicator on the primary monitor shows drawing/click-through mode, selected tool, brush width and color swatch. It is click-through and nonactivating.
+The top-right indicator on the primary monitor shows drawing/click-through mode, selected tool variant, brush width and color swatch. Variant labels are Pen, Temporary pen, Arrow head-first and Arrow tail-first. It is click-through and nonactivating.
 
 The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
+
+## Temporary ink
+
+Each temporary dot/input segment stays solid for about two seconds from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
+
+Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment expires together, so sparse movement may disappear in larger pieces. Fading and visual improvements are deferred to the next PoC. A timer checks expiry only while temporary pixels remain; it stops when empty.
 
 ## Behavior and limits
 
@@ -53,7 +61,9 @@ The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot
 
 ## Verification
 
-PoC 5 build, 68 tests, formatting/Clippy and smoke self-check passed. The user confirms drawing on secondary monitors and authorizes integration. Desktop startup confirmed virtual window bounds, but pixel capture is blocked by the desktop session's access restrictions; full posted drawing smoke remains blocked, not passed. Cross-boundary gestures and detailed mixed-DPI acceptance remain untested. Results and rerun commands are in tasks/poc5-progress.md.
+PoC 6 results are in tasks/poc6-progress.md. Pure tests inject elapsed time for exact expiry and history checks; physical smoothness, timing and shortcut delivery require user observation. Timer dispatch may be late under load, and replaying a full virtual bitmap while ink expires can affect responsiveness.
+
+Historical PoC 5 build, 68 tests, formatting/Clippy and smoke self-check passed. The user confirms drawing on secondary monitors and authorizes integration. Desktop startup confirmed virtual window bounds, but pixel capture is blocked by the desktop session's access restrictions; full posted drawing smoke remains blocked, not passed. Cross-boundary gestures and detailed mixed-DPI acceptance remain untested. Results and rerun commands are in tasks/poc5-progress.md.
 
 Historical PoC 4 with the approved disk picker passed build, 59 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped on a 3440x1440 display. Indicator and offscreen native disk-pane visual review passed. The actual picker preview is docs/design/disk-color-picker-implemented.png. Initial idle CPU time was unchanged over 30 seconds. All three stages are pushed separately; evidence is in tasks/poc4-progress.md.
 

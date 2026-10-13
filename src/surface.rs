@@ -282,6 +282,71 @@ mod tests {
     }
 
     #[test]
+    fn expiry_timer_is_owned_and_independent_of_drag_watchdog() {
+        use crate::input::ExpiryTimer;
+        assert!(ExpiryTimer::begin(HWND::default()).is_err());
+        let window = HiddenWindow::new(100, 100, 80, 60).unwrap();
+        let timer = ExpiryTimer::begin(window.hwnd).unwrap();
+        let mut message = MSG::default();
+        assert!(
+            !unsafe {
+                PeekMessageW(
+                    &mut message,
+                    Some(window.hwnd),
+                    WM_TIMER,
+                    WM_TIMER,
+                    PM_REMOVE,
+                )
+            }
+            .as_bool()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        assert!(
+            unsafe {
+                PeekMessageW(
+                    &mut message,
+                    Some(window.hwnd),
+                    WM_TIMER,
+                    WM_TIMER,
+                    PM_REMOVE,
+                )
+            }
+            .as_bool()
+        );
+        assert_eq!(message.wParam.0, 2);
+        assert_eq!(
+            crate::input::event(&message, window.hwnd),
+            Some(crate::input::Event::Expire)
+        );
+        drop(timer);
+        // KillTimer leaves already queued messages, so drain before checking that it stopped.
+        while unsafe {
+            PeekMessageW(
+                &mut message,
+                Some(window.hwnd),
+                WM_TIMER,
+                WM_TIMER,
+                PM_REMOVE,
+            )
+        }
+        .as_bool()
+        {}
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        assert!(
+            !unsafe {
+                PeekMessageW(
+                    &mut message,
+                    Some(window.hwnd),
+                    WM_TIMER,
+                    WM_TIMER,
+                    PM_REMOVE,
+                )
+            }
+            .as_bool()
+        );
+    }
+
+    #[test]
     fn negative_and_outside_points_remain_canvas_local_and_clip() {
         let mut surface = Surface::new(8, 6).unwrap();
         let annotations = [Annotation {

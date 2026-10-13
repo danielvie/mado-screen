@@ -199,9 +199,9 @@ impl DesktopUi {
                 PCWSTR(ui.status_class.name.as_ptr()),
                 w!("Mado status"),
                 WS_POPUP,
-                (width - 410).max(0),
+                (width - 496).max(0),
                 16.min((height - 44).max(0)),
-                394.min(width),
+                480.min(width),
                 44.min(height),
                 Some(owner),
                 None,
@@ -1528,6 +1528,18 @@ mod tests {
                 },
             )?;
             assert_eq!(ui.state.text.borrow().as_ptr(), text_ptr);
+            for tool in [
+                "Pen",
+                "Temporary pen",
+                "Arrow head-first",
+                "Arrow tail-first",
+            ] {
+                ui.update_label(false, tool, Style::default())?;
+                assert_eq!(
+                    &*ui.state.text.borrow(),
+                    &format!("Click-through | {tool} | 5 px | #F97316")
+                );
+            }
             let committed = ui.state.color.get();
             let hwnd = picker(&ui, 0xfff97316)?;
             let tab_ids = [
