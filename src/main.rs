@@ -22,8 +22,7 @@ fn main() -> Result<()> {
     let (width, height) = overlay.size();
     surface = Surface::new(width, height)?;
     let mut capture = false;
-    let mut cleared = false;
-    surface.present(overlay.hwnd(), capture, cleared)?;
+    surface.present(overlay.hwnd(), capture, &[])?;
     overlay.show()?;
 
     println!("PoC 1: automatic orange line and outline rectangle.");
@@ -45,7 +44,7 @@ fn main() -> Result<()> {
                 Some(Action::Toggle) => {
                     capture = !capture;
                     overlay.set_capture(capture)?;
-                    surface.present(overlay.hwnd(), capture, cleared)?;
+                    surface.present(overlay.hwnd(), capture, &[])?;
                     println!(
                         "Mode: {}.",
                         if capture {
@@ -56,8 +55,7 @@ fn main() -> Result<()> {
                     );
                 }
                 Some(Action::Clear) => {
-                    cleared = true;
-                    surface.present(overlay.hwnd(), capture, cleared)?;
+                    surface.present(overlay.hwnd(), capture, &[])?;
                     println!("Shapes cleared. Restart to restore them.");
                 }
                 Some(Action::Quit) => break,
