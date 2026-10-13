@@ -249,7 +249,12 @@ try {
             if ($startup.Contains('stage 2') -or $startup.Contains('stage 3')) {
                 Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), $ly, ($lx + 640), $ly, ($lx + 680), $ly))) 'Arrow gesture queued'
                 Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 680) $ly) -eq $ink) 'Arrow shaft and tip rendered'
+                Check ((Pixel ($lx + 600) $ly) -eq $ink -and (Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 639) ($ly + 20)) -eq $ink -and (Pixel ($lx + 639) ($ly - 20)) -eq $ink) 'Arrow head stays at press point with larger separate wings'
+                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Thicker arrow style queued'
+                Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), ($ly + 220), ($lx + 680), ($ly + 220), ($lx + 800), ($ly + 220)))) 'Thicker head-first arrow queued'
+                Start-Sleep -Milliseconds 200
+                Check ((Pixel ($lx + 651) ($ly + 246)) -eq $ink -and (Pixel ($lx + 651) ($ly + 194)) -eq $ink -and (Pixel ($lx + 800) ($ly + 246)) -ne $ink) 'Wider stroke enlarges both head wings without moving them to the tail'
+                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore five-pixel width after arrow checks'
                 Check ([PocSmoke]::PostDrag($window, $thread, 17, 0, [int[]]@(($lx + 800), ($ly + 120), ($lx + 720), ($ly + 60), ($lx + 720), ($ly + 60)))) 'Reverse-direction ellipse queued'
                 Start-Sleep -Milliseconds 200
                 Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink -and (Pixel ($lx + 760) ($ly + 90)) -ne $ink) 'Ellipse outline bounds rendered with empty interior'

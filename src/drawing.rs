@@ -170,6 +170,30 @@ mod tests {
     }
 
     #[test]
+    fn thick_arrow_keeps_two_visible_wings_at_the_press_point() {
+        use crate::strokes::{Strokes, Tool};
+        for width in [5, 15, 31] {
+            let mut strokes = Strokes::default();
+            strokes.set_thickness(width);
+            strokes.select(Tool::Arrow);
+            strokes.begin((100, 150));
+            strokes.append((400, 150));
+            strokes.finish();
+            let mut pixels = vec![0; 500 * 320];
+            render(&mut pixels, 500, false, strokes.annotations());
+            let head = 24 + 3 * width as usize;
+            let half = (head as f64 / 2.0).round() as usize;
+            assert_eq!(pixels[150 * 500 + 100], INK);
+            assert_eq!(pixels[150 * 500 + 400], INK);
+            assert_eq!(pixels[(150 + half) * 500 + 100 + head], INK);
+            assert_eq!(pixels[(150 - half) * 500 + 100 + head], INK);
+            assert_eq!(pixels[(150 + half) * 500 + 400], 0);
+            // Head wings extend far beyond the shaft, with space between them.
+            assert_eq!(pixels[(150 + width as usize) * 500 + 100 + head], 0);
+        }
+    }
+
+    #[test]
     fn signed_extremes_and_offscreen_brushes_clip_to_the_surface() {
         let mut pixels = vec![0; 10 * 10];
         render(

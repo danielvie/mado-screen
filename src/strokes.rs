@@ -92,7 +92,7 @@ impl Strokes {
             self.erase(point, point);
         } else {
             self.annotations.push(Annotation {
-                paths: shape(self.tool, point, point),
+                paths: shape(self.tool, point, point, self.style.thickness),
                 style: self.style,
             });
         }
@@ -114,7 +114,7 @@ impl Strokes {
             annotation.paths[0].push(point);
             return true;
         }
-        let paths = shape(self.tool, self.anchor, point);
+        let paths = shape(self.tool, self.anchor, point, annotation.style.thickness);
         if paths == annotation.paths {
             return false;
         }
@@ -208,7 +208,7 @@ impl Strokes {
     }
 }
 
-fn shape(tool: Tool, start: Point, end: Point) -> Vec<Vec<Point>> {
+fn shape(tool: Tool, start: Point, end: Point, thickness: u32) -> Vec<Vec<Point>> {
     match tool {
         Tool::Pen => vec![vec![start]],
         Tool::Line => vec![vec![start, end]],
@@ -220,18 +220,22 @@ fn shape(tool: Tool, start: Point, end: Point) -> Vec<Vec<Point>> {
             if length == 0.0 {
                 return vec![vec![start, end]; 3];
             }
-            let head = (length / 3.0).min(20.0);
+            // The press anchors the head; the moving endpoint is the tail.
+            // Larger/thicker heads keep the V visible beyond the shaft's brush width.
+            // ponytail: cap at 75% of the arrow length; extremely short thick gestures
+            // can still look like a dot. A filled/tapered renderer is the upgrade path.
+            let head = (24.0 + 3.0 * f64::from(thickness.clamp(1, 31) | 1)).min(length * 0.75);
             let (ux, uy) = (dx / length, dy / length);
             let branch = |side: f64| {
                 (
-                    (end.0 as f64 - ux * head - side * uy * head / 2.0).round() as i32,
-                    (end.1 as f64 - uy * head + side * ux * head / 2.0).round() as i32,
+                    (start.0 as f64 + ux * head - side * uy * head / 2.0).round() as i32,
+                    (start.1 as f64 + uy * head + side * ux * head / 2.0).round() as i32,
                 )
             };
             vec![
                 vec![start, end],
-                vec![end, branch(1.0)],
-                vec![end, branch(-1.0)],
+                vec![start, branch(1.0)],
+                vec![start, branch(-1.0)],
             ]
         }
         Tool::Ellipse => {
@@ -400,7 +404,7 @@ mod tests {
             assert!(!strokes.append((-30, -40)));
             assert_eq!(
                 strokes.annotations()[0].paths,
-                shape(tool, (1, 2), (-30, -40))
+                shape(tool, (1, 2), (-30, -40), 5)
             );
             let preview = strokes.annotations().to_vec();
             assert!(!strokes.select(tool));
@@ -425,9 +429,9 @@ mod tests {
     fn line_and_rectangle_all_directions_and_degeneracies() {
         let anchor = (1, 2);
         for end in [(5, 6), (-3, 6), (-3, -4), (5, -4), (1, 6), (5, 2), anchor] {
-            assert_eq!(shape(Tool::Line, anchor, end), [vec![anchor, end]]);
+            assert_eq!(shape(Tool::Line, anchor, end, 5), [vec![anchor, end]]);
             assert_eq!(
-                shape(Tool::Rectangle, anchor, end),
+                shape(Tool::Rectangle, anchor, end, 5),
                 [vec![
                     anchor,
                     (end.0, anchor.1),
@@ -453,54 +457,101 @@ mod tests {
             (1, 1),
             (0, 0),
         ] {
-            let paths = shape(Tool::Arrow, (0, 0), end);
+            let paths = shape(Tool::Arrow, (0, 0), end, 5);
             assert_eq!(paths.len(), 3);
             assert!(paths.iter().all(|path| path.len() == 2));
             assert_eq!(paths[0], [(0, 0), end]);
-            assert_eq!(paths[1][0], end);
-            assert_eq!(paths[2][0], end);
+            assert_eq!(paths[1][0], (0, 0));
+            assert_eq!(paths[2][0], (0, 0));
             if end.0.abs() + end.1.abs() > 2 {
                 assert_ne!(paths[1][1], paths[2][1]);
                 for branch in &paths[1..] {
-                    let toward_start =
-                        (branch[1].0 - end.0) * -end.0 + (branch[1].1 - end.1) * -end.1;
-                    assert!(toward_start > 0);
+                    let toward_tail = branch[1].0 * end.0 + branch[1].1 * end.1;
+                    assert!(toward_tail > 0);
                 }
             }
         }
         assert_eq!(
-            shape(Tool::Arrow, (0, 0), (60, 0)),
+            shape(Tool::Arrow, (0, 0), (60, 0), 5),
             [
                 vec![(0, 0), (60, 0)],
-                vec![(60, 0), (40, 10)],
-                vec![(60, 0), (40, -10)]
+                vec![(0, 0), (39, 20)],
+                vec![(0, 0), (39, -20)]
             ]
         );
         for (start, end) in [
             ((i32::MIN, i32::MIN), (i32::MAX, i32::MAX)),
             ((i32::MAX, i32::MIN), (i32::MIN, i32::MAX)),
         ] {
-            assert_eq!(shape(Tool::Arrow, start, end).len(), 3);
+            assert_eq!(shape(Tool::Arrow, start, end, 5).len(), 3);
         }
     }
 
     #[test]
+    fn arrow_head_scales_with_width_and_short_gestures_stay_bounded() {
+        let mut previous = 0;
+        for width in (1..=31).step_by(2) {
+            let paths = shape(Tool::Arrow, (0, 0), (500, 0), width);
+            let head = paths[1][1];
+            assert_eq!(head.0, 24 + 3 * width as i32);
+            assert!(head.0 > previous);
+            assert!(head.1 * 2 > width as i32 * 3);
+            assert_eq!(paths[2][1], (head.0, -head.1));
+            previous = head.0;
+            for end in [(1, 0), (0, 1), (-1, -1), (0, 0)] {
+                let short = shape(Tool::Arrow, (0, 0), end, width);
+                assert_eq!(short[1][0], (0, 0));
+                assert!(
+                    short
+                        .iter()
+                        .flatten()
+                        .all(|&(x, y)| x.abs() <= 2 && y.abs() <= 2)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn arrow_preview_locks_the_head_and_uses_its_frozen_width() {
+        let mut strokes = Strokes::default();
+        strokes.select(Tool::Arrow);
+        strokes.begin((200, 200));
+        strokes.set_thickness(31);
+        assert!(strokes.append((500, 200)));
+        assert_eq!(strokes.annotations()[0].paths[1], [(200, 200), (239, 220)]);
+        assert_eq!(strokes.annotations()[0].style.thickness, 5);
+        assert!(strokes.append((200, 500)));
+        assert_eq!(strokes.annotations()[0].paths[0], [(200, 200), (200, 500)]);
+        assert_eq!(strokes.annotations()[0].paths[1][0], (200, 200));
+        strokes.finish();
+        let completed = strokes.annotations().to_vec();
+        strokes.begin((200, 200));
+        strokes.append((500, 200));
+        assert_eq!(strokes.annotations()[1].paths[1], [(200, 200), (317, 259)]);
+        assert!(strokes.cancel());
+        assert_eq!(strokes.annotations(), completed);
+        assert!(strokes.undo());
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), completed);
+    }
+
+    #[test]
     fn ellipses_are_closed_bounded_and_direction_independent() {
-        let canonical = shape(Tool::Ellipse, (-10, -20), (30, 40));
+        let canonical = shape(Tool::Ellipse, (-10, -20), (30, 40), 5);
         for (start, end) in [
             ((-10, -20), (30, 40)),
             ((30, 40), (-10, -20)),
             ((-10, 40), (30, -20)),
             ((30, -20), (-10, 40)),
         ] {
-            assert_eq!(shape(Tool::Ellipse, start, end), canonical);
+            assert_eq!(shape(Tool::Ellipse, start, end, 5), canonical);
         }
         for (start, end) in [
             ((0, 0), (1, 1)),
             ((0, 0), (10000, 10000)),
             ((i32::MIN, i32::MIN), (i32::MAX, i32::MAX)),
         ] {
-            let paths = shape(Tool::Ellipse, start, end);
+            let paths = shape(Tool::Ellipse, start, end, 5);
             let path = &paths[0];
             assert_eq!(path.first(), path.last());
             assert!((13..=129).contains(&path.len()));
@@ -515,7 +566,7 @@ mod tests {
         }
         for end in [(0, 0), (0, 100), (100, 0), (0, -100), (-100, 0)] {
             assert_eq!(
-                shape(Tool::Ellipse, (0, 0), end),
+                shape(Tool::Ellipse, (0, 0), end, 5),
                 [vec![(0, 0), end, (0, 0)]]
             );
         }
@@ -662,8 +713,8 @@ mod tests {
         strokes.set_thickness(1);
         draw(&mut strokes, Tool::Arrow, (0, 0), (60, 0));
         strokes.select(Tool::Eraser);
-        assert!(!strokes.begin((39, 5))); // Would hit a falsely joined branch path.
-        assert!(strokes.append((50, 5)));
+        assert!(!strokes.begin((28, 8))); // Would hit a falsely joined branch path.
+        assert!(strokes.append((27, 14)));
         assert!(strokes.annotations().is_empty());
     }
 

@@ -35,7 +35,7 @@ Defaults are orange and 5 pixels. Each annotation retains the color and width ch
 
 Undo/redo first settles any active gesture. Pen ink is committed, unfinished shapes are discarded, then history is applied. Clear is undoable; a new edit after undo discards the redo branch. Style/tool choices themselves are not history entries. All drawing-only registrations are released in click-through and on exit so underlying-app editing shortcuts work normally. Conflicts report the actual key and roll back partial registrations, preserving ink in click-through.
 
-Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
+Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. For arrows, press at the head and drag toward the tail. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
 The top-right indicator shows drawing/click-through mode, selected tool, brush width and color swatch. It is click-through and nonactivating.
 
