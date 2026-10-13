@@ -44,4 +44,4 @@ Verified legacy shapes/styles/undo/redo/conflicts/cleanup, drawing on each monit
 
 ## Delivery status
 
-The assembled integration/poc6 is ready for fast-forward main promotion after all required automated gates passed. Existing primary-checkout install changes will be preserved; rebuild the primary executable after promotion. Manual acceptance remains open as listed above. No remote push or installed-app replacement is requested.
+Main fast-forwarded to 6afdbb0 after all required automated gates passed. The primary executable rebuilt successfully with cargo build. The primary checkout's README.md/Taskfile.yml install changes were restored unchanged. All completed worker and integration worktrees were removed. Manual acceptance remains open as listed above. No remote push, installed-app replacement or interruption of a running user overlay occurred.
