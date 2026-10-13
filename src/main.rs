@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     let mut expiry: Option<ExpiryTimer> = None;
     println!("PoC 6: stage {STAGE}, temporary pen and arrow direction toggles.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
-    println!("Drawing only: P selects pen; repeat P toggles temporary ink (2 seconds).");
+    println!("Drawing only: P selects pen; repeat P toggles temporary ink (1 second).");
     println!("L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
     if STAGE >= 2 {
         println!(
@@ -577,7 +577,7 @@ mod tests {
             strokes.annotations().iter().chain(trail.annotations()),
         );
         assert_eq!(pixels[10 * 40 + 10], 0xff3b82f6);
-        assert!(trail.expire(Duration::from_secs(2)));
+        assert!(trail.expire(Duration::from_secs(1)));
         drawing::render(
             &mut pixels,
             40,
@@ -621,7 +621,7 @@ mod tests {
         );
         assert!(!interrupts_trail(&Action::Orange, &strokes));
         assert!(interrupts_trail(&Action::Pen, &strokes));
-        assert!(trail.expire(Duration::from_secs(2)));
+        assert!(trail.expire(Duration::from_secs(1)));
     }
 
     #[test]

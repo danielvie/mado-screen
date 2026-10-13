@@ -1,7 +1,7 @@
 use crate::strokes::{Annotation, Point, Style};
 use std::{collections::VecDeque, time::Duration};
 
-const LIFETIME: Duration = Duration::from_secs(2);
+const LIFETIME: Duration = Duration::from_secs(1);
 
 /// Temporary ink with caller-supplied monotonic elapsed times, independent of history.
 #[derive(Default)]
@@ -107,19 +107,19 @@ mod tests {
         assert!(!trail.is_active());
         assert_eq!(trail.annotations().count(), 0);
         assert!(!trail.append((1, 2), ms(0)));
-        assert!(!trail.expire(ms(2000)));
+        assert!(!trail.expire(ms(1000)));
         assert!(!trail.clear());
         trail.finish();
         assert!(trail.begin((1, 2), Style::default(), ms(0)));
         assert!(trail.is_active());
-        assert!(!trail.append((1, 2), ms(1000)));
+        assert!(!trail.append((1, 2), ms(500)));
         assert_eq!(paths(&trail), [vec![(1, 2)]]);
-        assert!(trail.append((3, 4), ms(1001)));
-        assert!(!trail.append((3, 4), ms(1002)));
+        assert!(trail.append((3, 4), ms(501)));
+        assert!(!trail.append((3, 4), ms(502)));
         trail.finish();
         trail.finish();
         assert!(!trail.is_active());
-        assert!(!trail.append((5, 6), ms(1003)));
+        assert!(!trail.append((5, 6), ms(503)));
         assert_eq!(paths(&trail), [vec![(1, 2)], vec![(1, 2), (3, 4)]]);
     }
 
@@ -127,20 +127,20 @@ mod tests {
     fn staggered_parts_expire_at_the_exact_boundary() {
         let mut trail = Trail::default();
         trail.begin((0, 0), Style::default(), ms(0));
-        trail.append((1, 0), ms(500));
-        trail.append((2, 0), ms(1000));
-        assert!(!trail.expire(ms(1999)));
+        trail.append((1, 0), ms(250));
+        trail.append((2, 0), ms(500));
+        assert!(!trail.expire(ms(999)));
         assert_eq!(trail.annotations().count(), 3);
-        assert!(trail.expire(ms(2000)));
+        assert!(trail.expire(ms(1000)));
         assert_eq!(paths(&trail), [vec![(0, 0), (1, 0)], vec![(1, 0), (2, 0)]]);
-        assert!(!trail.expire(ms(2499)));
-        assert!(trail.expire(ms(2500)));
+        assert!(!trail.expire(ms(1249)));
+        assert!(trail.expire(ms(1250)));
         assert_eq!(paths(&trail), [vec![(1, 0), (2, 0)]]);
-        assert!(!trail.expire(ms(2999)));
-        assert!(trail.expire(ms(3000)));
+        assert!(!trail.expire(ms(1499)));
+        assert!(trail.expire(ms(1500)));
         assert!(trail.is_empty());
-        assert!(!trail.expire(ms(3000)));
-        assert!(!trail.expire(ms(1000))); // Removed ink never returns.
+        assert!(!trail.expire(ms(1500)));
+        assert!(!trail.expire(ms(500))); // Removed ink never returns.
     }
 
     #[test]
@@ -152,10 +152,10 @@ mod tests {
             if released {
                 trail.finish();
             }
-            assert!(trail.expire(ms(2100)));
+            assert!(trail.expire(ms(1100)));
             assert!(trail.is_empty());
             assert_eq!(trail.is_active(), !released);
-            assert_eq!(trail.append((20, 0), ms(2100)), !released);
+            assert_eq!(trail.append((20, 0), ms(1100)), !released);
             if released {
                 assert!(trail.is_empty());
             } else {
@@ -166,17 +166,17 @@ mod tests {
 
     #[test]
     fn pause_boundary_never_reconnects_an_expired_anchor() {
-        for gap in [1999, 2000, 2001] {
+        for gap in [999, 1000, 1001] {
             for expire_first in [false, true] {
                 let mut trail = Trail::default();
                 trail.begin((0, 0), Style::default(), ms(0));
                 if expire_first {
-                    assert_eq!(trail.expire(ms(gap)), gap >= 2000);
+                    assert_eq!(trail.expire(ms(gap)), gap >= 1000);
                 }
                 assert!(trail.append((10, 0), ms(gap)));
                 assert_eq!(
                     trail.annotations().last().unwrap().paths,
-                    [if gap < 2000 {
+                    [if gap < 1000 {
                         vec![(0, 0), (10, 0)]
                     } else {
                         vec![(10, 0)]
@@ -195,11 +195,11 @@ mod tests {
     fn duplicates_do_not_refresh_an_expired_anchor() {
         let mut trail = Trail::default();
         trail.begin((0, 0), Style::default(), ms(0));
-        assert!(!trail.append((0, 0), ms(1999)));
-        assert!(trail.expire(ms(2000)));
-        assert!(!trail.append((0, 0), ms(2001)));
+        assert!(!trail.append((0, 0), ms(999)));
+        assert!(trail.expire(ms(1000)));
+        assert!(!trail.append((0, 0), ms(1001)));
         assert!(trail.is_empty());
-        assert!(trail.append((10, 0), ms(2002)));
+        assert!(trail.append((10, 0), ms(1002)));
         assert_eq!(paths(&trail), [vec![(10, 0)]]);
     }
 
@@ -238,7 +238,7 @@ mod tests {
         style.color = 0xff123456;
         style.thickness = 11;
         trail.append((1, 0), ms(1));
-        trail.append((2, 0), ms(2001));
+        trail.append((2, 0), ms(1001));
         assert!(trail.annotations().all(|part| part.style == first_style));
         trail.begin((10, 0), style, ms(2002));
         trail.append((11, 0), ms(2003));
@@ -261,9 +261,9 @@ mod tests {
         assert!(!trail.is_active());
         assert!(!trail.clear());
         assert!(!trail.append((2, 0), ms(2)));
-        assert!(!trail.expire(ms(2001)));
-        trail.begin((10, 0), Style::default(), ms(2002));
-        assert!(trail.expire(ms(4002)));
+        assert!(!trail.expire(ms(1001)));
+        trail.begin((10, 0), Style::default(), ms(1002));
+        assert!(trail.expire(ms(2002)));
         assert!(trail.is_active());
         assert!(!trail.clear());
         assert!(!trail.is_active());
@@ -274,11 +274,11 @@ mod tests {
     fn sparse_segments_have_one_birth_time() {
         let mut trail = Trail::default();
         trail.begin((0, 0), Style::default(), ms(0));
-        trail.append((1000, 0), ms(1999));
-        assert!(trail.expire(ms(2000)));
+        trail.append((1000, 0), ms(999));
+        assert!(trail.expire(ms(1000)));
         assert_eq!(paths(&trail), [vec![(0, 0), (1000, 0)]]);
-        assert!(!trail.expire(ms(3998)));
-        assert!(trail.expire(ms(3999)));
+        assert!(!trail.expire(ms(1998)));
+        assert!(trail.expire(ms(1999)));
         assert!(trail.is_empty());
     }
 

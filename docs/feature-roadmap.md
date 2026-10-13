@@ -2,7 +2,7 @@
 
 ## PoC 6 scope
 
-Approved: solid temporary Pen, repeated P toggles permanent/temporary; repeated A toggles head-first/tail-first arrow direction. Indicator shows the variant. Temporary parts expire after about two seconds, including after release, and never enter undo/redo. Contracts/evidence: tasks/poc6-spec.md and tasks/poc6-progress.md.
+Approved: solid temporary Pen, repeated P toggles permanent/temporary; repeated A toggles head-first/tail-first arrow direction. Indicator shows the variant. Temporary parts expire after about one second, including after release, and never enter undo/redo. Contracts/evidence: tasks/poc6-spec.md and tasks/poc6-progress.md.
 
 ## PoC 5 scope
 

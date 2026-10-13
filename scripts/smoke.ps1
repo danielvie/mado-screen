@@ -684,9 +684,9 @@ try {
             Start-Sleep -Milliseconds 300
             Check ((Pixel $x $y) -eq $blue -and (Pixel ($x + 40) $y) -eq $blue -and
                 (Pixel ($x + 120) $y) -eq $blue -and (Pixel ($x + 160) $y) -eq $blue) 'Opaque temporary ink covers permanent ink and extends beyond it'
-            Start-Sleep -Milliseconds 2200
+            Start-Sleep -Milliseconds 1200
             CheckInk $permanent 'Temporary expiry after release reveals unchanged permanent ink'
-            CheckEmptyCanvas 'Temporary-only pixels disappear after more than two seconds' $tempOnly
+            CheckEmptyCanvas 'Temporary-only pixels disappear after more than one second' $tempOnly
             CheckEmptyCanvas 'Temporary drawing and expiry do not restore the undone permanent annotation' $redo
             PostAction 7 'Undo first permanent annotation after temporary drawing and expiry'
             CheckEmptyCanvas 'Temporary ink adds no undo entry; one undo removes first permanent annotation' $permanent
@@ -700,7 +700,7 @@ try {
             Start-Sleep -Milliseconds 300
             Check ((Pixel ($x + 40) ($y + 60)) -eq $blue -and (Pixel ($x + 120) ($y + 60)) -eq $blue) 'Temporary ink is visible before click-through expiry'
             SetPostedDrawingMode $false
-            Start-Sleep -Milliseconds 2200
+            Start-Sleep -Milliseconds 1200
             CheckInk ([int[]]($permanent + $redo)) 'Expiry in click-through preserves both permanent annotations'
             CheckEmptyCanvas 'Temporary ink expires without drawing-mode input' $tempClickThrough
             Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0) 'Temporary expiry leaves the canvas click-through'

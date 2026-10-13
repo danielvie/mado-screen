@@ -32,10 +32,14 @@ Validated source and script commit: 0217bf3. task build passed; task test 89 pas
 
 Verified legacy shapes/styles/undo/redo/conflicts/cleanup, drawing on each monitor, adjacent-seam history, temporary solid overlap and expiry after release/in click-through, permanent redo preservation, saved variant selection, repeated P/A labels in logs and both arrow direction rasters. Hidden native UI checks validate variant text; painted label review, physical long-drag tail behavior, actual input timing and mixed-DPI focus remain manual. Earlier startup/rectangle/undo false positives were smoke-harness defects; repairs retained ink and timer assertions. No system keyboard/mouse input, cursor movement or focus automation was used. All copied smoke processes were cleaned up.
 
+## One-second follow-up
+
+The user reports PoC 6 working and requests reducing temporary ink lifetime from two seconds to one second. Updated the lifetime, boundary/pause tests, startup text, smoke waits and current documentation. Build, 89 tests, formatting/Clippy, self-check and 232 desktop checks with zero skipped completed before the user requested lighter testing. No additional test runs are needed for this change. Desktop artifact: C:/Users/ae904f/AppData/Local/Temp/mado-poc6-85a8fcad-66d2-4509-a9da-fd5dc4064ace/results.json. Earlier two-second evidence above remains historical.
+
 ## Manual acceptance
 
 - [ ] Repeat P and confirm indicator changes Pen / Temporary pen.
-- [ ] Draw continuously longer than two seconds; the tail disappears while new ink remains solid.
+- [ ] Draw continuously longer than one second; the tail disappears while new ink remains solid.
 - [ ] Release and pause; remaining ink disappears without restarting the countdown.
 - [ ] Switch tool, open/close picker and toggle click-through; existing temporary ink continues expiring.
 - [ ] Clear removes temporary ink immediately; undo cannot restore it and permanent redo survives.

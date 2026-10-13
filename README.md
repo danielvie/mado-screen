@@ -45,7 +45,7 @@ The modeless picker may intentionally take keyboard focus. While open, drawing-o
 
 ## Temporary ink
 
-Each temporary dot/input segment stays solid for about two seconds from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
+Each temporary dot/input segment stays solid for about one second from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
 
 Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment expires together, so sparse movement may disappear in larger pieces. Fading and visual improvements are deferred to the next PoC. A timer checks expiry only while temporary pixels remain; it stops when empty.
 
