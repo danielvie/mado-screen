@@ -54,11 +54,13 @@ const PANEL_BACKGROUND: u32 = 0xff333940;
 const PANEL_BLUE: u32 = 0xff58a6ef;
 const PANEL_WIDTH: i32 = 440;
 const PANEL_ROW: i32 = 44;
+const PANEL_SAMPLES: i32 = 4;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum UiEvent {
     Color(u32),
     Closed,
+    OpenPicker,
 }
 
 // Each instance owns its classes, so independent instances cannot unregister each other.
@@ -124,7 +126,8 @@ struct State {
     color: Cell<u32>,
     tool: Cell<Tool>,
     expanded: Cell<bool>,
-    recents_open: Cell<bool>,
+    panel_width: Cell<i32>,
+    panel_pixels: RefCell<Vec<u32>>,
     recents: RefCell<Vec<u32>>,
     panel_scale: Cell<f64>,
     panel_monitor: Cell<RECT>,
@@ -158,7 +161,8 @@ impl State {
             color: Cell::new(Style::default().color),
             tool: Cell::new(Tool::Pen),
             expanded: Cell::new(false),
-            recents_open: Cell::new(false),
+            panel_width: Cell::new(224),
+            panel_pixels: RefCell::new(Vec::new()),
             recents: RefCell::new(vec![Style::default().color]),
             panel_scale: Cell::new(1.0),
             panel_monitor: Cell::new(RECT::default()),
@@ -227,7 +231,6 @@ impl DesktopUi {
                 Some(ui.state.as_ref() as *const State as _),
             )?;
             ui.state.status.set(hwnd);
-            SetLayeredWindowAttributes(hwnd, COLORREF(0), 245, LWA_ALPHA)?;
             ui.state.anchor_panel(GetDpiForWindow(hwnd))?;
             ui.update(false, Tool::Pen, Style::default())?;
             SetWindowPos(
@@ -267,8 +270,9 @@ impl DesktopUi {
                 self.state.status.get(),
                 PCWSTR(wide(&format!("Mado {tool}; {mode}")).as_ptr()),
             );
-            InvalidateRect(Some(self.state.status.get()), None, false).ok()
         }
+        self.state.measure_panel()?;
+        self.state.resize_panel()
     }
 
     pub fn open_picker(&self, color: u32) -> Result<()> {
@@ -551,18 +555,12 @@ impl PanelGeometry {
     fn new(state: &State) -> Self {
         let scale = state.panel_scale.get();
         Self {
-            width: scaled(
-                if state.expanded.get() {
-                    PANEL_WIDTH
-                } else {
-                    PANEL_ROW
-                },
-                scale,
-            ),
-            height: scaled(
-                PANEL_ROW * if state.recents_open.get() { 2 } else { 1 },
-                scale,
-            ),
+            width: if state.expanded.get() {
+                state.panel_width.get()
+            } else {
+                scaled(PANEL_ROW, scale)
+            },
+            height: scaled(PANEL_ROW * if state.expanded.get() { 2 } else { 1 }, scale),
             radius: scaled(12, scale).max(1),
             scale,
         }
@@ -594,12 +592,10 @@ impl PanelGeometry {
         if inside(self.current()) {
             return Some(PanelHit::Current);
         }
-        if state.recents_open.get() {
-            let recents = state.recents.borrow();
-            for (i, color) in recents.iter().enumerate() {
-                if inside(self.recent(i, recents.len())) {
-                    return Some(PanelHit::Recent(*color));
-                }
+        let recents = state.recents.borrow();
+        for (i, color) in recents.iter().enumerate() {
+            if inside(self.recent(i, recents.len())) {
+                return Some(PanelHit::Recent(*color));
             }
         }
         None
@@ -658,37 +654,75 @@ impl State {
                     ),
             );
         }
+        self.measure_panel()?;
         self.resize_panel()
+    }
+
+    fn measure_panel(&self) -> Result<()> {
+        let s = self.panel_scale.get();
+        let surface = Bitmap::new(1, 1)?;
+        let font = panel_font(s * PANEL_SAMPLES as f64)?;
+        let text: Vec<u16> = self.text.borrow().encode_utf16().collect();
+        let mut extent = SIZE::default();
+        unsafe {
+            let old = SelectObject(surface.dc, font.0);
+            let result = GetTextExtentPoint32W(surface.dc, &text, &mut extent).ok();
+            SelectObject(surface.dc, old);
+            result?;
+        }
+        // Measure in the same font/DPI as painting. Five swatches always fit;
+        // the existing maximum bounds allocation for unexpected long labels.
+        // https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gettextextentpoint32w
+        self.panel_width.set(
+            ((extent.cx + PANEL_SAMPLES - 1) / PANEL_SAMPLES + scaled(64, s))
+                .clamp(scaled(224, s), scaled(PANEL_WIDTH, s)),
+        );
+        self.pressed.set(None);
+        Ok(())
     }
 
     fn resize_panel(&self) -> Result<()> {
         let geometry = PanelGeometry::new(self);
         let monitor = self.panel_monitor.get();
         let margin = scaled(16, geometry.scale);
+        let (surface, pixels) = panel_bitmap(self)?;
+        let destination = POINT {
+            x: monitor.right - margin - geometry.width,
+            y: monitor.top + margin,
+        };
+        let size = SIZE {
+            cx: geometry.width,
+            cy: geometry.height,
+        };
+        let source = POINT::default();
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        // Per-pixel alpha supplies the shape. No binary region or global alpha.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow
         unsafe {
-            SetWindowPos(
+            UpdateLayeredWindow(
                 self.status.get(),
                 None,
-                monitor.right - margin - geometry.width,
-                monitor.top + margin,
-                geometry.width,
-                geometry.height,
-                SWP_NOACTIVATE | SWP_NOZORDER,
+                Some(&destination),
+                Some(&size),
+                Some(surface.dc),
+                Some(&source),
+                COLORREF(0),
+                Some(&blend),
+                ULW_ALPHA,
             )?;
-            rounded_region(
-                self.status.get(),
-                geometry.width,
-                geometry.height,
-                geometry.radius,
-            )?;
-            InvalidateRect(Some(self.status.get()), None, false).ok()
         }
+        *self.panel_pixels.borrow_mut() = pixels;
+        Ok(())
     }
 
     fn panel_leave(&self) {
         self.tracking.set(false);
         self.pressed.set(None);
-        self.recents_open.set(false);
         if self.expanded.replace(false) {
             let _ = self.resize_panel();
         }
@@ -698,6 +732,7 @@ impl State {
         let (value, kind) = match event {
             UiEvent::Color(color) => (color as usize, 1),
             UiEvent::Closed => (0, 2),
+            UiEvent::OpenPicker => (0, 3),
         };
         // No pointers in queued messages: dispatch may outlive either native window.
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postmessagew
@@ -960,6 +995,7 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<UiEvent> {
     match message.lParam.0 {
         1 if message.wParam.0 <= u32::MAX as usize => Some(UiEvent::Color(message.wParam.0 as u32)),
         2 => Some(UiEvent::Closed),
+        3 if message.wParam.0 == 0 => Some(UiEvent::OpenPicker),
         _ => None,
     }
 }
@@ -1067,8 +1103,11 @@ fn marker(dc: HDC, x: i32, y: i32, s: f64) {
     ellipse(dc, x, y, scaled(4, s), 0xff000000, scaled(2, s), false);
 }
 fn rounded(dc: HDC, bounds: RECT, radius: i32, background: u32, border: u32) {
+    rounded_pen(dc, bounds, radius, background, border, 1);
+}
+fn rounded_pen(dc: HDC, bounds: RECT, radius: i32, background: u32, border: u32, width: i32) {
     unsafe {
-        let pen = GdiObject(CreatePen(PS_SOLID, 1, colorref(border)).into());
+        let pen = GdiObject(CreatePen(PS_SOLID, width.max(1), colorref(border)).into());
         let brush = GdiObject(CreateSolidBrush(colorref(background)).into());
         let old_pen = SelectObject(dc, pen.0);
         let old_brush = SelectObject(dc, brush.0);
@@ -1086,48 +1125,193 @@ fn rounded(dc: HDC, bounds: RECT, radius: i32, background: u32, border: u32) {
     }
 }
 
-fn paint_status(state: &State, dc: HDC) {
+// Shared by the panel renderer and offscreen tests. Restore selection before
+// destroying the DC/bitmap, including when a paint or upload fails.
+struct Bitmap {
+    dc: HDC,
+    _bitmap: GdiObject,
+    old: HGDIOBJ,
+    bits: *mut u32,
+    len: usize,
+}
+impl Bitmap {
+    fn new(width: i32, height: i32) -> Result<Self> {
+        unsafe {
+            let dc = CreateCompatibleDC(None);
+            if dc.is_invalid() {
+                return Err(Error::from_thread());
+            }
+            let mut bits = std::ptr::null_mut();
+            let bitmap = match CreateDIBSection(
+                Some(dc),
+                &bitmap_info(width, height),
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            ) {
+                Ok(bitmap) => bitmap,
+                Err(error) => {
+                    let _ = DeleteDC(dc);
+                    return Err(error);
+                }
+            };
+            Ok(Self {
+                dc,
+                _bitmap: GdiObject(bitmap.into()),
+                old: SelectObject(dc, bitmap.into()),
+                bits: bits.cast(),
+                len: (width * height) as usize,
+            })
+        }
+    }
+    fn pixels(&self) -> &[u32] {
+        unsafe {
+            let _ = GdiFlush();
+            std::slice::from_raw_parts(self.bits, self.len)
+        }
+    }
+}
+impl Drop for Bitmap {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.old);
+            let _ = DeleteDC(self.dc);
+        }
+    }
+}
+fn panel_font(scale: f64) -> Result<GdiObject> {
+    let font = unsafe {
+        CreateFontW(
+            -scaled(14, scale),
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            NONANTIALIASED_QUALITY,
+            DEFAULT_PITCH.0 as u32,
+            w!("Segoe UI"),
+        )
+    };
+    if font.is_invalid() {
+        Err(Error::from_thread())
+    } else {
+        Ok(GdiObject(font.into()))
+    }
+}
+fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
     let geometry = PanelGeometry::new(state);
+    let n = PANEL_SAMPLES;
+    let large = PanelGeometry {
+        width: geometry.width * n,
+        height: geometry.height * n,
+        radius: geometry.radius * n,
+        scale: geometry.scale * n as f64,
+    };
+    let sample = Bitmap::new(large.width, large.height)?;
+    // ponytail: 4x box sampling is bounded by the existing 440x88 logical
+    // maximum. Reuse GDI geometry; increase samples only if hardware review warrants it.
+    fill(sample.dc, rect(0, 0, large.width, large.height), 0);
+    unsafe {
+        let brush = GdiObject(CreateSolidBrush(COLORREF(0xffffff)).into());
+        let old_brush = SelectObject(sample.dc, brush.0);
+        let old_pen = SelectObject(sample.dc, GetStockObject(NULL_PEN));
+        let _ = RoundRect(
+            sample.dc,
+            0,
+            0,
+            large.width,
+            large.height,
+            large.radius * 2,
+            large.radius * 2,
+        );
+        SelectObject(sample.dc, old_pen);
+        SelectObject(sample.dc, old_brush);
+    }
+    let coverage: Vec<bool> = sample
+        .pixels()
+        .iter()
+        .map(|pixel| pixel & 0xffffff != 0)
+        .collect();
+    paint_status(state, sample.dc, &large);
+    let source = sample.pixels();
+    let mut pixels = Vec::with_capacity((geometry.width * geometry.height) as usize);
+    for y in 0..geometry.height {
+        for x in 0..geometry.width {
+            let mut sums = [0_u32; 4];
+            for dy in 0..n {
+                for dx in 0..n {
+                    let i = ((y * n + dy) * large.width + x * n + dx) as usize;
+                    if coverage[i] {
+                        sums[3] += 245;
+                        for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
+                            sums[channel] += ((source[i] >> shift) & 255) * 245;
+                        }
+                    }
+                }
+            }
+            let count = (n * n) as u32;
+            let mut pixel = ((sums[3] + count / 2) / count) << 24;
+            for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
+                pixel |= ((sums[channel] + count * 255 / 2) / (count * 255)) << shift;
+            }
+            pixels.push(pixel);
+        }
+    }
+    // GDI's RGB output does not maintain alpha. Average covered samples directly
+    // into premultiplied BGRA for AC_SRC_ALPHA; never downsample straight alpha.
+    // https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-blendfunction
+    let surface = Bitmap::new(geometry.width, geometry.height)?;
+    unsafe {
+        std::ptr::copy_nonoverlapping(pixels.as_ptr(), surface.bits, pixels.len());
+    }
+    Ok((surface, pixels))
+}
+
+fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
     let s = geometry.scale;
     fill(
         dc,
         rect(0, 0, geometry.width, geometry.height),
         PANEL_BACKGROUND,
     );
-    rounded(
+    let inset = scaled(1, s) / 2;
+    rounded_pen(
         dc,
-        rect(0, 0, geometry.width, geometry.height),
+        rect(
+            inset,
+            inset,
+            geometry.width - 2 * inset,
+            geometry.height - 2 * inset,
+        ),
         geometry.radius,
         PANEL_BACKGROUND,
         PANEL_BLUE,
+        scaled(1, s),
     );
     unsafe {
         let saved = SaveDC(dc);
         if state.expanded.get() {
-            let font = GdiObject(
-                CreateFontW(
-                    -scaled(14, s),
-                    0,
-                    0,
-                    0,
-                    400,
-                    0,
-                    0,
-                    0,
-                    DEFAULT_CHARSET,
-                    OUT_DEFAULT_PRECIS,
-                    CLIP_DEFAULT_PRECIS,
-                    CLEARTYPE_QUALITY,
-                    DEFAULT_PITCH.0 as u32,
-                    w!("Segoe UI"),
-                )
-                .into(),
-            );
+            let Ok(font) = panel_font(s) else {
+                let _ = RestoreDC(dc, saved);
+                return;
+            };
             SelectObject(dc, font.0);
             label(
                 dc,
                 &state.text.borrow(),
-                logical_rect(s, 16, 0, PANEL_WIDTH - 64, PANEL_ROW),
+                rect(
+                    scaled(16, s),
+                    0,
+                    geometry.width - scaled(64, s),
+                    scaled(PANEL_ROW, s),
+                ),
                 PANEL_BLUE,
                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
             );
@@ -1135,14 +1319,12 @@ fn paint_status(state: &State, dc: HDC) {
             ellipse(dc, x, y, scaled(9, s), state.color.get(), 1, true);
             // Restore before dropping the selected font.
             let _ = RestoreDC(dc, saved);
-            if state.recents_open.get() {
-                let recents = state.recents.borrow();
-                for (i, color) in recents.iter().enumerate() {
-                    let (x, y) = geometry.recent(i, recents.len());
-                    ellipse(dc, x, y, scaled(9, s), *color, 1, true);
-                    if *color == state.color.get() {
-                        ellipse(dc, x, y, scaled(12, s), PANEL_BLUE, scaled(1, s), false);
-                    }
+            let recents = state.recents.borrow();
+            for (i, color) in recents.iter().enumerate() {
+                let (x, y) = geometry.recent(i, recents.len());
+                ellipse(dc, x, y, scaled(9, s), *color, 1, true);
+                if *color == state.color.get() {
+                    ellipse(dc, x, y, scaled(12, s), PANEL_BLUE, scaled(1, s), false);
                 }
             }
         } else {
@@ -1705,24 +1887,28 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         y: (l.0 >> 16) as u16 as i16 as i32,
                     };
                     let _ = ScreenToClient(hwnd, &mut point);
-                    return LRESULT(if PanelGeometry::new(state).contains(point.x, point.y) {
+                    let geometry = PanelGeometry::new(state);
+                    let opaque = point.x >= 0
+                        && point.y >= 0
+                        && point.x < geometry.width
+                        && point.y < geometry.height
+                        && state
+                            .panel_pixels
+                            .borrow()
+                            .get((point.y * geometry.width + point.x) as usize)
+                            .is_some_and(|pixel| pixel >> 24 != 0);
+                    return LRESULT(if opaque {
                         HTCLIENT as isize
                     } else {
                         HTTRANSPARENT as isize
                     });
                 }
                 WM_ERASEBKGND => return LRESULT(1),
-                WM_PAINT | WM_PRINTCLIENT => {
+                WM_PAINT => {
+                    // ULW owns the cached pixels; validate without repainting a GDI client.
                     let mut paint = PAINTSTRUCT::default();
-                    let dc = if message == WM_PAINT {
-                        BeginPaint(hwnd, &mut paint)
-                    } else {
-                        HDC(w.0 as _)
-                    };
-                    paint_status(state, dc);
-                    if message == WM_PAINT {
-                        let _ = EndPaint(hwnd, &paint);
-                    }
+                    BeginPaint(hwnd, &mut paint);
+                    let _ = EndPaint(hwnd, &paint);
                     return LRESULT(0);
                 }
                 WM_MOUSEMOVE => {
@@ -1767,11 +1953,12 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         .filter(|pressed| Some(*pressed) == hit)
                     {
                         match hit {
-                            PanelHit::Current => {
-                                state.recents_open.set(!state.recents_open.get());
-                                let _ = state.resize_panel();
-                            }
-                            PanelHit::Recent(color) => state.post(UiEvent::Color(color)),
+                            PanelHit::Current => state.post(UiEvent::OpenPicker),
+                            PanelHit::Recent(color) => state.post(if color == state.color.get() {
+                                UiEvent::OpenPicker
+                            } else {
+                                UiEvent::Color(color)
+                            }),
                         }
                     }
                     return LRESULT(0);
@@ -1918,9 +2105,6 @@ mod tests {
             )?
         };
         ui.state.status.set(hwnd);
-        unsafe {
-            SetLayeredWindowAttributes(hwnd, COLORREF(0), 245, LWA_ALPHA)?;
-        }
         ui.state.anchor_panel(96)?;
         ui.update(false, Tool::Pen, Style::default())?;
         Ok(hwnd)
@@ -1990,9 +2174,32 @@ mod tests {
                 HTTRANSPARENT as isize
             );
             let region = GdiObject(CreateRectRgn(0, 0, 0, 0).into());
-            assert_ne!(GetWindowRgn(hwnd, HRGN(region.0.0)).0, ERROR);
-            assert!(!PtInRegion(HRGN(region.0.0), 0, 0).as_bool());
-            assert!(PtInRegion(HRGN(region.0.0), 22, 22).as_bool());
+            assert_eq!(GetWindowRgn(hwnd, HRGN(region.0.0)).0, ERROR);
+            assert_eq!(ui.state.panel_pixels.borrow()[0], 0);
+            assert_eq!(ui.state.panel_pixels.borrow()[22 * 44 + 22] >> 24, 245);
+            let partial = ui
+                .state
+                .panel_pixels
+                .borrow()
+                .iter()
+                .position(|pixel| {
+                    let alpha = pixel >> 24;
+                    alpha > 0 && alpha < 245
+                })
+                .unwrap();
+            assert_eq!(
+                SendMessageW(
+                    hwnd,
+                    WM_NCHITTEST,
+                    None,
+                    Some(point(
+                        initial.left + (partial % 44) as i32,
+                        initial.top + (partial / 44) as i32
+                    ))
+                )
+                .0,
+                HTCLIENT as isize
+            );
             assert_eq!(&*ui.state.recents.borrow(), &[Style::default().color]);
             let mut icon_images = Vec::new();
             for tool in [
@@ -2004,11 +2211,7 @@ mod tests {
                 Tool::Eraser,
             ] {
                 ui.update(false, tool, Style::default())?;
-                let image = preview(44, 44, &format!("mado-panel-compact-{tool:?}"), |dc| {
-                    SelectClipRgn(dc, Some(HRGN(region.0.0)));
-                    paint_status(&ui.state, dc);
-                    Ok(())
-                })?;
+                let image = panel_preview(&ui, &format!("mado-panel-compact-{tool:?}"))?;
                 // Compact paint is independent of mode, color and thickness: icon only.
                 ui.update(
                     true,
@@ -2018,30 +2221,29 @@ mod tests {
                         thickness: 31,
                     },
                 )?;
-                let alternate = preview(
-                    44,
-                    44,
-                    &format!("mado-panel-compact-{tool:?}-alternate"),
-                    |dc| {
-                        SelectClipRgn(dc, Some(HRGN(region.0.0)));
-                        paint_status(&ui.state, dc);
-                        Ok(())
-                    },
-                )?;
+                let alternate = panel_bitmap(&ui.state)?.1;
                 assert_eq!(image, alternate);
                 assert!(!icon_images.contains(&image), "Tool icons must be distinct");
                 assert!(!image.iter().any(|pixel| pixel & 0xffffff == 0xabcdef));
                 icon_images.push(image);
+                ui.state.anchor_panel(144)?;
+                panel_preview(&ui, &format!("mado-panel-compact-{tool:?}-150"))?;
+                ui.state.anchor_panel(96)?;
             }
             ui.update(true, Tool::Pen, Style::default())?;
             SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
             assert!(ui.state.expanded.get());
             let expanded = window_bounds(hwnd)?;
             assert_eq!((expanded.right, expanded.top), (initial.right, initial.top));
-            assert_eq!(expanded.right - expanded.left, PANEL_WIDTH);
+            assert_eq!(expanded.right - expanded.left, ui.state.panel_width.get());
+            assert!(expanded.right - expanded.left < 300);
+            assert_eq!(expanded.bottom - expanded.top, 88);
             panel_preview(&ui, "mado-panel-expanded")?;
+            ui.state.anchor_panel(144)?;
+            panel_preview(&ui, "mado-panel-expanded-150")?;
+            ui.state.anchor_panel(96)?;
             panel_click(hwnd, PanelGeometry::new(&ui.state).current());
-            assert!(ui.state.recents_open.get());
+            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
             assert_eq!(window_bounds(hwnd)?.bottom - initial.top, 88);
             for color in [
                 0xff112233, 0xff223344, 0xff334455, 0xff445566, 0xff556677, 0xff223344,
@@ -2060,14 +2262,42 @@ mod tests {
                 &[0xff223344, 0xff556677, 0xff445566, 0xff334455, 0xff112233]
             );
             panel_preview(&ui, "mado-panel-recents")?;
+            let long_bounds = window_bounds(hwnd)?;
+            assert_eq!(
+                (long_bounds.right, long_bounds.top),
+                (initial.right, initial.top)
+            );
+            assert!(long_bounds.right - long_bounds.left > expanded.right - expanded.left);
+            ui.state.anchor_panel(144)?;
+            panel_preview(&ui, "mado-panel-recents-150")?;
+            ui.state.anchor_panel(96)?;
+            ui.update_label(
+                false,
+                "Arrow tail-first",
+                Style {
+                    color: ui.state.color.get(),
+                    thickness: 31,
+                },
+            )?;
+            panel_preview(&ui, "mado-panel-long-click-through")?;
+            ui.state.anchor_panel(144)?;
+            panel_preview(&ui, "mado-panel-long-click-through-150")?;
+            ui.state.anchor_panel(96)?;
             for i in 0..5 {
                 let geometry = PanelGeometry::new(&ui.state);
                 let center = geometry.recent(i, 5);
                 SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(center.0, center.1)));
-                assert!(ui.state.expanded.get() && ui.state.recents_open.get());
+                assert!(ui.state.expanded.get());
                 let color = ui.state.recents.borrow()[i];
                 panel_click(hwnd, center);
-                assert_eq!(decoded(root.0), [UiEvent::Color(color)]);
+                assert_eq!(
+                    decoded(root.0),
+                    [if color == ui.state.color.get() {
+                        UiEvent::OpenPicker
+                    } else {
+                        UiEvent::Color(color)
+                    }]
+                );
                 assert!(!ui.is_picker_open());
             }
             // Unpaired, off-panel and stale press/release messages do nothing.
@@ -2087,10 +2317,11 @@ mod tests {
             SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
             assert!(decoded(root.0).is_empty());
             panel_click(hwnd, PanelGeometry::new(&ui.state).current());
-            assert!(!ui.state.recents_open.get() && ui.state.expanded.get());
+            assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
+            assert!(ui.state.expanded.get());
             SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(center.0, center.1)));
             SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
-            assert!(!ui.state.expanded.get() && !ui.state.recents_open.get());
+            assert!(!ui.state.expanded.get());
             assert!(ui.state.pressed.get().is_none());
             assert_eq!(window_bounds(hwnd)?, initial);
             SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(center.0, center.1)));
@@ -2100,6 +2331,7 @@ mod tests {
                 SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(22, 22)));
                 let before = window_bounds(hwnd)?;
                 panel_click(hwnd, PanelGeometry::new(&ui.state).current());
+                assert_eq!(decoded(root.0), [UiEvent::OpenPicker]);
                 let after = window_bounds(hwnd)?;
                 assert_eq!((before.right, before.top), (after.right, after.top));
                 SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
@@ -2117,6 +2349,129 @@ mod tests {
                 ),
                 (focus, active, capture, foreground)
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_pixels_and_measured_layout_at_100_and_150_percent() -> Result<()> {
+        let state = State::new(HWND::default())?;
+        for scale in [1.0, 1.5] {
+            state.panel_scale.set(scale);
+            for tool in [
+                Tool::Pen,
+                Tool::Arrow,
+                Tool::Line,
+                Tool::Rectangle,
+                Tool::Ellipse,
+                Tool::Eraser,
+            ] {
+                state.tool.set(tool);
+                let geometry = PanelGeometry::new(&state);
+                let pixels = panel_bitmap(&state)?.1;
+                let width = geometry.width as usize;
+                let height = geometry.height as usize;
+                assert_eq!(
+                    (width, height),
+                    (scaled(44, scale) as usize, scaled(44, scale) as usize)
+                );
+                for index in [0, width - 1, (height - 1) * width, pixels.len() - 1] {
+                    assert_eq!(pixels[index], 0);
+                }
+                for pixel in &pixels {
+                    let alpha = pixel >> 24;
+                    assert!(alpha <= 245);
+                    for shift in [0, 8, 16] {
+                        assert!((pixel >> shift) & 255 <= alpha);
+                    }
+                }
+                // Every perimeter scan is contiguous and has partial coverage at
+                // the rounded ends, not a binary staircase or an opaque rectangle.
+                for row in pixels.chunks(width) {
+                    let first = row.iter().position(|pixel| pixel >> 24 != 0).unwrap();
+                    let last = row.iter().rposition(|pixel| pixel >> 24 != 0).unwrap();
+                    assert!(row[first..=last].iter().all(|pixel| pixel >> 24 != 0));
+                }
+                for x in 0..width {
+                    let column: Vec<_> = (0..height).map(|y| pixels[y * width + x] >> 24).collect();
+                    let first = column.iter().position(|alpha| *alpha != 0).unwrap();
+                    let last = column.iter().rposition(|alpha| *alpha != 0).unwrap();
+                    assert!(column[first..=last].iter().all(|alpha| *alpha != 0));
+                }
+                for (left, top) in [
+                    (0, 0),
+                    (width / 2, 0),
+                    (0, height / 2),
+                    (width / 2, height / 2),
+                ] {
+                    assert!(
+                        (top..top + height / 2).any(|y| (left..left + width / 2).any(|x| {
+                            let a = pixels[y * width + x] >> 24;
+                            a > 0 && a < 245
+                        }))
+                    );
+                }
+                // Only icon geometry occupies this interior. Intermediate blue
+                // values prove diagonal/curved strokes are sampled, not just the mask.
+                let background_blue = ((PANEL_BACKGROUND & 255) * 245 + 127) / 255;
+                let icon_blue = ((PANEL_BLUE & 255) * 245 + 127) / 255;
+                let mixed = (scaled(10, scale)..scaled(35, scale))
+                    .flat_map(|y| {
+                        (scaled(10, scale)..scaled(35, scale))
+                            .map(move |x| (y * geometry.width + x) as usize)
+                    })
+                    .filter(|i| {
+                        let b = pixels[*i] & 255;
+                        b > background_blue && b < icon_blue
+                    })
+                    .count();
+                assert!(
+                    mixed >= 8,
+                    "{tool:?} at {scale}: {mixed} antialiased icon pixels"
+                );
+            }
+            state.expanded.set(true);
+            *state.text.borrow_mut() = "Drawing | Pen | 5 px".into();
+            state.measure_panel()?;
+            let short = state.panel_width.get();
+            assert!(short < scaled(300, scale));
+            let short_geometry = PanelGeometry::new(&state);
+            for i in 0..5 {
+                let (x, y) = short_geometry.recent(i, 5);
+                let radius = scaled(12, scale);
+                assert!(x - radius >= scaled(16, scale));
+                assert!(x + radius < short && y + radius < short_geometry.height);
+                if i != 0 {
+                    assert!(x - short_geometry.recent(i - 1, 5).0 > radius * 2);
+                }
+            }
+            *state.text.borrow_mut() = "Click-through | Arrow tail-first | 31 px".into();
+            state.measure_panel()?;
+            let long = state.panel_width.get();
+            assert!(long > short && long < scaled(PANEL_WIDTH, scale));
+            let geometry = PanelGeometry::new(&state);
+            assert_eq!(geometry.height, scaled(88, scale));
+            for i in 0..5 {
+                let (x, y) = geometry.recent(i, 5);
+                let radius = scaled(12, scale);
+                assert!(x - radius >= scaled(16, scale));
+                assert!(x + radius < geometry.width && y + radius < geometry.height);
+                if i != 0 {
+                    assert!(x - geometry.recent(i - 1, 5).0 > radius * 2);
+                }
+            }
+            let surface = Bitmap::new(1, 1)?;
+            let font = panel_font(scale * PANEL_SAMPLES as f64)?;
+            let text: Vec<_> = state.text.borrow().encode_utf16().collect();
+            let mut extent = SIZE::default();
+            unsafe {
+                let old = SelectObject(surface.dc, font.0);
+                let result = GetTextExtentPoint32W(surface.dc, &text, &mut extent).ok();
+                SelectObject(surface.dc, old);
+                result?;
+            }
+            assert!(extent.cx <= (long - scaled(64, scale)) * PANEL_SAMPLES);
+            state.expanded.set(false);
         }
         Ok(())
     }
@@ -2145,6 +2500,13 @@ mod tests {
             SendMessageW(status, WM_MOUSEMOVE, None, Some(point(22, 22)));
         }
         panel_click(status, PanelGeometry::new(&ui.state).current());
+        panel_click(
+            status,
+            PanelGeometry::new(&ui.state).recent(0, history.len()),
+        );
+        assert_eq!(decoded(root.0), [UiEvent::OpenPicker, UiEvent::OpenPicker]);
+        assert_eq!(&*ui.state.recents.borrow(), &history);
+        assert_eq!(ui.state.candidate.get(), candidate);
         panel_click(
             status,
             PanelGeometry::new(&ui.state).recent(1, history.len()),
@@ -2201,8 +2563,7 @@ mod tests {
             let root_class = WindowClass::new(instance, "TestRoot", Some(root_proc))?;
             let root = HiddenRoot(create_hidden(&root_class, HWND::default(), None, 300, 460)?);
             let ui = hidden_ui(root.0)?;
-            let status = create_hidden(&ui.status_class, root.0, Some(&ui.state), 394, 44)?;
-            ui.state.status.set(status);
+            let status = status(&ui)?;
             assert_eq!(
                 SendMessageW(status, WM_NCHITTEST, None, None).0,
                 HTTRANSPARENT as isize
@@ -2522,34 +2883,31 @@ mod tests {
         }
         Ok(())
     }
-    fn panel_preview(ui: &DesktopUi, name: &str) -> Result<()> {
+    fn panel_preview(ui: &DesktopUi, name: &str) -> Result<Vec<u32>> {
         let geometry = PanelGeometry::new(&ui.state);
-        preview(geometry.width, geometry.height, name, |dc| {
-            let region = GdiObject(
-                unsafe {
-                    CreateRoundRectRgn(
-                        0,
-                        0,
-                        geometry.width + 1,
-                        geometry.height + 1,
-                        geometry.radius * 2,
-                        geometry.radius * 2,
-                    )
+        let pixels = panel_bitmap(&ui.state)?.1;
+        // Compose the exact premultiplied upload over a dark background for review.
+        let composed: Vec<u32> = pixels
+            .iter()
+            .map(|pixel| {
+                let alpha = pixel >> 24;
+                let mut color = 0xff000000;
+                for shift in [0, 8, 16] {
+                    color |= (((pixel >> shift) & 255)
+                        + (((0xff081421_u32 >> shift) & 255) * (255 - alpha) + 127) / 255)
+                        << shift;
                 }
-                .into(),
-            );
-            unsafe {
-                SelectClipRgn(dc, Some(HRGN(region.0.0)));
-                SendMessageW(
-                    ui.state.status.get(),
-                    WM_PRINTCLIENT,
-                    Some(WPARAM(dc.0 as usize)),
-                    None,
-                );
-            }
-            Ok(())
-        })?;
-        Ok(())
+                color
+            })
+            .collect();
+        let path = std::env::temp_dir().join(format!("{name}.png"));
+        std::fs::write(
+            &path,
+            png(geometry.width as u32, geometry.height as u32, &composed),
+        )
+        .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        println!("Offscreen preview: {}", path.display());
+        Ok(pixels)
     }
 
     fn preview(
@@ -2558,49 +2916,11 @@ mod tests {
         name: &str,
         paint: impl FnOnce(HDC) -> Result<()>,
     ) -> Result<Vec<u32>> {
-        struct Surface {
-            dc: HDC,
-            _bitmap: GdiObject,
-            old: HGDIOBJ,
-        }
-        impl Drop for Surface {
-            fn drop(&mut self) {
-                unsafe {
-                    SelectObject(self.dc, self.old);
-                    let _ = DeleteDC(self.dc);
-                }
-            }
-        }
-        unsafe {
-            let dc = CreateCompatibleDC(None);
-            if dc.is_invalid() {
-                return Err(Error::from_thread());
-            }
-            let mut bits = std::ptr::null_mut();
-            let bitmap = match CreateDIBSection(
-                Some(dc),
-                &bitmap_info(width, height),
-                DIB_RGB_COLORS,
-                &mut bits,
-                None,
-                0,
-            ) {
-                Ok(bitmap) => bitmap,
-                Err(error) => {
-                    let _ = DeleteDC(dc);
-                    return Err(error);
-                }
-            };
-            let surface = Surface {
-                dc,
-                _bitmap: GdiObject(bitmap.into()),
-                old: SelectObject(dc, bitmap.into()),
-            };
-            fill(dc, rect(0, 0, width, height), BACKGROUND);
-            paint(dc)?;
-            let _ = GdiFlush();
-            let pixels =
-                std::slice::from_raw_parts(bits as *const u32, (width * height) as usize).to_vec();
+        {
+            let surface = Bitmap::new(width, height)?;
+            fill(surface.dc, rect(0, 0, width, height), BACKGROUND);
+            paint(surface.dc)?;
+            let pixels = surface.pixels().to_vec();
             let path = std::env::temp_dir().join(format!("{name}.png"));
             std::fs::write(&path, png(width as u32, height as u32, &pixels))
                 .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
@@ -2776,6 +3096,12 @@ mod tests {
         assert_eq!(decode_event(&message, owner), Some(UiEvent::Closed));
         message.lParam = LPARAM(3);
         assert_eq!(decode_event(&message, owner), None);
+        message.wParam = WPARAM(0);
+        assert_eq!(decode_event(&message, owner), Some(UiEvent::OpenPicker));
+        for payload in [1, u32::MAX as usize, usize::MAX] {
+            message.wParam = WPARAM(payload);
+            assert_eq!(decode_event(&message, owner), None);
+        }
         message.lParam = LPARAM(1);
         message.wParam = WPARAM(u32::MAX as usize + 1);
         assert_eq!(decode_event(&message, owner), None);
