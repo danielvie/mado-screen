@@ -9,8 +9,9 @@ Main starts at a77dc9a. Existing uncommitted README.md/Taskfile.yml install chan
 ## Deliveries
 
 - Specification checkpoint: 56655e7.
-- Composition: original 13f4765, main startup reporting, primary-monitor indicator placement, cross-monitor shared-style/history regression and documentation. Focused native tests wait for overlay API integration; rustfmt and diff whitespace checks passed.
-- Overlay bounds, surface placement and desktop smoke deliveries are pending integration.
+- Composition: original 13f4765 -> 5ccd6fa, main startup reporting, primary-monitor indicator placement, cross-monitor shared-style/history regression and documentation. Tracking record ba9080f -> 3bdf8e6. One focused shared-history test passed after overlay API integration; rustfmt and diff whitespace checks passed.
+- Overlay bounds integrated at d8c0600. Three focused bound tests cover negative/above/positive origins, invalid dimensions and overflow.
+- Surface placement and desktop smoke deliveries are pending integration.
 
 ## Gates
 
