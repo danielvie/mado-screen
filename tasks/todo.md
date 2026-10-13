@@ -6,7 +6,7 @@ User reported PoC 1 works and approved this increment. No PoC 2 behavior has bee
 
 - [x] P2-state: `strokes.rs` stores separate paths and active drag, rejects hover/duplicate points, preserves ink on finish, clears safely. Implemented and integrated; seven pure state tests passed. Dependencies: PoC 1. Owns only strokes.rs.
 - [x] P2-render: replace automatic shapes with dots and connected freehand paths in drawing.rs/surface.rs. Implemented and integrated; seven raster tests and native DIB/resource checks passed. Dependencies: fixed state/path contract, not state implementation. Verify empty startup, dots, sparse interpolation, separate paths, clipped points, mode alpha and GDI cleanup. Owns only drawing.rs/surface.rs.
-- [ ] P2-input: input.rs decodes mouse/timer/cancel messages and owns active-only native capture watchdog; overlay.rs drops obsolete logging. Dependencies: PoC 1. Verify signed coordinates, HWND/timer filtering, primary-button semantics and guard cleanup without visible desktop interaction. Owns only input.rs/overlay.rs.
+- [x] P2-input: input.rs decodes mouse/timer/cancel messages and owns active-only native capture watchdog; overlay.rs drops obsolete logging. Implemented and integrated; five input decoding/button tests passed, native capture/watchdog behavior remains untested. Dependencies: PoC 1. Verify signed coordinates, HWND/timer filtering, primary-button semantics and guard cleanup without visible desktop interaction. Owns only input.rs/overlay.rs.
 - [ ] P2-compose: main owns stroke/mode/drag guard, draws on changed points, keeps ink in click-through, clears/ends/releases safely; README and smoke match new empty startup. Dependencies: P2-state, P2-render, P2-input integrated. Owns main.rs/README.md/scripts/smoke.ps1. Verify build/test/check and safe app-local smoke, no injected system input.
 - [ ] P2-integrator: one completion-order queue, isolated integration worktrees, checks after cherry-pick, fast-forward main; at most four workers, no concurrent integration.
 - [ ] P2-supervisor: review final sources/commits, run final checks, record app-local smoke versus actual hardware/manual evidence, commit verification in a worktree.
@@ -36,6 +36,13 @@ P2-render integrated from worker commit `d44487564fd4bf9a52262f35e5d8b658619c339
 - `cargo check --bin module_check`: passed. The temporary path-import harness was deleted afterward.
 - `task build`: passed; `task test`: 13 application tests passed after harness removal.
 - Ownership review found only renderer sources, the required main adapter and this integration record changed. No app launch, desktop or hardware acceptance checks performed. All other PoC 2 checkboxes retain their prior state.
+
+P2-input integrated from worker commit `fd1b1775967fdcc827bb57cba920dc2d485fed55`. Main and the clean integration worktree shared HEAD `15320b531968f03f95d09588619841de85cb0b68` before cherry-pick, so no rebase was needed. The cherry-pick had no conflicts and changed only `src/input.rs` and `src/overlay.rs`; no main adapter was needed.
+
+- `cargo test --bin module_check`: 24 passed across drawing/surface/overlay/controls/input/strokes, including five signed-coordinate, HWND/timer-filtering and primary-button regressions. Existing native DIB/GDI checks passed without creating a window.
+- `cargo check --bin module_check`: passed. The temporary path-import harness was deleted afterward.
+- `task build`: passed; `task test`: 13 application tests passed after harness removal.
+- Ownership review found only input/overlay sources and this integration record changed. Input is not wired into main until P2-compose. Native drag capture, watchdog operation and capture cleanup remain untested; no app launch, desktop interaction or hardware acceptance checks performed. Only the P2-input checkbox changed.
 
 PoC 1 historical results and deferred multi-display/presentation tasks remain below.
 
