@@ -53,7 +53,7 @@ The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot
 
 ## Verification
 
-PoC 5 build, 68 tests, formatting/Clippy and smoke self-check passed. Desktop startup confirmed virtual window bounds, but pixel capture is blocked by the current desktop session's access restrictions. Full posted drawing smoke and physical mixed-DPI acceptance remain untested. Results, rerun commands and delivery status are in tasks/poc5-progress.md; main promotion waits for the desktop gate.
+PoC 5 build, 68 tests, formatting/Clippy and smoke self-check passed. The user confirms drawing on secondary monitors and authorizes integration. Desktop startup confirmed virtual window bounds, but pixel capture is blocked by the desktop session's access restrictions; full posted drawing smoke remains blocked, not passed. Cross-boundary gestures and detailed mixed-DPI acceptance remain untested. Results and rerun commands are in tasks/poc5-progress.md.
 
 Historical PoC 4 with the approved disk picker passed build, 59 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped on a 3440x1440 display. Indicator and offscreen native disk-pane visual review passed. The actual picker preview is docs/design/disk-color-picker-implemented.png. Initial idle CPU time was unchanged over 30 seconds. All three stages are pushed separately; evidence is in tasks/poc4-progress.md.
 

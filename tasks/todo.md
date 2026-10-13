@@ -9,8 +9,9 @@ Approved scope: tasks/poc5-spec.md. The user now has test hardware; sharing rema
 - [x] Shared tools/history composition, primary indicator and startup reporting.
 - [x] Posted desktop checks implemented for every monitor and an available adjacent seam; parse/self-check passed. Desktop execution remains blocked by capture access.
 - [x] Combined build/test/check passed at 776713e, 68 tests.
-- [ ] Desktop smoke passes on an accessible interactive desktop; validated main promotion. Current gate is blocked, not passed.
-- [ ] User observes real input across screens, mixed-DPI alignment/picker behavior and click-through typing.
+- [x] User confirms drawing on other monitors and explicitly authorizes main integration despite the automated capture blocker.
+- [ ] Desktop smoke passes on an accessible interactive desktop. Capture gate remains blocked, not passed.
+- [ ] User observes cross-boundary gestures, mixed-DPI alignment/picker behavior and click-through typing.
 
 ## Disk color picker follow-up
 

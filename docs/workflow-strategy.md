@@ -6,6 +6,18 @@ Accepted strategy for future implementation batches. It supersedes the per-deliv
 
 Keep parallel implementation and linear integration, but validate the assembled delivery rather than rerunning the full checks after every merge. The last workflow spent 5m49s in four serial integrators, with approximately 88% recorded as model-response time. Repeated agent turns dominated command time; model timings include request latency and generation. Final integration also stopped on a one-line test lint because of restrictive file ownership; the correction is recorded in commit `4a724bd`.
 
+## Worktree locations
+
+Create worktrees as sibling directories named `<project-folder>.<worktree-name>/`. Replace hyphens in the worktree name with underscores for the directory suffix; keep the project folder name unchanged. Apply this to both worker and integration worktrees.
+
+For a project in `my-folder/` and a worktree named `my-worktree`, use `my-folder.my_worktree/`, not `my-worktree/` or a directory inside the project:
+
+```sh
+git -C my-folder worktree add -b my-worktree ../my-folder.my_worktree
+```
+
+The branch name can keep its hyphens. For branch names containing `/`, replace those separators with underscores in the directory suffix too.
+
 ## Workers
 
 - Run at most four workers concurrently, each in an isolated Git worktree.

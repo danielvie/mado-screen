@@ -26,23 +26,26 @@ Second combined gate at 776713e: task build passed, task test 68 passed, task ch
 
 Continuation retry on the same validated code at 6cb1e0f again passed startup/virtual bounds and failed at PhysicalPixel with invalid handle. No rebuild or repeated native gates were needed because only documentation changed. Logs: C:/Users/ae904f/AppData/Local/Temp/mado-poc5-72f7b104-b297-496b-adcc-2ff5a9ce0492. Copied child cleanup was confirmed; integration remains blocked on desktop capture.
 
-## Delivery status and next action
+## User acceptance and integration
 
-Implementation is complete on integration/poc5 but main remains a77dc9a because the applicable desktop gate is blocked. The persistent integration worktree and build cache are retained at C:/SANDBOX/REPOS/mado-screen-poc5-integration. No push, main promotion or modification to the installed app occurred. Existing primary-checkout install changes remain untouched.
+The user reports "yes, i can draw on the other monitors" and explicitly instructs integration. This confirms drawing on secondary monitors, not every detailed manual scenario below. The user authorizes promotion despite the recorded automated capture blocker; desktop smoke remains blocked, not passed. Build, 68 tests, formatting/Clippy and self-check already passed on application code 776713e; subsequent changes are documentation only.
 
-With the desktop unlocked and accessible, and no overlay already running, rerun:
+Fast-forward promotion uses integration/poc5 and preserves the primary checkout's uncommitted README.md/Taskfile.yml install changes. Rebuild the primary executable after promotion and remove the completed integration worktree. Do not replace the installed app or interrupt the running overlay. No remote push is requested.
+
+For later desktop validation, with the desktop accessible and no overlay running:
 
 ```powershell
-Set-Location C:/SANDBOX/REPOS/mado-screen-poc5-integration
+Set-Location C:/SANDBOX/REPOS/mado-screen.git
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe -PostedStroke
 ```
 
-If it passes, finish the recorded user checks and fast-forward main under docs/workflow-strategy.md. For manual testing before promotion, run `task run` from this integration worktree, then use Ctrl+Alt+Q to close it before rerunning smoke.
+Future worktrees follow the sibling-directory naming rule in docs/workflow-strategy.md, for example `my-folder.my_worktree/` for project `my-folder/` and worktree `my-worktree`.
 
 ## Manual acceptance
 
-These remain untested until the user observes them. Automated posted messages cannot establish physical interaction.
+The user confirms drawing on secondary monitors. Other scenarios remain untested unless separately observed; automated posted messages cannot establish physical interaction.
 
+- [x] User can draw on secondary monitors.
 - [ ] Draw pen and all shapes on each monitor; no positional offset or clipping at screen edges.
 - [ ] Draw across adjacent boundaries in both directions, including screens with different scaling; one undo removes the whole annotation.
 - [ ] Erase across boundaries, undo/redo and clear across all screens.
