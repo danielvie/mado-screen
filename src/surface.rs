@@ -70,14 +70,14 @@ impl Surface {
         Ok(surface)
     }
 
-    pub fn present(&mut self, hwnd: HWND, capture: bool, cleared: bool) -> Result<()> {
+    pub fn present(&mut self, hwnd: HWND, drawing: bool, paths: &[Vec<(i32, i32)>]) -> Result<()> {
         unsafe {
             // This DIB owns width*height aligned u32 pixels until Surface::drop.
             let pixels = std::slice::from_raw_parts_mut(
                 self.bits.cast::<u32>(),
                 self.width as usize * self.height as usize,
             );
-            crate::drawing::render(pixels, self.width as usize, capture, cleared);
+            crate::drawing::render(pixels, self.width as usize, drawing, paths);
             let size = SIZE {
                 cx: self.width,
                 cy: self.height,
@@ -166,14 +166,26 @@ mod tests {
             assert_eq!(dib.dsBm.bmBits, surface.bits);
             assert_eq!(GetCurrentObject(surface.dc, OBJ_BITMAP), bitmap);
         }
-        for (capture, cleared) in [(false, false), (true, false), (true, true), (false, true)] {
+        let paths = [vec![(10, 15), (30, 30)], vec![(40, 20)]];
+        for (drawing, supplied_paths) in [
+            (false, &[][..]),
+            (false, &paths[..]),
+            (true, &paths[..]),
+            (false, &paths[..]),
+            (true, &[][..]),
+            (false, &[][..]),
+        ] {
             // A null HWND exercises rasterization and the upload error path without showing anything.
-            assert!(surface.present(HWND::default(), capture, cleared).is_err());
+            assert!(
+                surface
+                    .present(HWND::default(), drawing, supplied_paths)
+                    .is_err()
+            );
             let pixels = unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 80 * 60) };
-            let background = if capture { 0x01000000 } else { 0 };
+            let background = if drawing { 0x01000000 } else { 0 };
             assert_eq!(pixels[0], background);
             assert_eq!(pixels[30 * 80 + 50], background);
-            if cleared {
+            if supplied_paths.is_empty() {
                 assert!(pixels.iter().all(|&pixel| pixel == background));
             } else {
                 assert_eq!(pixels[15 * 80 + 10], 0xfff97316);
