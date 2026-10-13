@@ -28,6 +28,38 @@ use windows::{
 // Published stages remain usable; later checkpoints expose advanced tools and UI.
 const STAGE: u8 = 3;
 
+const STARTUP_HELP: &str = "\
+Mado Screen
+Starts in click-through mode. Press Ctrl+Alt+D to draw.
+In drawing mode, drag with the primary mouse button to annotate.
+
+Global shortcuts
+  Ctrl+Alt+D   Switch between drawing and click-through
+  Ctrl+Alt+C   Clear all ink, undoable for permanent ink
+  Ctrl+Alt+Q   Quit
+
+Drawing shortcuts (while the color picker is closed)
+  P            Pen; press again to toggle temporary ink (fades in 1 second)
+  L            Straight line
+  R            Rectangle outline
+  A            Arrow; press again to switch head-first / tail-first
+  O            Ellipse outline
+  E            Erase a whole annotation
+  Ctrl+Z       Undo
+  Ctrl+Y       Redo
+  [ / ]        Thinner / thicker brush (1 to 31 pixels)
+  1 / 2 / 3    Blue / orange / red
+  4 / 5        Green / white
+  C            Open the color picker at the pointer
+
+Color panel and picker
+  Hover over the top-right tool icon to show status and recent colors.
+  Click a different recent color to select it; click the selected color
+  to open the picker. Apply / Enter saves; Cancel / Escape discards changes.
+
+Default brush: orange, 5 pixels. Restart after changing the monitor layout.
+";
+
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
     let _hotkeys = Hotkeys::register()?;
@@ -57,22 +89,7 @@ fn main() -> Result<()> {
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    println!("PoC 7: stage {STAGE}, Bézier pens, rounded ink and one-second fading.");
-    println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
-    println!("Drawing only: P selects pen; repeat P toggles fading temporary ink (1 second).");
-    println!("L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
-    if STAGE >= 2 {
-        println!(
-            "Drawing only: A selects arrow; repeat A toggles head-first/tail-first. O ellipse, E eraser."
-        );
-    }
-    println!(
-        "Drawing only: C opens the disk picker at the mouse. Apply color or cancel with Escape."
-    );
-    let (left, top) = overlay.origin();
-    println!("Virtual desktop: origin ({left}, {top}), {width} x {height} physical pixels.");
-    println!("Restart after changing monitors, their layout or display scaling.");
-    println!("Mode: click-through.");
+    println!("{STARTUP_HELP}");
     let mut message = MSG::default();
     loop {
         match unsafe { GetMessageW(&mut message, None, 0, 0) }.0 {
@@ -160,14 +177,6 @@ fn main() -> Result<()> {
                         &trail,
                         now,
                     )?;
-                    println!(
-                        "Mode: {}.",
-                        if drawing {
-                            "drawing; background alpha 1/255"
-                        } else {
-                            "click-through"
-                        }
-                    );
                 }
                 Action::Clear => {
                     ui.close_picker();
@@ -183,7 +192,6 @@ fn main() -> Result<()> {
                         &trail,
                         now,
                     )?;
-                    println!("Strokes cleared. Clear is undoable.");
                 }
                 Action::Quit => break,
                 Action::Picker if drawing && !ui.is_picker_open() => {
@@ -216,12 +224,6 @@ fn main() -> Result<()> {
                             now,
                         )?;
                     }
-                    println!(
-                        "Tool: {}. Color: #{:06X}; width: {}.",
-                        strokes.tool_label(),
-                        strokes.style().color & 0xffffff,
-                        strokes.style().thickness
-                    );
                 }
                 _ => {}
             }
@@ -277,7 +279,7 @@ fn main() -> Result<()> {
             }
         }
     }
-    println!("Overlay closed.");
+
     Ok(())
 }
 
@@ -300,7 +302,6 @@ fn restore_drawing_keys(
                 *drawing = false;
                 overlay.set_capture(false)?;
                 surface.present_scene(overlay.hwnd(), false, strokes.annotations(), trail, now)?;
-                println!("Mode: click-through.");
             }
         }
     }
@@ -527,6 +528,41 @@ fn handle_input(
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn startup_help_lists_shortcuts_and_panel_without_event_chatter() {
+        assert!(STARTUP_HELP.starts_with("Mado Screen\nStarts in click-through mode."));
+        for command in [
+            "Ctrl+Alt+D",
+            "Ctrl+Alt+C",
+            "Ctrl+Alt+Q",
+            "P            Pen",
+            "L            Straight line",
+            "R            Rectangle",
+            "A            Arrow",
+            "O            Ellipse",
+            "E            Erase",
+            "Ctrl+Z",
+            "Ctrl+Y",
+            "[ / ]",
+            "1 / 2 / 3",
+            "4 / 5",
+            "C            Open the color picker",
+            "Hover over the top-right tool icon",
+            "click the selected color",
+            "Apply / Enter",
+            "Cancel / Escape",
+            "1 second",
+        ] {
+            assert!(
+                STARTUP_HELP.contains(command),
+                "Missing instruction: {command}"
+            );
+        }
+        for old_log in ["PoC 7", "Mode:", "Tool:", "Overlay closed."] {
+            assert!(!STARTUP_HELP.contains(old_log));
+        }
+    }
 
     #[test]
     fn repeated_tool_keys_toggle_only_the_selected_variant() {
