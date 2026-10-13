@@ -389,16 +389,7 @@ impl DesktopUi {
     }
 
     pub fn event(&self, message: &MSG) -> Option<UiEvent> {
-        if message.hwnd != self.state.owner || message.message != UI_EVENT {
-            return None;
-        }
-        match message.lParam.0 {
-            1 if message.wParam.0 <= u32::MAX as usize => {
-                Some(UiEvent::Color(message.wParam.0 as u32))
-            }
-            2 => Some(UiEvent::Closed),
-            _ => None,
-        }
+        decode_event(message, self.state.owner)
     }
 }
 
@@ -487,6 +478,17 @@ impl State {
             }
             let _ = DestroyWindow(hwnd);
         }
+    }
+}
+
+fn decode_event(message: &MSG, owner: HWND) -> Option<UiEvent> {
+    if message.hwnd != owner || message.message != UI_EVENT {
+        return None;
+    }
+    match message.lParam.0 {
+        1 if message.wParam.0 <= u32::MAX as usize => Some(UiEvent::Color(message.wParam.0 as u32)),
+        2 => Some(UiEvent::Closed),
+        _ => None,
     }
 }
 
@@ -617,6 +619,31 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_ui_events_are_value_only_and_owner_filtered() {
+        let owner = HWND::default();
+        let mut message = MSG {
+            hwnd: owner,
+            message: UI_EVENT,
+            wParam: WPARAM(0xff123456),
+            lParam: LPARAM(1),
+            ..Default::default()
+        };
+        assert_eq!(
+            decode_event(&message, owner),
+            Some(UiEvent::Color(0xff123456))
+        );
+        message.lParam = LPARAM(2);
+        assert_eq!(decode_event(&message, owner), Some(UiEvent::Closed));
+        message.lParam = LPARAM(3);
+        assert_eq!(decode_event(&message, owner), None);
+        message.message = WM_APP;
+        assert_eq!(decode_event(&message, owner), None);
+        message.message = UI_EVENT;
+        message.hwnd = HWND(std::ptr::dangling_mut());
+        assert_eq!(decode_event(&message, owner), None);
+    }
 
     #[test]
     fn status_rejects_activation_and_hit_testing_without_native_windows() {

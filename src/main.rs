@@ -4,12 +4,14 @@ mod input;
 mod overlay;
 mod strokes;
 mod surface;
+mod ui;
 
 use controls::{Action, Hotkeys};
 use input::{DragCapture, Event};
 use overlay::Overlay;
 use strokes::{Strokes, Tool};
 use surface::Surface;
+use ui::{DesktopUi, UiEvent};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -19,28 +21,32 @@ use windows::{
 };
 
 // Published stages remain usable; later checkpoints expose advanced tools and UI.
-const STAGE: u8 = 2;
+const STAGE: u8 = 3;
 
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
     let _hotkeys = Hotkeys::register()?;
-    // Reverse drop order: drag, drawing keys, window, surface, permanent keys.
+    // Reverse drop order: drag, drawing keys, UI, window, surface, permanent keys.
     let mut surface;
     let overlay = Overlay::new()?;
     let (width, height) = overlay.size();
     surface = Surface::new(width, height)?;
     let mut drawing = false;
     let mut strokes = Strokes::default();
-    let mut tool_keys: Option<Hotkeys> = None;
-    let mut drag: Option<DragCapture> = None;
     surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
     overlay.show()?;
+    let ui = DesktopUi::new(overlay.hwnd(), width, height)?;
+    let mut tool_keys: Option<Hotkeys> = None;
+    let mut drag: Option<DragCapture> = None;
     println!("PoC 4: stage {STAGE}, empty canvas, styled annotations and history.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
     println!("Drawing only: P/L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
     if STAGE >= 2 {
         println!("Drawing only: A arrow, O ellipse, E whole-annotation eraser.");
     }
+    println!(
+        "Drawing only: C opens the color picker at the mouse. Apply RGB or cancel with Escape."
+    );
     println!("Primary display: {width} x {height} physical pixels.");
     println!("Mode: click-through.");
     let mut message = MSG::default();
@@ -50,14 +56,38 @@ fn main() -> Result<()> {
             0 => break,
             _ => {}
         }
+        if let Some(event) = ui.event(&message) {
+            if let UiEvent::Color(color) = event {
+                let changed = strokes.cancel();
+                drop(drag.take());
+                strokes.set_color(color);
+                if changed {
+                    surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
+                }
+            }
+            restore_drawing_keys(
+                &mut drawing,
+                &mut tool_keys,
+                &overlay,
+                &mut surface,
+                &strokes,
+                &ui,
+            )?;
+            ui.update(drawing, strokes.tool(), strokes.style())?;
+            continue;
+        }
+        if ui.handle_message(&message) {
+            continue;
+        }
         if message.message == WM_HOTKEY {
             let Some(action) = controls::action(message.wParam.0) else {
                 continue;
             };
             match action {
                 Action::Toggle => {
+                    ui.close_picker();
                     if !drawing {
-                        match Hotkeys::drawing_keys(STAGE >= 2, false) {
+                        match Hotkeys::drawing_keys(true, true) {
                             Ok(keys) => tool_keys = Some(keys),
                             Err(error) => {
                                 eprintln!(
@@ -84,6 +114,7 @@ fn main() -> Result<()> {
                     );
                 }
                 Action::Clear => {
+                    ui.close_picker();
                     strokes.cancel();
                     drop(drag.take());
                     strokes.clear();
@@ -91,7 +122,20 @@ fn main() -> Result<()> {
                     println!("Strokes cleared. Clear is undoable.");
                 }
                 Action::Quit => break,
-                action if drawing => {
+                Action::Picker if drawing => {
+                    if !ui.is_picker_open() {
+                        let changed = strokes.cancel();
+                        drop(drag.take());
+                        drop(tool_keys.take());
+                        if changed {
+                            surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
+                        }
+                        if let Err(error) = ui.open_picker(strokes.style().color) {
+                            eprintln!("Cannot open color picker: {error}. Ink preserved.");
+                        }
+                    }
+                }
+                action if drawing && !ui.is_picker_open() => {
                     if apply_edit(action, &mut strokes, &mut drag) {
                         surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
                     }
@@ -104,7 +148,32 @@ fn main() -> Result<()> {
                 }
                 _ => {}
             }
+            restore_drawing_keys(
+                &mut drawing,
+                &mut tool_keys,
+                &overlay,
+                &mut surface,
+                &strokes,
+                &ui,
+            )?;
+            ui.update(drawing, strokes.tool(), strokes.style())?;
         } else if let Some(event) = input::event(&message, overlay.hwnd()) {
+            if ui.is_picker_open() {
+                // An outside canvas press dismisses the popup, never paints a stroke.
+                if matches!(event, Event::Down(_)) {
+                    ui.close_picker();
+                    restore_drawing_keys(
+                        &mut drawing,
+                        &mut tool_keys,
+                        &overlay,
+                        &mut surface,
+                        &strokes,
+                        &ui,
+                    )?;
+                    ui.update(drawing, strokes.tool(), strokes.style())?;
+                }
+                continue;
+            }
             if handle_input(event, drawing, &mut strokes, &mut drag, overlay.hwnd())? {
                 surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
             }
@@ -116,6 +185,31 @@ fn main() -> Result<()> {
         }
     }
     println!("Overlay closed.");
+    Ok(())
+}
+
+fn restore_drawing_keys(
+    drawing: &mut bool,
+    keys: &mut Option<Hotkeys>,
+    overlay: &Overlay,
+    surface: &mut Surface,
+    strokes: &Strokes,
+    ui: &DesktopUi,
+) -> Result<()> {
+    if *drawing && keys.is_none() && !ui.is_picker_open() {
+        match Hotkeys::drawing_keys(true, true) {
+            Ok(guard) => *keys = Some(guard),
+            Err(error) => {
+                eprintln!(
+                    "Cannot resume drawing: {error}. Ink preserved; returning to click-through."
+                );
+                *drawing = false;
+                overlay.set_capture(false)?;
+                surface.present(overlay.hwnd(), false, strokes.annotations())?;
+                println!("Mode: click-through.");
+            }
+        }
+    }
     Ok(())
 }
 
@@ -357,6 +451,26 @@ mod tests {
         strokes.clear();
         assert!(apply_edit(Action::Undo, &mut strokes, &mut None));
         assert_eq!(strokes.annotations(), all);
+    }
+
+    #[test]
+    fn style_actions_settle_gestures_but_identical_choices_do_not() {
+        let mut strokes = Strokes::default();
+        strokes.begin((10, 10));
+        assert!(!apply_edit(Action::Orange, &mut strokes, &mut None));
+        assert!(strokes.is_active());
+        assert!(!apply_edit(Action::Blue, &mut strokes, &mut None));
+        assert!(!strokes.is_active());
+        assert_eq!(strokes.annotations()[0].style.color, 0xfff97316);
+        assert!(strokes.undo());
+        assert!(strokes.annotations().is_empty());
+        strokes.select(Tool::Line);
+        strokes.begin((20, 20));
+        strokes.append((40, 40));
+        assert!(apply_edit(Action::Thicker, &mut strokes, &mut None));
+        assert!(!strokes.is_active());
+        assert!(strokes.annotations().is_empty());
+        assert_eq!(strokes.style().thickness, 7);
     }
 
     #[test]

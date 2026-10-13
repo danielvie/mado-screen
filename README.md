@@ -1,6 +1,6 @@
 # Mado Screen PoC 4
 
-Native Rust/Win32 annotation overlay for the primary display. Startup is empty and click-through. PoC 4 is delivered in validated stages; see tasks/poc4-spec.md and tasks/poc4-progress.md.
+Native Rust/Win32 annotation overlay for the primary display. Startup is empty and click-through. PoC 4 adds history, styled pen/line/rectangle/arrow/ellipse annotations, whole-annotation erasing, a visible status indicator and a mouse-position RGB picker. Delivery evidence is in tasks/poc4-progress.md; specification is in tasks/poc4-spec.md.
 
 ## Commands
 
@@ -17,7 +17,7 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 
 For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe -PostedStroke`. The primary executable is `target\debug\mado-screen-poc.exe`.
 
-## Stage 2 controls
+## Controls
 
 Permanent global controls:
 - `Ctrl+Alt+D`: drawing/click-through toggle.
@@ -29,6 +29,7 @@ Drawing-mode-only controls:
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
+- `C` opens the color picker at the current mouse position, clamped to the nearest monitor work area. Use presets or enter red/green/blue values from 0 to 255, then Apply. Cancel or Escape preserves the old color.
 
 Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Same-tool or same-style selection does not interrupt a gesture.
 
@@ -36,7 +37,9 @@ Undo/redo first settles any active gesture. Pen ink is committed, unfinished sha
 
 Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
-Stage 3 adds the visible indicator and cursor-position color picker; those controls are not exposed yet.
+The top-right indicator shows drawing/click-through mode, selected tool, brush width and color swatch. It is click-through and nonactivating.
+
+The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its RGB controls and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
 
 ## Behavior and limits
 

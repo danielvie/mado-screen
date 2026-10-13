@@ -164,6 +164,20 @@ try {
     CheckEmptyCanvas 'Empty startup leaves sampled desktop pixels unchanged'
     Check ($startup.Contains('PoC 4:')) 'PoC 4 startup reported'
     ProbeToolKeys $true
+    if ($startup.Contains('stage 3')) {
+        $statusWindow = [PocSmoke]::FindWindow($null, 'Mado status')
+        [uint32]$statusOwner = 0
+        [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
+        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id) 'Owned status indicator is visible'
+        $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
+        Check (($statusStyle -band 0x080800a8) -eq 0x080800a8) 'Status indicator is topmost layered click-through and nonactivating'
+        $statusBitmap = [Drawing.Bitmap]::new(314, 44)
+        $statusGraphics = [Drawing.Graphics]::FromImage($statusBitmap)
+        try {
+            $statusGraphics.CopyFromScreen(($width - 330), 16, 0, 0, [Drawing.Size]::new(314, 44))
+            $statusBitmap.Save((Join-Path $directory 'status.png'))
+        } finally { $statusGraphics.Dispose(); $statusBitmap.Dispose() }
+    }
     $process.Refresh()
     $cpuStart = $process.TotalProcessorTime.TotalSeconds
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -234,6 +248,15 @@ try {
                 Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90)))) 'Eraser gesture inside ellipse queued'
                 Start-Sleep -Milliseconds 200
                 Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink) 'Eraser ignores empty shape interiors'
+            }
+            if ($startup.Contains('stage 3')) {
+                # Value-only app event checks color routing without opening/focusing the popup.
+                Check ([PocSmoke]::PostMessage($window, 0x8028, [UIntPtr]::new([uint64]4279383126), [IntPtr]::new(1))) 'Arbitrary RGB color result queued'
+                Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 860), $ly, ($lx + 880), $ly, ($lx + 900), $ly))) 'Custom RGB annotation queued'
+                Start-Sleep -Milliseconds 200
+                $custom = [Drawing.Color]::FromArgb(255, 18, 52, 86).ToArgb()
+                Check ((Pixel ($lx + 880) $ly) -eq $custom -and (Pixel $lx $ly) -eq $ink) 'Picker result routing applies arbitrary RGB without recoloring old ink'
+                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero)) 'Restore orange after custom RGB'
             }
             # Queue cancellation in the same burst, before the physical-release watchdog.
             Check ([PocSmoke]::PostDrag($window, $thread, 5, 6, [int[]]@(($lx + 300), $ly, ($lx + 360), $ly, ($lx + 360), $ly))) 'Line selection, unfinished line, tool cancellation and stale release queued'
