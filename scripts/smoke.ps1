@@ -17,6 +17,12 @@ public static class PocSmoke {
     // PowerShell converts $null to an empty string; pass the null class from C#.
     public static IntPtr FindWindowByTitle(string title) { return FindWindow(null, title); }
     [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr hwnd, System.Text.StringBuilder text, int count);
+    public static string WindowTitle(IntPtr hwnd) {
+        var text = new System.Text.StringBuilder(512);
+        GetWindowTextW(hwnd, text, text.Capacity);
+        return text.ToString();
+    }
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
@@ -114,9 +120,13 @@ public static class PocSmoke {
         }
         return 1;
     }
-    public static string LatestToolLabel(string log) {
-        var labels = System.Text.RegularExpressions.Regex.Matches(log, @"(?m)^Tool: ([^\r\n]+)\. Color:");
-        return labels.Count == 0 ? "" : labels[labels.Count - 1].Groups[1].Value;
+    public static string ToolLabel(string title) {
+        var label = System.Text.RegularExpressions.Regex.Match(title, @"\AMado ([^;\r\n]+); (Drawing|Click-through)\z");
+        return label.Success ? label.Groups[1].Value : "";
+    }
+    public static bool CanvasModeMatches(long style, string title, bool drawing) {
+        return ((style & 0x20) == 0) == drawing && ToolLabel(title) != "" &&
+            title.EndsWith(drawing ? "; Drawing" : "; Click-through", StringComparison.Ordinal);
     }
     public static bool PostDrag(IntPtr hwnd, uint thread, uint select, uint cancel, int[] points) {
         if (points.Length < 6 || points.Length % 2 != 0) throw new ArgumentException("Expected down, move and up coordinates.");
@@ -135,7 +145,7 @@ public static class PocSmoke {
 if ($SelfCheck) {
     # A cast of an empty command pipeline can still assign $null in Windows PowerShell.
     [string]$emptyStartup = @() | Out-Null
-    if ($null -eq $emptyStartup -or $emptyStartup.Contains('Mode: click-through.')) {
+    if ($null -eq $emptyStartup -or $emptyStartup.StartsWith('Mado Screen')) {
         throw 'Empty startup log must remain a safe, not-ready string.'
     }
     Write-Host 'PASS: empty startup log is a safe string before readiness'
@@ -199,14 +209,39 @@ if ($SelfCheck) {
         throw 'Interpolation sampling self-check failed.'
     }
     foreach ($case in @(
-        @('PoC 7: stage 3', ''),
-        @("Tool: Pen. Color: #F97316; width: 5.`r`nTool: Temporary pen. Color: #3B82F6; width: 5.`r`n", 'Temporary pen'),
-        @("Tool: Arrow head-first. Color: #F97316; width: 5.`nTool: Arrow tail-first. Color: #F97316; width: 5.`n", 'Arrow tail-first'),
-        @("Tool: Arrow tail-first. Color: #F97316; width: 5.`nTool: Arrow head-first. Color: #F97316; width: 5.`n", 'Arrow head-first')
+        @('', ''),
+        @('Mado Screen', ''),
+        @('Mado selected tool', ''),
+        @('Mado Pen; Click-through', 'Pen'),
+        @('Mado Temporary pen; Drawing', 'Temporary pen'),
+        @('Mado Temporary pen; Click-through', 'Temporary pen'),
+        @('Mado Arrow head-first; Drawing', 'Arrow head-first'),
+        @('Mado Arrow tail-first; Drawing', 'Arrow tail-first'),
+        @('Mado Arrow tail-first; Click-through', 'Arrow tail-first'),
+        @('Mado Pen; drawing', ''),
+        @('Mado ; Drawing', ''),
+        @('prefix Mado Pen; Drawing', ''),
+        @("Mado Pen; Drawing`n", ''),
+        @("Mado Pen; Drawing`r`nMado Temporary pen; Drawing", '')
     )) {
-        if ([PocSmoke]::LatestToolLabel($case[0]) -cne $case[1]) { throw 'Latest tool-label log self-check failed.' }
+        if ([PocSmoke]::ToolLabel($case[0]) -cne $case[1]) { throw 'Native tool-title self-check failed.' }
     }
-    Write-Host 'PASS: latest tool-label parsing distinguishes variants from stale log entries'
+    foreach ($case in @(
+        @(0x08080088, 'Mado Temporary pen; Drawing', $true, $true),
+        @(0x080800a8, 'Mado Pen; Click-through', $false, $true),
+        @(0x080800a8, 'Mado Pen; Drawing', $true, $false),
+        @(0x08080088, 'Mado Pen; Click-through', $false, $false),
+        @(0x08080088, 'Mado Pen; Click-through', $true, $false),
+        @(0x080800a8, 'Mado Pen; Drawing', $false, $false),
+        @(0x08080088, '', $true, $false),
+        @(0x080800a8, 'Unowned title; Click-through', $false, $false)
+    )) {
+        if ([PocSmoke]::CanvasModeMatches($case[0], $case[1], $case[2]) -ne $case[3]) {
+            throw 'Canvas style and native title mode agreement self-check failed.'
+        }
+    }
+    Write-Host 'PASS: native tool-title parsing distinguishes variants and rejects malformed titles'
+    Write-Host 'PASS: canvas transparency style and native title must agree on the requested mode'
     Write-Host 'PASS: stable match, stable mismatch and changing-background sample classification'
     Write-Host 'PASS: canvas/screen translation with negative left/above origins and round trips'
     Write-Host 'PASS: horizontal/vertical adjacent seams, reversed order, gap/corner rejection and interpolation samples'
@@ -287,17 +322,29 @@ function PostAction([uint32]$Action, [string]$Name) {
     Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new($Action), [IntPtr]::Zero)) $Name
     Start-Sleep -Milliseconds 200
 }
+function GetOwnedStatusTitle {
+    CheckOwnedCanvas
+    [uint32]$statusOwner = 0
+    [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
+    if ($statusOwner -ne $process.Id -or [PocSmoke]::GetWindow($statusWindow, 4) -ne $window) {
+        throw "Refusing to inspect a status window not owned by the copied process and canvas. Logs: $directory"
+    }
+    return [PocSmoke]::WindowTitle($statusWindow)
+}
+function TestCanvasMode([bool]$Drawing) {
+    $title = GetOwnedStatusTitle
+    $style = [PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64()
+    return [PocSmoke]::CanvasModeMatches($style, $title, $Drawing)
+}
 function CheckToolLabel([string]$Expected) {
-    # Status paints internal text, not its native title. Check the logged tool_label.
+    # Read the current owned HWND, not startup text or a stale event log.
     $wait = [Diagnostics.Stopwatch]::StartNew()
     do {
-        CheckOwnedCanvas
-        $log = [string](Get-Content (Join-Path $directory 'run-out.log') -Raw)
-        $label = [PocSmoke]::LatestToolLabel($log)
+        $label = [PocSmoke]::ToolLabel((GetOwnedStatusTitle))
         if ($label -ceq $Expected) { break }
         Start-Sleep -Milliseconds 50
     } while ($wait.Elapsed.TotalSeconds -lt 2)
-    Check ($label -ceq $Expected) "Latest app log reports Tool: $Expected. Color: within bounded wait"
+    Check ($label -ceq $Expected) "Owned status native title reports $Expected within bounded wait"
 }
 function PostLine([int[]]$Line, [string]$Name) {
     CheckOwnedCanvas
@@ -327,12 +374,11 @@ function SetPostedDrawingMode([bool]$Drawing) {
     PostAction 1 "Posted drawing mode toggle queued; requested drawing=$Drawing"
     $wait = [Diagnostics.Stopwatch]::StartNew()
     do {
-        CheckOwnedCanvas
-        $active = ([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -eq 0
-        if ($active -eq $Drawing) { break }
+        $modeReady = TestCanvasMode $Drawing
+        if ($modeReady) { break }
         Start-Sleep -Milliseconds 50
-    } while ($wait.Elapsed.TotalSeconds -lt 2)
-    Check ($active -eq $Drawing) "Posted drawing=$Drawing reached within bounded wait"
+    } while (-not $process.HasExited -and $wait.Elapsed.TotalSeconds -lt 2)
+    Check $modeReady "Posted drawing=$Drawing reached in canvas style and status native title within bounded wait"
 }
 function CheckEmptyCanvas([string]$Name, [int[]]$Points = @($lx, $ly, $rx, $ry)) {
     CheckOwnedCanvas
@@ -415,7 +461,9 @@ try {
         Start-Sleep -Milliseconds 50
         $window = [PocSmoke]::FindWindow('MadoScreenPoc1', 'Mado Screen PoC 1')
         [string]$startup = Get-Content (Join-Path $directory 'run-out.log') -Raw -ErrorAction SilentlyContinue
-        $ready = [PocSmoke]::IsWindowVisible($window) -and $startup.Contains('Mode: click-through.')
+        [uint32]$owner = 0
+        [void][PocSmoke]::GetWindowThreadProcessId($window, [ref]$owner)
+        $ready = [PocSmoke]::IsWindowVisible($window) -and $owner -eq $process.Id -and $startup.StartsWith('Mado Screen')
     } while (-not $ready -and -not $process.HasExited -and $deadline.Elapsed.TotalSeconds -lt 5)
     [uint32]$owner = 0
     $thread = [PocSmoke]::GetWindowThreadProcessId($window, [ref]$owner)
@@ -425,33 +473,27 @@ try {
     Check (($style -band 0x080800a8) -eq 0x080800a8) ('Topmost layered click-through nonactivating tool window styles: 0x{0:x}' -f $style)
     Start-Sleep -Milliseconds 300
     $ink = [Drawing.Color]::FromArgb(255, 249, 115, 22).ToArgb()
-    if ($startup.Contains('stage 3')) {
-        # The accessible panel title follows the tool/mode; startup is Pen, click-through.
-        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado Pen; Click-through')
-        [uint32]$statusOwner = 0
-        [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
-        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible before canvas sampling'
-    }
+    # The accessible panel title follows the tool/mode; startup is Pen, click-through.
+    $statusWindow = [PocSmoke]::FindWindowByTitle('Mado Pen; Click-through')
+    [uint32]$statusOwner = 0
+    [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
+    Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible before canvas sampling'
+    Check (TestCanvasMode $false) 'Startup canvas style and status native title agree on click-through'
     CheckEmptyCanvas 'Empty startup leaves sampled desktop pixels unchanged'
-    Check ($startup.Contains('PoC 7: stage 3')) 'PoC 7 stage 3 startup reported'
+    Check ($ready -and $startup.StartsWith('Mado Screen')) 'Startup help begins with Mado Screen within bounded readiness wait'
     ProbeToolKeys $true
-    if ($startup.Contains('stage 3')) {
-        $statusWindow = [PocSmoke]::FindWindowByTitle('Mado Pen; Click-through')
-        [uint32]$statusOwner = 0
-        [void][PocSmoke]::GetWindowThreadProcessId($statusWindow, [ref]$statusOwner)
-        Check ([PocSmoke]::IsWindowVisible($statusWindow) -and $statusOwner -eq $process.Id -and [PocSmoke]::GetWindow($statusWindow, 4) -eq $window) 'Owned status indicator is visible'
-        $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
-        Check (($statusStyle -band 0x08080088) -eq 0x08080088 -and ($statusStyle -band 0x20) -eq 0) 'Status panel is topmost layered nonactivating and receives hover/swatch input'
-        $statusBounds = [PocSmoke+Rect]::new()
-        Check ([PocSmoke]::GetWindowRect($statusWindow, [ref]$statusBounds)) 'Status bounds available for visual evidence'
-        $statusSize = [Drawing.Size]::new(($statusBounds.Right - $statusBounds.Left), ($statusBounds.Bottom - $statusBounds.Top))
-        $statusBitmap = [Drawing.Bitmap]::new($statusSize.Width, $statusSize.Height)
-        $statusGraphics = [Drawing.Graphics]::FromImage($statusBitmap)
-        try {
-            $statusGraphics.CopyFromScreen($statusBounds.Left, $statusBounds.Top, 0, 0, $statusSize)
-            $statusBitmap.Save((Join-Path $directory 'status.png'))
-        } finally { $statusGraphics.Dispose(); $statusBitmap.Dispose() }
-    }
+    Check ([PocSmoke]::IsWindowVisible($statusWindow) -and (GetOwnedStatusTitle) -ceq 'Mado Pen; Click-through') 'Owned status indicator is visible'
+    $statusStyle = [PocSmoke]::GetWindowLongPtrW($statusWindow, -20).ToInt64()
+    Check (($statusStyle -band 0x08080088) -eq 0x08080088 -and ($statusStyle -band 0x20) -eq 0) 'Status panel is topmost layered nonactivating and receives hover/swatch input'
+    $statusBounds = [PocSmoke+Rect]::new()
+    Check ([PocSmoke]::GetWindowRect($statusWindow, [ref]$statusBounds)) 'Status bounds available for visual evidence'
+    $statusSize = [Drawing.Size]::new(($statusBounds.Right - $statusBounds.Left), ($statusBounds.Bottom - $statusBounds.Top))
+    $statusBitmap = [Drawing.Bitmap]::new($statusSize.Width, $statusSize.Height)
+    $statusGraphics = [Drawing.Graphics]::FromImage($statusBitmap)
+    try {
+        $statusGraphics.CopyFromScreen($statusBounds.Left, $statusBounds.Top, 0, 0, $statusSize)
+        $statusBitmap.Save((Join-Path $directory 'status.png'))
+    } finally { $statusGraphics.Dispose(); $statusBitmap.Dispose() }
     $process.Refresh()
     $cpuStart = $process.TotalProcessorTime.TotalSeconds
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -469,11 +511,9 @@ try {
             $modeWait = [Diagnostics.Stopwatch]::StartNew()
             do {
                 Start-Sleep -Milliseconds 50
-                $style = [PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64()
-                $log = [string](Get-Content (Join-Path $directory 'run-out.log') -Raw)
-                $drawingReady = ($style -band 0x20) -eq 0 -and $log.Contains('Mode: drawing;')
+                $drawingReady = TestCanvasMode $true
             } while (-not $drawingReady -and -not $process.HasExited -and $modeWait.Elapsed.TotalSeconds -lt 2)
-            Check $drawingReady 'Drawing mode entered within bounded wait'
+            Check $drawingReady 'Drawing mode entered in canvas style and status native title within bounded wait'
             ProbeToolKeys $false
             # Queue the complete stroke before checking results so the physical-state watchdog
             # does not end a synthetic drag between individual messages.
@@ -507,39 +547,35 @@ try {
             Start-Sleep -Milliseconds 200
             Check ((Pixel $lx $ly) -eq $ink -and (Pixel ($lx + 520) $ly) -eq $blue) 'Undo clear restores the mixed styled scene'
             Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore orange five-pixel style'
-            if ($startup.Contains('stage 2') -or $startup.Contains('stage 3')) {
-                Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), $ly, ($lx + 640), $ly, ($lx + 680), $ly))) 'Arrow gesture queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 600) $ly) -eq $ink -and (Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 660) ($ly + 30)) -eq $ink -and (Pixel ($lx + 660) ($ly - 30)) -eq $ink) 'Arrow head stays at press point with larger separate wings'
-                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Thicker arrow style queued'
-                # Repeating A now toggles direction. Reselect from Line for the legacy head-first check.
-                PostAction 5 'Select Line before reselecting the legacy head-first Arrow'
-                Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), ($ly + 220), ($lx + 680), ($ly + 220), ($lx + 800), ($ly + 220)))) 'Thicker head-first arrow queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 702) ($ly + 271)) -eq $ink -and (Pixel ($lx + 702) ($ly + 169)) -eq $ink -and (Pixel ($lx + 800) ($ly + 271)) -ne $ink) 'Wider stroke enlarges both head wings without moving them to the tail'
-                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore five-pixel width after arrow checks'
-                Check ([PocSmoke]::PostDrag($window, $thread, 17, 0, [int[]]@(($lx + 800), ($ly + 120), ($lx + 720), ($ly + 60), ($lx + 720), ($ly + 60)))) 'Reverse-direction ellipse queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink -and (Pixel ($lx + 760) ($ly + 90)) -ne $ink) 'Ellipse outline bounds rendered with empty interior'
-                Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 520), $ly, ($lx + 520), $ly, ($lx + 520), $ly))) 'Whole-annotation eraser queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 500) $ly) -ne $blue -and (Pixel ($lx + 540) $ly) -ne $blue -and (Pixel $lx $ly) -eq $ink) 'Eraser removes the whole touched annotation only'
-                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(7), [IntPtr]::Zero)) 'Undo erasing queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 500) $ly) -eq $blue -and (Pixel ($lx + 540) $ly) -eq $blue) 'Undo restores entire erased annotation and style'
-                Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90)))) 'Eraser gesture inside ellipse queued'
-                Start-Sleep -Milliseconds 200
-                Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink) 'Eraser ignores empty shape interiors'
-            }
-            if ($startup.Contains('stage 3')) {
-                # Value-only app event checks color routing without opening/focusing the popup.
-                Check ([PocSmoke]::PostMessage($window, 0x8028, [UIntPtr]::new([uint64]4279383126), [IntPtr]::new(1))) 'Arbitrary RGB color result queued'
-                Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 860), $ly, ($lx + 880), $ly, ($lx + 900), $ly))) 'Custom RGB annotation queued'
-                Start-Sleep -Milliseconds 200
-                $custom = [Drawing.Color]::FromArgb(255, 18, 52, 86).ToArgb()
-                Check ((Pixel ($lx + 880) $ly) -eq $custom -and (Pixel $lx $ly) -eq $ink) 'Picker result routing applies arbitrary RGB without recoloring old ink'
-                Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero)) 'Restore orange after custom RGB'
-            }
+            Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), $ly, ($lx + 640), $ly, ($lx + 680), $ly))) 'Arrow gesture queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 600) $ly) -eq $ink -and (Pixel ($lx + 640) $ly) -eq $ink -and (Pixel ($lx + 660) ($ly + 30)) -eq $ink -and (Pixel ($lx + 660) ($ly - 30)) -eq $ink) 'Arrow head stays at press point with larger separate wings'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(10), [IntPtr]::Zero)) 'Thicker arrow style queued'
+            # Repeating A now toggles direction. Reselect from Line for the legacy head-first check.
+            PostAction 5 'Select Line before reselecting the legacy head-first Arrow'
+            Check ([PocSmoke]::PostDrag($window, $thread, 16, 0, [int[]]@(($lx + 600), ($ly + 220), ($lx + 680), ($ly + 220), ($lx + 800), ($ly + 220)))) 'Thicker head-first arrow queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 702) ($ly + 271)) -eq $ink -and (Pixel ($lx + 702) ($ly + 169)) -eq $ink -and (Pixel ($lx + 800) ($ly + 271)) -ne $ink) 'Wider stroke enlarges both head wings without moving them to the tail'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero) -and [PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(9), [IntPtr]::Zero)) 'Restore five-pixel width after arrow checks'
+            Check ([PocSmoke]::PostDrag($window, $thread, 17, 0, [int[]]@(($lx + 800), ($ly + 120), ($lx + 720), ($ly + 60), ($lx + 720), ($ly + 60)))) 'Reverse-direction ellipse queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink -and (Pixel ($lx + 760) ($ly + 90)) -ne $ink) 'Ellipse outline bounds rendered with empty interior'
+            Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 520), $ly, ($lx + 520), $ly, ($lx + 520), $ly))) 'Whole-annotation eraser queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 500) $ly) -ne $blue -and (Pixel ($lx + 540) $ly) -ne $blue -and (Pixel $lx $ly) -eq $ink) 'Eraser removes the whole touched annotation only'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(7), [IntPtr]::Zero)) 'Undo erasing queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 500) $ly) -eq $blue -and (Pixel ($lx + 540) $ly) -eq $blue) 'Undo restores entire erased annotation and style'
+            Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90)))) 'Eraser gesture inside ellipse queued'
+            Start-Sleep -Milliseconds 200
+            Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink) 'Eraser ignores empty shape interiors'
+            # Value-only app event checks color routing without opening/focusing the popup.
+            Check ([PocSmoke]::PostMessage($window, 0x8028, [UIntPtr]::new([uint64]4279383126), [IntPtr]::new(1))) 'Arbitrary RGB color result queued'
+            Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 860), $ly, ($lx + 880), $ly, ($lx + 900), $ly))) 'Custom RGB annotation queued'
+            Start-Sleep -Milliseconds 200
+            $custom = [Drawing.Color]::FromArgb(255, 18, 52, 86).ToArgb()
+            Check ((Pixel ($lx + 880) $ly) -eq $custom -and (Pixel $lx $ly) -eq $ink) 'Picker result routing applies arbitrary RGB without recoloring old ink'
+            Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero)) 'Restore orange after custom RGB'
             # Queue cancellation in the same burst, before the physical-release watchdog.
             Check ([PocSmoke]::PostDrag($window, $thread, 5, 6, [int[]]@(($lx + 300), $ly, ($lx + 360), $ly, ($lx + 360), $ly))) 'Line selection, unfinished line, tool cancellation and stale release queued'
             Start-Sleep -Milliseconds 300
@@ -547,7 +583,7 @@ try {
             Check ([PocSmoke]::PostDrag($window, $thread, 0, 1, [int[]]@(($lx + 400), $ly, ($lx + 460), ($ly + 40), ($lx + 460), ($ly + 40)))) 'Unfinished rectangle, mode cancellation and stale shape release queued'
             Start-Sleep -Milliseconds 300
             $drawingRequested = $false
-            Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0) 'Mode change restores click-through'
+            Check (TestCanvasMode $false) 'Mode change restores click-through in canvas style and status native title'
             Check ((Pixel ($lx + 430) $ly) -ne $ink) 'Mode change discards unfinished rectangle'
         } finally {
             if ($drawingRequested -and -not $process.HasExited) {
@@ -555,9 +591,7 @@ try {
                 $modeWait = [Diagnostics.Stopwatch]::StartNew()
                 do {
                     Start-Sleep -Milliseconds 50
-                    $style = [PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64()
-                    $log = [string](Get-Content (Join-Path $directory 'run-out.log') -Raw)
-                    $restored = ($style -band 0x20) -ne 0 -and ([regex]::Matches($log, 'Mode: click-through\.')).Count -ge 2
+                    $restored = TestCanvasMode $false
                 } while (-not $restored -and -not $process.HasExited -and $modeWait.Elapsed.TotalSeconds -lt 2)
                 if (-not $returnQueued -or -not $restored) {
                     # Never leave the copied process trapping input after a failed mode check.
@@ -794,7 +828,7 @@ try {
         idleCpuSeconds = $cpuSeconds; idleCpuPercent = $idlePercent
         postedStroke = [bool]$PostedStroke
         postedPoc6 = if ($poc6PostedRan) { 'Posted P/A variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
-        variantLabelEvidence = 'Latest app log tool_label only. The panel title follows tool/mode, but painted hover labels and compact icons remain manual/untested in desktop smoke.'
+        variantLabelEvidence = 'Current owned status HWND accessible native title read through GetWindowTextW, with process ID and canvas ownership verified. Painted hover labels and compact icons remain manual/untested; this is not physical painted-label acceptance.'
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
         manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, picker placement/focus/scaling and hardware latency.'
         mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or picker scaling.'
