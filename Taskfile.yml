@@ -1,0 +1,33 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  run:
+    desc: Run the Windows overlay prototype
+    cmds:
+      - cargo run
+
+  build:
+    desc: Build the Windows overlay prototype
+    cmds:
+      - cargo build
+
+  test:
+    desc: Check automatic shape rasterization
+    cmds:
+      - cargo test
+
+  check:
+    desc: Check formatting and Rust warnings
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --all-targets -- -D warnings
+
+  clean:
+    desc: Remove Cargo build artifacts
+    cmds:
+      - cargo clean
