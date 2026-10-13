@@ -562,6 +562,22 @@ mod tests {
         for old_log in ["PoC 7", "Mode:", "Tool:", "Overlay closed."] {
             assert!(!STARTUP_HELP.contains(old_log));
         }
+        let runtime = include_str!("main.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        assert_eq!(
+            runtime
+                .lines()
+                .filter(|line| line.trim_start().starts_with("println!("))
+                .count(),
+            1,
+            "Only the startup guide should print routine output"
+        );
+        assert!(
+            runtime.contains("eprintln!("),
+            "Actionable errors must remain visible"
+        );
     }
 
     #[test]
