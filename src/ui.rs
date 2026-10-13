@@ -225,9 +225,13 @@ impl DesktopUi {
     }
 
     pub fn update(&self, drawing: bool, tool: Tool, style: Style) -> Result<()> {
+        self.update_label(drawing, &format!("{tool:?}"), style)
+    }
+
+    pub fn update_label(&self, drawing: bool, tool: &str, style: Style) -> Result<()> {
         let mode = if drawing { "Drawing" } else { "Click-through" };
         let text = format!(
-            "{mode} | {tool:?} | {} px | #{:06X}",
+            "{mode} | {tool} | {} px | #{:06X}",
             style.thickness,
             style.color & 0xffffff
         );

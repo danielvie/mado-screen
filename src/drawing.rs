@@ -1,6 +1,11 @@
 use crate::strokes::{Annotation, Point};
 
-pub fn render(pixels: &mut [u32], width: usize, drawing: bool, annotations: &[Annotation]) {
+pub fn render<'a>(
+    pixels: &mut [u32],
+    width: usize,
+    drawing: bool,
+    annotations: impl IntoIterator<Item = &'a Annotation>,
+) {
     assert!(width > 0 && pixels.len().is_multiple_of(width));
     // ponytail: full-screen fill/upload and O(total stroke points) replay per change;
     // measure at the tested resolution before switching to a GPU renderer.

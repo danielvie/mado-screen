@@ -16,6 +16,7 @@ use windows::{
 };
 
 const DRAG_TIMER_ID: usize = 1;
+const EXPIRY_TIMER_ID: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
@@ -24,6 +25,7 @@ pub enum Event {
     Up((i32, i32)),
     Cancel,
     CheckRelease,
+    Expire,
 }
 
 pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
@@ -44,6 +46,7 @@ pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
         WM_LBUTTONUP => Some(Event::Up(point)),
         WM_CANCELMODE | WM_CAPTURECHANGED => Some(Event::Cancel),
         WM_TIMER if message.wParam.0 == DRAG_TIMER_ID => Some(Event::CheckRelease),
+        WM_TIMER if message.wParam.0 == EXPIRY_TIMER_ID => Some(Event::Expire),
         _ => None,
     }
 }
@@ -98,6 +101,33 @@ impl Drop for DragCapture {
             if GetCapture() == self.hwnd {
                 let _ = ReleaseCapture();
             }
+        }
+    }
+}
+
+// Owned only while temporary ink remains; no permanent idle polling.
+pub struct ExpiryTimer(HWND);
+
+impl ExpiryTimer {
+    pub fn begin(hwnd: HWND) -> Result<Self> {
+        if hwnd.is_invalid() {
+            return Err(Error::new(E_INVALIDARG, "Expiry timer requires a window"));
+        }
+        // Timer dispatch can be late. Expiry uses monotonic elapsed time, not tick counts.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-settimer
+        if unsafe { SetTimer(Some(hwnd), EXPIRY_TIMER_ID, 32, None) } == 0 {
+            return Err(Error::from_thread());
+        }
+        Ok(Self(hwnd))
+    }
+}
+
+impl Drop for ExpiryTimer {
+    fn drop(&mut self) {
+        // Queued ticks may remain; the main loop only expires actual remaining ink.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-killtimer
+        unsafe {
+            let _ = KillTimer(Some(self.0), EXPIRY_TIMER_ID);
         }
     }
 }
@@ -170,7 +200,11 @@ mod tests {
         }
         for timer in [0, 1, 2, usize::MAX] {
             let msg = message(WM_TIMER, timer, (0, 0));
-            let expected = (timer == 1).then_some(Event::CheckRelease);
+            let expected = match timer {
+                1 => Some(Event::CheckRelease),
+                2 => Some(Event::Expire),
+                _ => None,
+            };
             assert_eq!(event(&msg, msg.hwnd), expected);
         }
         let msg = message(0, 1, (0, 0));

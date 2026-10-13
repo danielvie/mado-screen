@@ -70,11 +70,11 @@ impl Surface {
         Ok(surface)
     }
 
-    pub fn present(
+    pub fn present<'a>(
         &mut self,
         hwnd: HWND,
         drawing: bool,
-        annotations: &[crate::strokes::Annotation],
+        annotations: impl IntoIterator<Item = &'a crate::strokes::Annotation>,
     ) -> Result<()> {
         unsafe {
             // This DIB owns width*height aligned u32 pixels until Surface::drop.
