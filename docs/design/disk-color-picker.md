@@ -1,0 +1,24 @@
+# Disk color picker proposal
+
+Status: design proposal only, awaiting review. No application code changed.
+
+Editable design: disk-color-picker.excalidraw. Preview: disk-color-picker.png. Drop the Excalidraw file into https://excalidraw.com to inspect or edit it. The disk is grouped native polygon geometry, not an embedded reference image; ungroup it to edit individual sectors. All text uses Excalifont. The PNG previews the layout with Segoe UI rather than the Excalidraw font.
+
+## Design
+
+Adapt the supplied color-disk reference into an actual compact control, without copying its pipette artwork. A dark panel contains one circular hue/saturation disk, a brightness slider, candidate-color swatch and hex input, familiar presets, and Apply/Cancel. No title-bar clutter or separate RGB form by default. The intended disk has a smooth gradient; editable tiles in the drawing approximate it.
+
+Approximate popup size: 300 by 460 logical pixels. It opens near the mouse on drawing-only C and clamps to the nearest work area. Scale controls with DPI rather than clipping them. Placement examples are schematic, not pixel-perfect scaled copies of the full panel.
+
+## Proposed interactions
+
+- Angle changes hue; distance from the center changes saturation. The center is neutral, the rim vivid. A white/black double-ring marker stays visible over every color.
+- Brightness controls value from black to full brightness. Center plus maximum brightness selects white; the minimum brightness selects black.
+- Disk dragging, slider movement, presets and valid hex edits update the candidate swatch and hex value, not existing annotations or the committed brush color.
+- Apply or Enter confirms and closes. Escape, close or an outside click cancels and preserves the previous color. Invalid hex remains in the pane with an inline error; it never commits.
+- Tab navigates labeled disk, brightness, hex, presets and buttons. Arrow keys adjust hue/saturation or brightness on the focused control. Native accessibility names expose the values; hex entry remains an alternative to visual selection.
+- Preserve PoC4 key suspension while the picker is open, safe reacquisition/conflict fallback, permanent toggle/clear/quit, and no unintended canvas strokes. Existing annotations retain their styles.
+
+Screen eyedropper/sampling, opacity and thickness controls are not part of this picker change. The reference pipette is treated as an illustration, not an additional requested feature.
+
+Review the visual layout and confirmation behavior before implementation. This proposal does not claim native focus, performance or accessibility acceptance.
