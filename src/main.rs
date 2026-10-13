@@ -11,7 +11,10 @@ use overlay::Overlay;
 use strokes::{Strokes, Tool};
 use surface::Surface;
 use windows::{
-    Win32::{Foundation::HWND, UI::{HiDpi::*, WindowsAndMessaging::*}},
+    Win32::{
+        Foundation::HWND,
+        UI::{HiDpi::*, WindowsAndMessaging::*},
+    },
     core::{Error, Result},
 };
 
@@ -35,7 +38,9 @@ fn main() -> Result<()> {
     println!("PoC 4: stage {STAGE}, empty canvas, styled annotations and history.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
     println!("Drawing only: P/L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
-    if STAGE >= 2 { println!("Drawing only: A arrow, O ellipse, E whole-annotation eraser."); }
+    if STAGE >= 2 {
+        println!("Drawing only: A arrow, O ellipse, E whole-annotation eraser.");
+    }
     println!("Primary display: {width} x {height} physical pixels.");
     println!("Mode: click-through.");
     let mut message = MSG::default();
@@ -46,24 +51,37 @@ fn main() -> Result<()> {
             _ => {}
         }
         if message.message == WM_HOTKEY {
-            let Some(action) = controls::action(message.wParam.0) else { continue };
+            let Some(action) = controls::action(message.wParam.0) else {
+                continue;
+            };
             match action {
                 Action::Toggle => {
                     if !drawing {
                         match Hotkeys::drawing_keys(STAGE >= 2, false) {
                             Ok(keys) => tool_keys = Some(keys),
                             Err(error) => {
-                                eprintln!("Cannot enter drawing mode: {error}. Ink preserved; still click-through.");
+                                eprintln!(
+                                    "Cannot enter drawing mode: {error}. Ink preserved; still click-through."
+                                );
                                 continue;
                             }
                         }
-                    } else { drop(tool_keys.take()); }
+                    } else {
+                        drop(tool_keys.take());
+                    }
                     strokes.cancel();
                     drop(drag.take());
                     drawing = !drawing;
                     overlay.set_capture(drawing)?;
                     surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
-                    println!("Mode: {}.", if drawing { "drawing; background alpha 1/255" } else { "click-through" });
+                    println!(
+                        "Mode: {}.",
+                        if drawing {
+                            "drawing; background alpha 1/255"
+                        } else {
+                            "click-through"
+                        }
+                    );
                 }
                 Action::Clear => {
                     strokes.cancel();
@@ -77,7 +95,12 @@ fn main() -> Result<()> {
                     if apply_edit(action, &mut strokes, &mut drag) {
                         surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
                     }
-                    println!("Tool: {:?}. Color: #{:06X}; width: {}.", strokes.tool(), strokes.style().color & 0xffffff, strokes.style().thickness);
+                    println!(
+                        "Tool: {:?}. Color: #{:06X}; width: {}.",
+                        strokes.tool(),
+                        strokes.style().color & 0xffffff,
+                        strokes.style().thickness
+                    );
                 }
                 _ => {}
             }
@@ -86,7 +109,10 @@ fn main() -> Result<()> {
                 surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
             }
         } else {
-            unsafe { let _ = TranslateMessage(&message); DispatchMessageW(&message); }
+            unsafe {
+                let _ = TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
         }
     }
     println!("Overlay closed.");
@@ -104,7 +130,9 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
         _ => None,
     };
     if let Some(tool) = tool {
-        if strokes.tool() == tool { return false; }
+        if strokes.tool() == tool {
+            return false;
+        }
         drop(drag.take());
         return strokes.select(tool);
     }
@@ -117,9 +145,13 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
         _ => None,
     };
     if let Some(color) = color {
-        if strokes.style().color == color { return false; }
+        if strokes.style().color == color {
+            return false;
+        }
         drop(drag.take());
-        return strokes.set_color(color);
+        let changed = strokes.cancel();
+        strokes.set_color(color);
+        return changed;
     }
     let thickness = match action {
         Action::Thinner => Some(strokes.style().thickness.saturating_sub(2).max(1)),
@@ -127,9 +159,13 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
         _ => None,
     };
     if let Some(thickness) = thickness {
-        if strokes.style().thickness == thickness { return false; }
+        if strokes.style().thickness == thickness {
+            return false;
+        }
         drop(drag.take());
-        return strokes.set_thickness(thickness);
+        let changed = strokes.cancel();
+        strokes.set_thickness(thickness);
+        return changed;
     }
     match action {
         Action::Undo | Action::Redo => {
@@ -144,7 +180,13 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
     }
 }
 
-fn handle_input(event: Event, drawing: bool, strokes: &mut Strokes, drag: &mut Option<DragCapture>, hwnd: HWND) -> Result<bool> {
+fn handle_input(
+    event: Event,
+    drawing: bool,
+    strokes: &mut Strokes,
+    drag: &mut Option<DragCapture>,
+    hwnd: HWND,
+) -> Result<bool> {
     match event {
         Event::Down(point) if drawing => {
             strokes.cancel();
@@ -152,14 +194,19 @@ fn handle_input(event: Event, drawing: bool, strokes: &mut Strokes, drag: &mut O
             *drag = Some(DragCapture::begin(hwnd)?);
             Ok(strokes.begin(point))
         }
-        Event::Move { point, left_down: true } if drawing && strokes.is_active() => Ok(strokes.append(point)),
+        Event::Move {
+            point,
+            left_down: true,
+        } if drawing && strokes.is_active() => Ok(strokes.append(point)),
         Event::Up(point) => {
             let changed = strokes.append(point);
             strokes.finish();
             drop(drag.take());
             Ok(changed)
         }
-        Event::Move { left_down: false, .. } => {
+        Event::Move {
+            left_down: false, ..
+        } => {
             strokes.finish();
             drop(drag.take());
             Ok(false)
@@ -170,7 +217,12 @@ fn handle_input(event: Event, drawing: bool, strokes: &mut Strokes, drag: &mut O
             Ok(changed)
         }
         Event::CheckRelease if drag.as_ref().is_some_and(DragCapture::lost_or_released) => {
-            let changed = if drag.as_ref().is_some_and(DragCapture::has_capture) { strokes.finish(); false } else { strokes.cancel() };
+            let changed = if drag.as_ref().is_some_and(DragCapture::has_capture) {
+                strokes.finish();
+                false
+            } else {
+                strokes.cancel()
+            };
             drop(drag.take());
             Ok(changed)
         }
@@ -186,7 +238,9 @@ mod tests {
     #[test]
     fn queued_events_ignore_hover_and_only_redraw_changed_points() {
         let mut strokes = Strokes::default();
-        let route = |event, drawing, strokes: &mut Strokes| handle_input(event, drawing, strokes, &mut None, HWND::default()).unwrap();
+        let route = |event, drawing, strokes: &mut Strokes| {
+            handle_input(event, drawing, strokes, &mut None, HWND::default()).unwrap()
+        };
         let movement = |point, left_down| Event::Move { point, left_down };
         assert!(!route(Event::Down((1, 2)), false, &mut strokes));
         assert!(!route(movement((3, 4), true), true, &mut strokes));
@@ -218,13 +272,40 @@ mod tests {
             strokes.select(tool);
             strokes.begin((10, 10));
             strokes.append((20, 20));
-            assert!(handle_input(Event::Up((30, 30)), true, &mut strokes, &mut None, HWND::default()).unwrap());
+            assert!(
+                handle_input(
+                    Event::Up((30, 30)),
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
             let committed = strokes.annotations().to_vec();
             strokes.begin((40, 40));
             strokes.append((50, 50));
-            assert!(handle_input(Event::Cancel, true, &mut strokes, &mut None, HWND::default()).unwrap());
+            assert!(
+                handle_input(
+                    Event::Cancel,
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
             assert_eq!(strokes.annotations(), committed);
-            assert!(!handle_input(Event::Up((60, 60)), true, &mut strokes, &mut None, HWND::default()).unwrap());
+            assert!(
+                !handle_input(
+                    Event::Up((60, 60)),
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
         }
     }
 
@@ -236,10 +317,18 @@ mod tests {
             strokes.begin((20, 20));
             strokes.append((50, 50));
             let mut pixels = vec![0; 100 * 100];
-            let old_pixel = if tool == Tool::Line { 35 * 100 + 35 } else { 35 * 100 + 50 };
+            let old_pixel = if tool == Tool::Line {
+                35 * 100 + 35
+            } else {
+                35 * 100 + 50
+            };
             drawing::render(&mut pixels, 100, true, strokes.annotations());
             assert_eq!(pixels[old_pixel], 0xfff97316);
-            strokes.append(if tool == Tool::Line { (70, 20) } else { (70, 70) });
+            strokes.append(if tool == Tool::Line {
+                (70, 20)
+            } else {
+                (70, 70)
+            });
             drawing::render(&mut pixels, 100, true, strokes.annotations());
             assert_eq!(pixels[old_pixel], 0x01000000);
             assert!(strokes.cancel());
@@ -251,10 +340,12 @@ mod tests {
     #[test]
     fn edit_actions_preserve_styles_and_restore_history() {
         let mut strokes = Strokes::default();
-        strokes.begin((10, 10)); strokes.finish();
+        strokes.begin((10, 10));
+        strokes.finish();
         apply_edit(Action::Blue, &mut strokes, &mut None);
         apply_edit(Action::Thicker, &mut strokes, &mut None);
-        strokes.begin((30, 30)); strokes.finish();
+        strokes.begin((30, 30));
+        strokes.finish();
         let all = strokes.annotations().to_vec();
         assert_eq!(all[0].style.color, 0xfff97316);
         assert_eq!(all[1].style.color, 0xff3b82f6);
@@ -271,7 +362,11 @@ mod tests {
     #[test]
     fn drag_drops_before_window_and_surface_on_quit_and_error() {
         struct Resource<'a>(&'static str, &'a RefCell<Vec<&'static str>>);
-        impl Drop for Resource<'_> { fn drop(&mut self) { self.1.borrow_mut().push(self.0); } }
+        impl Drop for Resource<'_> {
+            fn drop(&mut self) {
+                self.1.borrow_mut().push(self.0);
+            }
+        }
         for fail in [false, true] {
             let drops = RefCell::new(Vec::new());
             let result = (|| -> std::result::Result<(), ()> {
@@ -283,11 +378,16 @@ mod tests {
                 drop(drag.take());
                 drag = Some(Resource("drag", &drops));
                 let _ = (&overlay, &surface, &tool_keys, &drag);
-                if fail { return Err(()); }
+                if fail {
+                    return Err(());
+                }
                 Ok(())
             })();
             assert_eq!(result.is_err(), fail);
-            assert_eq!(*drops.borrow(), ["drag", "drag", "tool keys", "overlay", "surface"]);
+            assert_eq!(
+                *drops.borrow(),
+                ["drag", "drag", "tool keys", "overlay", "surface"]
+            );
         }
     }
 }
