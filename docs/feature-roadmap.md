@@ -1,5 +1,9 @@
 # Features and remaining work
 
+## PoC 7 scope
+
+Approved: rounded caps/joins and antialiased stroke edges, linear temporary fading over one second, roughly doubled open arrowhead reach and smoother ellipse subdivision. Existing tools, styles, history and multi-monitor behavior remain. No gradients, shadows, curve smoothing or new dependencies. Scope and results: tasks/poc7-spec.md and tasks/poc7-progress.md.
+
 ## PoC 6 scope
 
 Approved: solid temporary Pen, repeated P toggles permanent/temporary; repeated A toggles head-first/tail-first arrow direction. Indicator shows the variant. Temporary parts expire after about one second, including after release, and never enter undo/redo. Contracts/evidence: tasks/poc6-spec.md and tasks/poc6-progress.md.
@@ -59,4 +63,4 @@ The user deferred sharing/recording validation. When resumed, name the capture a
 
 ## Proposed next improvements
 
-PoC 6 is the approved increment. The next PoC will improve visuals, including temporary-ink fading. Validate real expiry, tool toggles and responsiveness before choosing those changes. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.
+PoC 7 is the approved visual increment. User visual acceptance and physical responsiveness remain to be observed. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.

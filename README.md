@@ -1,6 +1,6 @@
 # Mado Screen PoC 6
 
-Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 6 adds a temporary pen and reversible arrow direction. Tools, history, indicator and disk picker are preserved. PoC 6 contracts and evidence are in tasks/poc6-spec.md and tasks/poc6-progress.md.
+Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 7 adds rounded antialiased strokes, one-second temporary fading, larger arrowheads and smoother ellipse outlines. Tools, history, indicator and disk picker are preserved. Scope and checks are in tasks/poc7-spec.md and tasks/poc7-progress.md.
 
 ## Commands
 
@@ -45,9 +45,9 @@ The modeless picker may intentionally take keyboard focus. While open, drawing-o
 
 ## Temporary ink
 
-Each temporary dot/input segment stays solid for about one second from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
+Each temporary dot/input segment fades linearly over one second from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
 
-Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment expires together, so sparse movement may disappear in larger pieces. Fading and visual improvements are deferred to the next PoC. A timer checks expiry only while temporary pixels remain; it stops when empty.
+Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment has one age, so sparse movement can show larger steps along the fading tail. Parts of one gesture do not build up opacity at overlapping joins. Separate gestures layer normally. A timer redraws fading ink only while temporary pixels remain; it stops when empty. Permanent strokes stay opaque inside their antialiased edges. Round caps and joins preserve the pointer path without curve smoothing.
 
 ## Behavior and limits
 

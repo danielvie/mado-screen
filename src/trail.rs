@@ -6,14 +6,17 @@ const LIFETIME: Duration = Duration::from_secs(1);
 /// Temporary ink with caller-supplied monotonic elapsed times, independent of history.
 #[derive(Default)]
 pub struct Trail {
-    parts: VecDeque<(Duration, Annotation)>,
+    parts: VecDeque<(Duration, u64, Annotation)>,
     active: Option<(Point, Style, Duration)>,
+    gesture: u64,
 }
 
 impl Trail {
     pub fn begin(&mut self, point: Point, style: Style, now: Duration) -> bool {
+        self.gesture += 1;
         self.parts.push_back((
             now,
+            self.gesture,
             Annotation {
                 paths: vec![vec![point]],
                 style,
@@ -39,6 +42,7 @@ impl Trail {
         // subdivide and interpolate birth times if per-distance expiry is needed.
         self.parts.push_back((
             now,
+            self.gesture,
             Annotation {
                 paths: vec![path],
                 style,
@@ -64,7 +68,7 @@ impl Trail {
         while self
             .parts
             .front()
-            .is_some_and(|(born, _)| now.saturating_sub(*born) >= LIFETIME)
+            .is_some_and(|(born, _, _)| now.saturating_sub(*born) >= LIFETIME)
         {
             self.parts.pop_front();
             changed = true;
@@ -80,8 +84,18 @@ impl Trail {
         self.parts.is_empty()
     }
 
+    pub fn paint_parts(&self, now: Duration) -> impl Iterator<Item = (u64, &Annotation, u8)> {
+        self.parts.iter().map(move |(born, gesture, annotation)| {
+            let remaining = LIFETIME.saturating_sub(now.saturating_sub(*born));
+            let alpha =
+                (remaining.as_nanos() * 255 + LIFETIME.as_nanos() / 2) / LIFETIME.as_nanos();
+            (*gesture, annotation, alpha as u8)
+        })
+    }
+
+    #[cfg(test)]
     pub fn annotations(&self) -> impl Iterator<Item = &Annotation> {
-        self.parts.iter().map(|(_, annotation)| annotation)
+        self.parts.iter().map(|(_, _, annotation)| annotation)
     }
 }
 
@@ -98,6 +112,43 @@ mod tests {
             .annotations()
             .map(|annotation| annotation.paths[0].clone())
             .collect()
+    }
+
+    #[test]
+    fn poc7_opacity_fades_over_the_full_second_without_refresh_on_release() {
+        let mut trail = Trail::default();
+        trail.begin((5, 5), Style::default(), ms(0));
+        for (age, alpha) in [
+            (0, 255),
+            (250, 191),
+            (500, 128),
+            (750, 64),
+            (999, 0),
+            (1000, 0),
+        ] {
+            assert_eq!(trail.paint_parts(ms(age)).next().unwrap().2, alpha);
+        }
+        trail.finish();
+        assert_eq!(trail.paint_parts(ms(750)).next().unwrap().2, 64);
+        assert!(trail.expire(ms(1000)));
+        assert!(trail.paint_parts(ms(0)).next().is_none());
+    }
+
+    #[test]
+    fn poc7_part_ages_and_gesture_groups_are_independent() {
+        let mut trail = Trail::default();
+        trail.begin((5, 5), Style::default(), ms(0));
+        trail.append((10, 5), ms(250));
+        trail.finish();
+        trail.begin((5, 5), Style::default(), ms(500));
+        let parts = trail.paint_parts(ms(500)).collect::<Vec<_>>();
+        assert_eq!(
+            parts.iter().map(|p| p.2).collect::<Vec<_>>(),
+            [128, 191, 255]
+        );
+        assert_eq!(parts[0].0, parts[1].0);
+        assert_ne!(parts[1].0, parts[2].0);
+        assert_eq!(trail.paint_parts(Duration::MAX).next().unwrap().2, 0);
     }
 
     #[test]

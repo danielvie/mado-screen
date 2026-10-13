@@ -1,5 +1,15 @@
 # Windows prototype tasks
 
+## PoC 7: rounded ink and fading
+
+Approved scope: tasks/poc7-spec.md. Delivery and checks: tasks/poc7-progress.md.
+
+- [x] Round capsules/dots with antialiased coverage, clipped work and overlap-safe compositing.
+- [x] Independent linear one-second part fading, gesture grouping and mode-independent animation.
+- [x] Larger open arrowheads in both directions and error-based ellipse subdivision.
+- [x] New-feature and directly affected tests, build and formatting/Clippy. Full suite and desktop smoke intentionally not run.
+- [ ] User accepts rounded appearance, fade timing, arrow proportions and physical responsiveness.
+
 ## PoC 6: temporary pen and arrow variants
 
 Approved scope: tasks/poc6-spec.md. Evidence: tasks/poc6-progress.md.

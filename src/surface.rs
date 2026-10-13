@@ -70,11 +70,29 @@ impl Surface {
         Ok(surface)
     }
 
+    #[cfg(test)]
     pub fn present<'a>(
         &mut self,
         hwnd: HWND,
         drawing: bool,
         annotations: impl IntoIterator<Item = &'a crate::strokes::Annotation>,
+    ) -> Result<()> {
+        self.present_scene(
+            hwnd,
+            drawing,
+            annotations,
+            &crate::trail::Trail::default(),
+            std::time::Duration::ZERO,
+        )
+    }
+
+    pub fn present_scene<'a>(
+        &mut self,
+        hwnd: HWND,
+        drawing: bool,
+        annotations: impl IntoIterator<Item = &'a crate::strokes::Annotation>,
+        trail: &crate::trail::Trail,
+        now: std::time::Duration,
     ) -> Result<()> {
         unsafe {
             // This DIB owns width*height aligned u32 pixels until Surface::drop.
@@ -83,6 +101,7 @@ impl Surface {
                 self.width as usize * self.height as usize,
             );
             crate::drawing::render(pixels, self.width as usize, drawing, annotations);
+            crate::drawing::paint_trail(pixels, self.width as usize, trail.paint_parts(now));
             let size = SIZE {
                 cx: self.width,
                 cy: self.height,
@@ -373,8 +392,10 @@ mod tests {
             let pixels = unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 8 * 6) };
             for y in 0..6 {
                 for x in 0..8 {
-                    let expected = if y == 3 || (x, y) == (0, 0) || (x, y) == (7, 5) {
+                    let expected = if y == 3 {
                         0xff3b82f6
+                    } else if (x, y) == (0, 0) || (x, y) == (7, 5) {
+                        0xbf2c61b8
                     } else if drawing {
                         0x01000000
                     } else {
@@ -383,6 +404,43 @@ mod tests {
                     assert_eq!(pixels[y * 8 + x], expected, "at ({x}, {y})");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn poc7_dib_composes_timed_trail_over_permanent_ink() {
+        use std::time::Duration;
+        let mut surface = Surface::new(20, 20).unwrap();
+        let annotations = [Annotation {
+            paths: vec![vec![(5, 5), (10, 5)]],
+            style: Style::default(),
+        }];
+        let mut trail = crate::trail::Trail::default();
+        trail.begin(
+            (5, 5),
+            Style {
+                color: 0xff3b82f6,
+                ..Style::default()
+            },
+            Duration::ZERO,
+        );
+        trail.append((10, 5), Duration::ZERO);
+        trail.finish();
+        for (age, expected) in [(0, 0xff3b82f6), (500, 0xff9a7a86), (1000, 0xfff97316)] {
+            // Invalid HWND checks the actual DIB render path without showing a window.
+            assert!(
+                surface
+                    .present_scene(
+                        HWND::default(),
+                        false,
+                        &annotations,
+                        &trail,
+                        Duration::from_millis(age)
+                    )
+                    .is_err()
+            );
+            let pixels = unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 20 * 20) };
+            assert_eq!(pixels[5 * 20 + 7], expected);
         }
     }
 
@@ -463,13 +521,13 @@ mod tests {
                 assert!(pixels.iter().all(|&pixel| pixel == background));
             } else {
                 assert_eq!(pixels[15 * 80 + 10], 0xfff97316);
-                assert_eq!(pixels[20 * 80 + 40], 0xff3b82f6);
+                assert_eq!(pixels[20 * 80 + 40], 0xbf2c61b8);
                 assert_eq!(pixels[15 * 80 + 8], 0xfff97316);
                 assert_eq!(pixels[15 * 80 + 7], background);
                 assert_eq!(pixels[20 * 80 + 39], background);
                 assert_eq!(pixels[19 * 80 + 40], background);
                 unsafe {
-                    assert_eq!(GetPixel(surface.dc, 40, 20), COLORREF(0x00f6823b));
+                    assert_eq!(GetPixel(surface.dc, 40, 20), COLORREF(0x00b8612c));
                     assert_eq!(GetPixel(surface.dc, 10, 15), COLORREF(0x001673f9));
                     assert_eq!(GetPixel(surface.dc, 10, 44), COLORREF(0));
                 }

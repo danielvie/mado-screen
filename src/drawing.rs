@@ -160,7 +160,7 @@ fn paint_group(
         }
         for (pixel, coverage) in pixels[y * width..(y + 1) * width]
             .iter_mut()
-            .zip(samples.chunks_exact(16))
+            .zip(samples.as_chunks::<16>().0)
         {
             let alpha = (coverage.iter().map(|&v| u32::from(v)).sum::<u32>() + 8) / 16;
             if alpha != 0 {
@@ -641,6 +641,69 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn poc7_union_avoids_dark_joins_and_duplicate_paths() {
+        let a = annotation(vec![vec![(5, 5), (10, 5), (10, 10)]]);
+        let b = annotation(vec![
+            vec![(5, 5), (10, 5)],
+            vec![(10, 5), (10, 10)],
+            vec![(10, 5)],
+        ]);
+        let mut first = vec![0; 20 * 20];
+        let mut split = first.clone();
+        render(&mut first, 20, false, &[a]);
+        render(&mut split, 20, false, &[b]);
+        assert_eq!(first, split);
+    }
+
+    #[test]
+    fn poc7_trail_same_gesture_uses_max_opacity_but_separate_gestures_layer() {
+        let part = annotation(vec![vec![(5, 5), (10, 5)]]);
+        let mut one = vec![0; 20 * 20];
+        let mut same = one.clone();
+        let mut separate = one.clone();
+        paint_trail(&mut one, 20, [(1, &part, 128)]);
+        paint_trail(
+            &mut same,
+            20,
+            [(1, &part, 64), (1, &part, 128), (1, &part, 128)],
+        );
+        assert_eq!(one, same);
+        paint_trail(&mut separate, 20, [(1, &part, 128), (2, &part, 128)]);
+        assert_eq!(one[5 * 20 + 7] >> 24, 128);
+        assert_eq!(separate[5 * 20 + 7] >> 24, 192);
+    }
+
+    #[test]
+    fn poc7_fade_source_over_reveals_permanent_color_and_valid_alpha() {
+        let orange = annotation(vec![vec![(5, 5), (10, 5)]]);
+        let blue = Annotation {
+            style: Style {
+                color: 0xff3b82f6,
+                ..Style::default()
+            },
+            ..orange.clone()
+        };
+        for drawing in [false, true] {
+            let mut pixels = vec![0; 20 * 20];
+            render(&mut pixels, 20, drawing, std::slice::from_ref(&orange));
+            paint_trail(&mut pixels, 20, [(1, &blue, 128)]);
+            assert_eq!(pixels[5 * 20 + 7], 0xff9a7a86);
+            for pixel in &pixels {
+                for shift in [0, 8, 16] {
+                    assert!((pixel >> shift) & 255 <= pixel >> 24);
+                }
+            }
+            render(&mut pixels, 20, drawing, std::slice::from_ref(&orange));
+            paint_trail(&mut pixels, 20, [(1, &blue, 0)]);
+            assert_eq!(pixels[5 * 20 + 7], INK);
+        }
+        let mut background = vec![0x01000000; 20 * 20];
+        paint_trail(&mut background, 20, [(1, &blue, 128)]);
+        assert_eq!(background[5 * 20 + 7], 0x801e417b);
+        assert_eq!(background[0], 0x01000000);
     }
 
     #[test]

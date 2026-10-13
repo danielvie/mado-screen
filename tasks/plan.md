@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## PoC 7: rounded ink and fading
+
+Approved scope and contracts: tasks/poc7-spec.md. Renderer and shape geometry use separate sibling worker worktrees; the supervisor owns Trail/frame timing/Surface composition, documentation and serial integration. Deliver rounded rendering, one-second fading, larger open arrowheads and smoother ellipses without another backend or dependency. The user requests new-feature and affected regression tests only, plus a build and formatting/Clippy; no full suite or desktop smoke for this increment. Results and physical limits: tasks/poc7-progress.md.
+
 ## PoC 6: temporary pen and arrow variants
 
 User approved solid temporary ink lasting about two seconds per part, excluded from undo/redo; repeated P toggles Pen/Temporary pen and repeated A toggles head-first/tail-first arrows. Indicator displays the variant. Requirements and module contracts are in tasks/poc6-spec.md; results are in tasks/poc6-progress.md. Model and Trail workers own separate files in sibling worktrees; the supervisor composes timer/input/render/UI and integrates committed deliveries serially. Visual fading remains the next PoC, sharing deferred.

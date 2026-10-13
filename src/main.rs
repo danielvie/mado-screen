@@ -39,10 +39,12 @@ fn main() -> Result<()> {
     let mut strokes = Strokes::default();
     let mut trail = Trail::default();
     let clock = Instant::now();
-    surface.present(
+    surface.present_scene(
         overlay.hwnd(),
         drawing,
-        strokes.annotations().iter().chain(trail.annotations()),
+        strokes.annotations(),
+        &trail,
+        clock.elapsed(),
     )?;
     overlay.show()?;
     // The canvas spans the virtual desktop, but the indicator stays on the primary screen.
@@ -54,9 +56,9 @@ fn main() -> Result<()> {
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    println!("PoC 6: stage {STAGE}, temporary pen and arrow direction toggles.");
+    println!("PoC 7: stage {STAGE}, rounded ink, one-second fading and larger arrowheads.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
-    println!("Drawing only: P selects pen; repeat P toggles temporary ink (1 second).");
+    println!("Drawing only: P selects pen; repeat P toggles fading temporary ink (1 second).");
     println!("L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
     if STAGE >= 2 {
         println!(
@@ -77,16 +79,17 @@ fn main() -> Result<()> {
             0 => break,
             _ => {}
         }
-        // Expiry runs before picker routing and independent of drawing/click-through mode.
-        if trail.expire(clock.elapsed()) {
-            surface.present(
-                overlay.hwnd(),
-                drawing,
-                strokes.annotations().iter().chain(trail.annotations()),
-            )?;
+        // Animate before picker routing, including click-through. Use one frame time.
+        let now = clock.elapsed();
+        let tick = input::event(&message, overlay.hwnd()) == Some(Event::Expire);
+        if animate_trail(&mut trail, now, tick) {
+            surface.present_scene(overlay.hwnd(), drawing, strokes.annotations(), &trail, now)?;
         }
         if trail.is_empty() {
             drop(expiry.take());
+        }
+        if tick {
+            continue;
         }
         if let Some(event) = ui.event(&message) {
             if let UiEvent::Color(color) = event {
@@ -95,10 +98,12 @@ fn main() -> Result<()> {
                 drop(drag.take());
                 strokes.set_color(color);
                 if changed {
-                    surface.present(
+                    surface.present_scene(
                         overlay.hwnd(),
                         drawing,
-                        strokes.annotations().iter().chain(trail.annotations()),
+                        strokes.annotations(),
+                        &trail,
+                        now,
                     )?;
                 }
             }
@@ -107,7 +112,7 @@ fn main() -> Result<()> {
                 &mut tool_keys,
                 &overlay,
                 &mut surface,
-                (&strokes, &trail),
+                (&strokes, &trail, now),
                 &ui,
             )?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
@@ -141,10 +146,12 @@ fn main() -> Result<()> {
                     drop(drag.take());
                     drawing = !drawing;
                     overlay.set_capture(drawing)?;
-                    surface.present(
+                    surface.present_scene(
                         overlay.hwnd(),
                         drawing,
-                        strokes.annotations().iter().chain(trail.annotations()),
+                        strokes.annotations(),
+                        &trail,
+                        now,
                     )?;
                     println!(
                         "Mode: {}.",
@@ -162,10 +169,12 @@ fn main() -> Result<()> {
                     strokes.clear();
                     trail.clear();
                     drop(expiry.take());
-                    surface.present(
+                    surface.present_scene(
                         overlay.hwnd(),
                         drawing,
-                        strokes.annotations().iter().chain(trail.annotations()),
+                        strokes.annotations(),
+                        &trail,
+                        now,
                     )?;
                     println!("Strokes cleared. Clear is undoable.");
                 }
@@ -176,10 +185,12 @@ fn main() -> Result<()> {
                     drop(drag.take());
                     drop(tool_keys.take());
                     if changed {
-                        surface.present(
+                        surface.present_scene(
                             overlay.hwnd(),
                             drawing,
-                            strokes.annotations().iter().chain(trail.annotations()),
+                            strokes.annotations(),
+                            &trail,
+                            now,
                         )?;
                     }
                     if let Err(error) = ui.open_picker(strokes.style().color) {
@@ -192,10 +203,12 @@ fn main() -> Result<()> {
                         trail.finish();
                     }
                     if apply_edit(action, &mut strokes, &mut drag) {
-                        surface.present(
+                        surface.present_scene(
                             overlay.hwnd(),
                             drawing,
-                            strokes.annotations().iter().chain(trail.annotations()),
+                            strokes.annotations(),
+                            &trail,
+                            now,
                         )?;
                     }
                     println!(
@@ -212,7 +225,7 @@ fn main() -> Result<()> {
                 &mut tool_keys,
                 &overlay,
                 &mut surface,
-                (&strokes, &trail),
+                (&strokes, &trail, now),
                 &ui,
             )?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
@@ -226,7 +239,7 @@ fn main() -> Result<()> {
                         &mut tool_keys,
                         &overlay,
                         &mut surface,
-                        (&strokes, &trail),
+                        (&strokes, &trail, now),
                         &ui,
                     )?;
                     ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
@@ -239,12 +252,14 @@ fn main() -> Result<()> {
                 (&mut strokes, &mut trail),
                 &mut drag,
                 overlay.hwnd(),
-                clock.elapsed(),
+                now,
             )? {
-                surface.present(
+                surface.present_scene(
                     overlay.hwnd(),
                     drawing,
-                    strokes.annotations().iter().chain(trail.annotations()),
+                    strokes.annotations(),
+                    &trail,
+                    now,
                 )?;
             }
             if !trail.is_empty() && expiry.is_none() {
@@ -266,10 +281,10 @@ fn restore_drawing_keys(
     keys: &mut Option<Hotkeys>,
     overlay: &Overlay,
     surface: &mut Surface,
-    scene: (&Strokes, &Trail),
+    scene: (&Strokes, &Trail, Duration),
     ui: &DesktopUi,
 ) -> Result<()> {
-    let (strokes, trail) = scene;
+    let (strokes, trail, now) = scene;
     if *drawing && keys.is_none() && !ui.is_picker_open() {
         match Hotkeys::drawing_keys(true, true) {
             Ok(guard) => *keys = Some(guard),
@@ -279,16 +294,17 @@ fn restore_drawing_keys(
                 );
                 *drawing = false;
                 overlay.set_capture(false)?;
-                surface.present(
-                    overlay.hwnd(),
-                    false,
-                    strokes.annotations().iter().chain(trail.annotations()),
-                )?;
+                surface.present_scene(overlay.hwnd(), false, strokes.annotations(), trail, now)?;
                 println!("Mode: click-through.");
             }
         }
     }
     Ok(())
+}
+
+fn animate_trail(trail: &mut Trail, now: Duration, tick: bool) -> bool {
+    let expired = trail.expire(now);
+    expired || (tick && !trail.is_empty())
 }
 
 fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCapture>) -> bool {
@@ -385,7 +401,7 @@ fn handle_canvas_input(
 ) -> Result<bool> {
     let (strokes, trail) = scene;
     if event == Event::Expire {
-        return Ok(trail.expire(now));
+        return Ok(animate_trail(trail, now, true));
     }
     if (drawing && strokes.tool() == Tool::Pen && strokes.temporary_pen()) || trail.is_active() {
         match event {
@@ -502,6 +518,40 @@ mod tests {
     }
 
     #[test]
+    fn poc7_ticks_repaint_surviving_ink_and_final_expiry_then_stop() {
+        let mut trail = Trail::default();
+        trail.begin((10, 10), strokes::Style::default(), Duration::ZERO);
+        trail.finish();
+        assert!(!animate_trail(
+            &mut trail,
+            Duration::from_millis(100),
+            false
+        ));
+        assert!(
+            handle_canvas_input(
+                Event::Expire,
+                false,
+                (&mut Strokes::default(), &mut trail),
+                &mut None,
+                HWND::default(),
+                Duration::from_millis(500),
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            trail
+                .paint_parts(Duration::from_millis(500))
+                .next()
+                .unwrap()
+                .2,
+            128
+        );
+        assert!(animate_trail(&mut trail, Duration::from_secs(1), true));
+        assert!(!animate_trail(&mut trail, Duration::from_secs(2), true));
+        assert!(trail.is_empty());
+    }
+
+    #[test]
     fn temporary_input_and_expiry_preserve_permanent_redo() {
         let mut strokes = Strokes::default();
         strokes.begin((5, 5));
@@ -570,20 +620,12 @@ mod tests {
             Duration::ZERO,
         );
         let mut pixels = vec![0; 40 * 40];
-        drawing::render(
-            &mut pixels,
-            40,
-            false,
-            strokes.annotations().iter().chain(trail.annotations()),
-        );
+        drawing::render(&mut pixels, 40, false, strokes.annotations());
+        drawing::paint_trail(&mut pixels, 40, trail.paint_parts(Duration::ZERO));
         assert_eq!(pixels[10 * 40 + 10], 0xff3b82f6);
         assert!(trail.expire(Duration::from_secs(1)));
-        drawing::render(
-            &mut pixels,
-            40,
-            false,
-            strokes.annotations().iter().chain(trail.annotations()),
-        );
+        drawing::render(&mut pixels, 40, false, strokes.annotations());
+        drawing::paint_trail(&mut pixels, 40, trail.paint_parts(Duration::from_secs(1)));
         assert_eq!(pixels[10 * 40 + 10], 0xfff97316);
         assert_eq!(pixels[0], 0);
     }
