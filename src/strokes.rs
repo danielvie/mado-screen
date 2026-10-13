@@ -182,24 +182,29 @@ impl Strokes {
     }
 
     fn erase(&mut self, start: Point, end: Point) -> bool {
-        // ponytail: one topmost hit per input event; sparse sweeps can cross other disjoint ink.
-        // Ordered sub-sweeps would erase those too without treating shape interiors as filled.
-        let hit = self.annotations.iter().rposition(|annotation| {
-            let radius = annotation.style.thickness as f64 / 2.0;
-            annotation.paths.iter().any(|path| {
+        // Clicks remove only the topmost hit. Moving sweeps remove all hits top to bottom,
+        // so overlapping moving sweeps can remove more than one layer.
+        let mut changed = false;
+        for index in (0..self.annotations.len()).rev() {
+            let annotation = &self.annotations[index];
+            // 4px hit slop also catches painted square-brush corners, not filled interiors.
+            let radius = annotation.style.thickness as f64 / 2.0 + 4.0;
+            let hit = annotation.paths.iter().any(|path| {
                 path.first().is_some_and(|&point| {
                     segment_distance_squared(start, end, point, point) <= radius * radius
                 }) || path.windows(2).any(|segment| {
                     segment_distance_squared(start, end, segment[0], segment[1]) <= radius * radius
                 })
-            })
-        });
-        if let Some(index) = hit {
-            self.annotations.remove(index);
-            true
-        } else {
-            false
+            });
+            if hit {
+                self.annotations.remove(index);
+                changed = true;
+                if start == end {
+                    break;
+                }
+            }
         }
+        changed
     }
 }
 
@@ -657,7 +662,7 @@ mod tests {
         strokes.set_thickness(1);
         draw(&mut strokes, Tool::Arrow, (0, 0), (60, 0));
         strokes.select(Tool::Eraser);
-        assert!(!strokes.begin((40, 5))); // Would hit a falsely joined branch path.
+        assert!(!strokes.begin((39, 5))); // Would hit a falsely joined branch path.
         assert!(strokes.append((50, 5)));
         assert!(strokes.annotations().is_empty());
     }
@@ -685,7 +690,7 @@ mod tests {
             assert!(!strokes.begin((-50, 50)));
             assert!(strokes.append((150, 50)));
             strokes.finish();
-            assert_eq!(strokes.annotations(), &original[..1]); // Topmost sweep hit only.
+            assert!(strokes.annotations().is_empty()); // Moving sweeps can remove overlapping layers.
             assert!(strokes.undo());
             assert_eq!(strokes.annotations(), original);
         }
@@ -715,6 +720,60 @@ mod tests {
         assert!(strokes.undo()); // Active eraser settles as a single action before undo.
         assert_eq!(strokes.annotations(), original);
         assert!(!strokes.is_active());
+    }
+
+    #[test]
+    fn sparse_sweep_erases_three_disjoint_lines_and_restores_one_transaction() {
+        let mut strokes = Strokes::default();
+        for (x, color, thickness) in [
+            (-100, 0xff123456, 1),
+            (0, 0xffabcdef, 5),
+            (100, 0xff987654, 11),
+        ] {
+            strokes.set_color(color);
+            strokes.set_thickness(thickness);
+            draw(&mut strokes, Tool::Line, (x, -20), (x, 20));
+        }
+        let original = strokes.annotations().to_vec();
+        let history_len = strokes.undo.len();
+        strokes.select(Tool::Eraser);
+        assert!(!strokes.begin((i32::MIN, 200)));
+        assert!(!strokes.append((i32::MAX, 200)));
+        strokes.finish();
+        assert_eq!(strokes.annotations(), original);
+        assert_eq!(strokes.undo.len(), history_len);
+        assert!(!strokes.begin((i32::MIN, 0)));
+        assert!(strokes.append((i32::MAX, 0)));
+        assert!(strokes.annotations().is_empty());
+        assert!(!strokes.append((i32::MAX, 0))); // Same-coordinate MouseUp.
+        strokes.finish();
+        assert_eq!(strokes.undo.len(), history_len + 1);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), original); // Includes every style and stacking order.
+        assert!(strokes.redo());
+        assert!(strokes.annotations().is_empty());
+    }
+
+    #[test]
+    fn square_dot_corner_click_removes_only_topmost_without_duplicate_on_up() {
+        let mut strokes = Strokes::default();
+        draw(&mut strokes, Tool::Pen, (10, 10), (10, 10));
+        strokes.set_color(0xff123456);
+        draw(&mut strokes, Tool::Pen, (10, 10), (10, 10));
+        let original = strokes.annotations().to_vec();
+        strokes.select(Tool::Eraser);
+        assert!(strokes.begin((12, 12))); // Painted corner of a square 5px dot.
+        assert_eq!(strokes.annotations(), &original[..1]);
+        assert!(!strokes.append((12, 12))); // Same-coordinate MouseUp must not peel another layer.
+        strokes.finish();
+        assert_eq!(strokes.annotations(), &original[..1]);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), original);
+        assert!(!strokes.begin((17, 10))); // Beyond half-width plus 4px slop.
+        assert!(!strokes.append((18, 10)));
+        strokes.finish();
+        assert!(strokes.redo()); // Misses did not invalidate redo.
+        assert_eq!(strokes.annotations(), &original[..1]);
     }
 
     #[test]
