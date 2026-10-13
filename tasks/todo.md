@@ -7,8 +7,8 @@ Approved scope: tasks/poc6-spec.md. Evidence: tasks/poc6-progress.md.
 - [x] Model variants, labels and frozen old arrow geometry; 26 focused tests.
 - [x] Pure two-second Trail with independent gestures/styles and no history; 10 focused tests.
 - [x] Main repeated-key/input/expiry composition, renderer and indicator.
-- [ ] Native expiry timer lifetime and combined build/test/check.
-- [ ] Updated posted desktop smoke and applicable run; preserve blocked/untested evidence.
+- [x] Native expiry timer lifetime and combined build/test/check, 89 tests passed.
+- [x] Updated posted desktop smoke passed 232 checks with zero skipped; manual input limits remain recorded.
 - [ ] User observes real temporary tail expiry, labels, both arrow directions and multi-monitor behavior.
 
 ## PoC 5: multiple-monitor drawing

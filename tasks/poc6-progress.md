@@ -14,6 +14,7 @@ Main remains ea2a265 during assembly; existing README.md/Taskfile.yml install ch
 - Model worker 66fc989 -> acbf610, src/strokes.rs only; 26 focused tests, rustfmt and scoped Clippy passed.
 - Supervisor verification a40f13c adds routing/history/pixel restoration checks, wider indicator and hidden timer ownership test.
 - Smoke worker f6f7b04 -> 0c1c8b2, scripts/smoke.ps1 only; parse/self-check passed. Legacy synthetic actions avoid unintended P/A toggles; new checks cover temporary expiry, permanent redo and arrow direction.
+- Smoke repair 3482b34 -> 0217bf3 fixes empty startup-log typing, bounded rectangle readiness and expected drawing-mode alpha-1 background comparisons. Click-through comparisons remain exact and moving samples remain inconclusive. Parse/self-check passed. No app timer or watchdog was disabled.
 
 All deliveries were privately rebased and fast-forwarded serially without conflicts. Read-only review found no concrete lifecycle/history defect. Event-segment expiry is intentional; sparse segments disappear together. Physical rendering performance and exact observed timer latency remain untested.
 
@@ -23,7 +24,13 @@ At 0c1c8b2: task build passed, task test 89 passed, task check formatting/Clippy
 
 Desktop attempt 1 failed in startup polling with a null expression; startup logs subsequently showed the app was ready. Logs: C:/Users/ae904f/AppData/Local/Temp/mado-poc6-7ef8bc91-3bfb-4d37-a1cb-c01cc53ff7c9.
 
-Desktop attempt 2 captured pixels successfully, confirmed virtual origin (-1920, 0), extent 5760x1200, startup/style/status/idle, pen and line rendering, then failed the legacy rectangle corner assertion. Logs: C:/Users/ae904f/AppData/Local/Temp/mado-poc6-fd8298bf-8d73-4acf-8d15-8c690ab47c5c. No full desktop pass is claimed. A focused smoke-worker investigation is assigned; failures are not disabled. Copied child cleanup ran. No real mouse/key input or cursor/focus change was injected.
+Desktop attempt 2 captured pixels successfully, confirmed virtual origin (-1920, 0), extent 5760x1200, startup/style/status/idle, pen and line rendering, then failed the legacy rectangle corner assertion. Logs: C:/Users/ae904f/AppData/Local/Temp/mado-poc6-fd8298bf-8d73-4acf-8d15-8c690ab47c5c. That run did not pass. A focused smoke-worker investigation followed without disabling failures. Copied child cleanup ran. No real mouse/key input or cursor/focus change was injected.
+
+## Final validation
+
+Validated source and script commit: 0217bf3. task build passed; task test 89 passed; task check formatting/Clippy passed; smoke self-check passed. Full posted desktop smoke passed 232 checks with zero skipped on three physical monitors spanning 5760x1200 at origin (-1920, 0). Artifact: C:/Users/ae904f/AppData/Local/Temp/mado-poc6-155faf0b-849f-4679-a8eb-ca27651b4932/results.json. Idle process CPU delta was 0 seconds over 30 seconds.
+
+Verified legacy shapes/styles/undo/redo/conflicts/cleanup, drawing on each monitor, adjacent-seam history, temporary solid overlap and expiry after release/in click-through, permanent redo preservation, saved variant selection, repeated P/A labels in logs and both arrow direction rasters. Hidden native UI checks validate variant text; painted label review, physical long-drag tail behavior, actual input timing and mixed-DPI focus remain manual. Earlier startup/rectangle/undo false positives were smoke-harness defects; repairs retained ink and timer assertions. No system keyboard/mouse input, cursor movement or focus automation was used. All copied smoke processes were cleaned up.
 
 ## Manual acceptance
 
@@ -37,4 +44,4 @@ Desktop attempt 2 captured pixels successfully, confirmed virtual origin (-1920,
 
 ## Delivery status
 
-Implementation is assembled on integration/poc6. Final desktop smoke is pending investigation. Main remains unchanged until validation or explicit user acceptance authorizes promotion. Run the prototype with `task run` from C:/SANDBOX/REPOS/mado-screen.git.integration_poc6; use Ctrl+Alt+Q to close it before smoke. No remote push or installed-app replacement is requested.
+The assembled integration/poc6 is ready for fast-forward main promotion after all required automated gates passed. Existing primary-checkout install changes will be preserved; rebuild the primary executable after promotion. Manual acceptance remains open as listed above. No remote push or installed-app replacement is requested.
