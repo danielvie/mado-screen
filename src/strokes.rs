@@ -36,6 +36,8 @@ pub struct Annotation {
 pub struct Strokes {
     annotations: Vec<Annotation>,
     tool: Tool,
+    temporary_pen: bool,
+    arrow_tail_first: bool,
     style: Style,
     before: Option<Vec<Annotation>>,
     anchor: Point,
@@ -49,6 +51,39 @@ pub struct Strokes {
 impl Strokes {
     pub fn tool(&self) -> Tool {
         self.tool
+    }
+
+    pub fn temporary_pen(&self) -> bool {
+        self.temporary_pen
+    }
+
+    pub fn arrow_tail_first(&self) -> bool {
+        self.arrow_tail_first
+    }
+
+    pub fn toggle_temporary_pen(&mut self) -> bool {
+        let changed = self.cancel();
+        self.temporary_pen = !self.temporary_pen;
+        changed
+    }
+
+    pub fn toggle_arrow_direction(&mut self) -> bool {
+        let changed = self.cancel();
+        self.arrow_tail_first = !self.arrow_tail_first;
+        changed
+    }
+
+    pub fn tool_label(&self) -> &'static str {
+        match self.tool {
+            Tool::Pen if self.temporary_pen => "Temporary pen",
+            Tool::Pen => "Pen",
+            Tool::Arrow if self.arrow_tail_first => "Arrow tail-first",
+            Tool::Arrow => "Arrow head-first",
+            Tool::Line => "Line",
+            Tool::Rectangle => "Rectangle",
+            Tool::Ellipse => "Ellipse",
+            Tool::Eraser => "Eraser",
+        }
     }
 
     pub fn select(&mut self, tool: Tool) -> bool {
@@ -91,8 +126,13 @@ impl Strokes {
         if self.tool == Tool::Eraser {
             self.erase(point, point);
         } else {
+            let (start, end) = if self.tool == Tool::Arrow && self.arrow_tail_first {
+                (point, self.anchor)
+            } else {
+                (self.anchor, point)
+            };
             self.annotations.push(Annotation {
-                paths: shape(self.tool, point, point, self.style.thickness),
+                paths: shape(self.tool, start, end, self.style.thickness),
                 style: self.style,
             });
         }
@@ -114,7 +154,12 @@ impl Strokes {
             annotation.paths[0].push(point);
             return true;
         }
-        let paths = shape(self.tool, self.anchor, point, annotation.style.thickness);
+        let (start, end) = if self.tool == Tool::Arrow && self.arrow_tail_first {
+            (point, self.anchor)
+        } else {
+            (self.anchor, point)
+        };
+        let paths = shape(self.tool, start, end, annotation.style.thickness);
         if paths == annotation.paths {
             return false;
         }
@@ -322,6 +367,9 @@ mod tests {
     fn defaults_hover_and_no_ops() {
         let mut strokes = Strokes::default();
         assert_eq!(strokes.tool(), Tool::Pen);
+        assert_eq!(strokes.tool_label(), "Pen");
+        assert!(!strokes.temporary_pen());
+        assert!(!strokes.arrow_tail_first());
         assert_eq!(
             strokes.style(),
             Style {
@@ -339,6 +387,158 @@ mod tests {
         assert!(!strokes.select(Tool::Pen));
         assert!(!strokes.set_color(0x00f97316));
         assert!(!strokes.set_thickness(4));
+    }
+
+    #[test]
+    fn variant_labels_and_choices_persist() {
+        let mut strokes = Strokes::default();
+        for (tool, label) in [
+            (Tool::Pen, "Pen"),
+            (Tool::Line, "Line"),
+            (Tool::Rectangle, "Rectangle"),
+            (Tool::Arrow, "Arrow head-first"),
+            (Tool::Ellipse, "Ellipse"),
+            (Tool::Eraser, "Eraser"),
+        ] {
+            assert!(!strokes.select(tool));
+            assert_eq!(strokes.tool_label(), label);
+        }
+        assert!(!strokes.toggle_temporary_pen());
+        assert!(!strokes.toggle_arrow_direction());
+        for (tool, label) in [
+            (Tool::Pen, "Temporary pen"),
+            (Tool::Line, "Line"),
+            (Tool::Rectangle, "Rectangle"),
+            (Tool::Arrow, "Arrow tail-first"),
+            (Tool::Ellipse, "Ellipse"),
+            (Tool::Eraser, "Eraser"),
+        ] {
+            assert!(!strokes.select(tool));
+            assert!(!strokes.select(tool));
+            assert_eq!(strokes.tool_label(), label);
+            assert!(strokes.temporary_pen());
+            assert!(strokes.arrow_tail_first());
+        }
+        draw(&mut strokes, Tool::Line, (0, 0), (60, 30));
+        assert!(strokes.clear());
+        assert!(!strokes.cancel()); // Drawing/click-through transitions use cancel.
+        assert!(strokes.undo());
+        assert!(strokes.redo());
+        assert!(strokes.temporary_pen());
+        assert!(strokes.arrow_tail_first());
+        strokes.select(Tool::Pen);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
+        assert!(!strokes.toggle_temporary_pen());
+        assert_eq!(strokes.tool_label(), "Pen");
+        strokes.select(Tool::Arrow);
+        assert_eq!(strokes.tool_label(), "Arrow tail-first");
+        assert!(!strokes.toggle_arrow_direction());
+        assert_eq!(strokes.tool_label(), "Arrow head-first");
+    }
+
+    #[test]
+    fn variant_toggles_preserve_style_scene_and_history_when_idle() {
+        let mut strokes = Strokes::default();
+        strokes.set_color(0xff123456);
+        strokes.set_thickness(11);
+        draw(&mut strokes, Tool::Arrow, (0, 0), (60, 30));
+        let first = strokes.annotations().to_vec();
+        draw(&mut strokes, Tool::Line, (100, 0), (100, 30));
+        let both = strokes.annotations().to_vec();
+        assert!(strokes.undo());
+        let undo = strokes.undo.clone();
+        let redo = strokes.redo.clone();
+        let style = strokes.style();
+        for _ in 0..2 {
+            assert!(!strokes.toggle_temporary_pen());
+            assert!(!strokes.toggle_arrow_direction());
+            assert_eq!(strokes.tool(), Tool::Line);
+            assert_eq!(strokes.style(), style);
+            assert_eq!(strokes.annotations(), first);
+            assert_eq!(strokes.undo, undo);
+            assert_eq!(strokes.redo, redo);
+        }
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), both);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), first);
+        assert!(strokes.undo());
+        assert!(strokes.annotations().is_empty());
+        assert!(!strokes.undo());
+    }
+
+    #[test]
+    fn variant_toggles_cancel_shape_previews_without_losing_history() {
+        for toggle in [
+            Strokes::toggle_temporary_pen,
+            Strokes::toggle_arrow_direction,
+        ] {
+            for tool in [Tool::Line, Tool::Rectangle, Tool::Arrow, Tool::Ellipse] {
+                for tail_first in [false, true] {
+                    let mut strokes = Strokes::default();
+                    if tail_first {
+                        strokes.toggle_arrow_direction();
+                    }
+                    draw(&mut strokes, Tool::Pen, (0, 0), (30, 30));
+                    draw(&mut strokes, Tool::Pen, (100, 0), (130, 30));
+                    assert!(strokes.undo());
+                    let scene = strokes.annotations().to_vec();
+                    let undo = strokes.undo.clone();
+                    let redo = strokes.redo.clone();
+                    let style = strokes.style();
+                    strokes.select(tool);
+                    strokes.begin((50, 50));
+                    strokes.append((100, 100));
+                    let preview = strokes.annotations().to_vec();
+                    assert!(!strokes.select(tool)); // Same-tool selection stays a no-op.
+                    assert!(strokes.is_active());
+                    assert_eq!(strokes.annotations(), preview);
+                    assert!(toggle(&mut strokes));
+                    assert!(!strokes.is_active());
+                    assert!(!strokes.append((200, 200)));
+                    assert_eq!(strokes.tool(), tool);
+                    assert_eq!(strokes.style(), style);
+                    assert_eq!(strokes.annotations(), scene);
+                    assert_eq!(strokes.undo, undo);
+                    assert_eq!(strokes.redo, redo);
+                    assert!(strokes.redo());
+                    assert_eq!(strokes.annotations().len(), 2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn variant_toggles_settle_pen_and_eraser_as_one_history_action() {
+        for toggle in [
+            Strokes::toggle_temporary_pen,
+            Strokes::toggle_arrow_direction,
+        ] {
+            for tool in [Tool::Pen, Tool::Eraser] {
+                let mut strokes = Strokes::default();
+                draw(&mut strokes, Tool::Pen, (0, 0), (30, 30));
+                draw(&mut strokes, Tool::Pen, (100, 0), (130, 30));
+                assert!(strokes.undo());
+                let before = strokes.annotations().to_vec();
+                let history_len = strokes.undo.len();
+                strokes.select(tool);
+                strokes.begin((0, 0));
+                strokes.append((30, 30));
+                let settled = strokes.annotations().to_vec();
+                assert!(!toggle(&mut strokes)); // Settling changes history, not pixels.
+                assert!(!strokes.is_active());
+                assert!(!strokes.append((50, 50)));
+                assert_eq!(strokes.annotations(), settled);
+                assert_eq!(strokes.undo.len(), history_len + 1);
+                assert!(strokes.redo.is_empty()); // The edit, not the flag, replaces redo.
+                assert!(!strokes.redo());
+                assert!(strokes.undo());
+                assert_eq!(strokes.annotations(), before);
+                assert!(strokes.redo());
+                assert_eq!(strokes.annotations(), settled);
+                assert!(!strokes.redo());
+            }
+        }
     }
 
     #[test]
@@ -485,6 +685,104 @@ mod tests {
         ] {
             assert_eq!(shape(Tool::Arrow, start, end, 5).len(), 3);
         }
+    }
+
+    #[test]
+    fn arrow_variants_reverse_only_new_arrow_endpoints() {
+        let anchor = (10, 20);
+        for tail_first in [false, true] {
+            for end in [
+                (70, 50),
+                (70, -10),
+                (-50, 50),
+                (-50, -10),
+                (70, 20),
+                (10, 80),
+                (-50, 20),
+                (10, -40),
+                (11, 21),
+                anchor,
+            ] {
+                let mut strokes = Strokes::default();
+                if tail_first {
+                    assert!(!strokes.toggle_arrow_direction());
+                }
+                strokes.select(Tool::Arrow);
+                assert!(strokes.begin(anchor));
+                assert_eq!(
+                    strokes.annotations()[0].paths,
+                    vec![vec![anchor, anchor]; 3]
+                );
+                strokes.append(end);
+                let (head, tail) = if tail_first {
+                    (end, anchor)
+                } else {
+                    (anchor, end)
+                };
+                let paths = &strokes.annotations()[0].paths;
+                assert_eq!(*paths, shape(Tool::Arrow, head, tail, 5));
+                assert_eq!(paths[0], [head, tail]);
+                assert!(paths.iter().all(|path| path.len() == 2 && path[0] == head));
+                if (end.0 - anchor.0).abs() + (end.1 - anchor.1).abs() > 2 {
+                    assert_ne!(paths[1][1], paths[2][1]);
+                    for branch in &paths[1..] {
+                        let toward_tail = (branch[1].0 - head.0) * (tail.0 - head.0)
+                            + (branch[1].1 - head.1) * (tail.1 - head.1);
+                        assert!(toward_tail > 0);
+                    }
+                }
+                strokes.finish();
+            }
+        }
+        for tool in [Tool::Pen, Tool::Line, Tool::Rectangle, Tool::Ellipse] {
+            let mut strokes = Strokes::default();
+            strokes.toggle_arrow_direction();
+            draw(&mut strokes, tool, anchor, (70, 50));
+            let expected = if tool == Tool::Pen {
+                vec![vec![anchor, (70, 50)]]
+            } else {
+                shape(tool, anchor, (70, 50), 5)
+            };
+            assert_eq!(strokes.annotations()[0].paths, expected);
+        }
+    }
+
+    #[test]
+    fn arrow_direction_changes_leave_completed_geometry_and_styles_frozen() {
+        let mut strokes = Strokes::default();
+        draw(&mut strokes, Tool::Arrow, (200, 200), (500, 200));
+        let head_first = strokes.annotations().to_vec();
+        assert!(!strokes.toggle_arrow_direction());
+        assert_eq!(strokes.annotations(), head_first);
+        strokes.begin((200, 200));
+        strokes.set_color(0xff123456);
+        strokes.set_thickness(31);
+        assert!(strokes.append((500, 200)));
+        assert_eq!(
+            strokes.annotations()[1].paths,
+            [
+                vec![(500, 200), (200, 200)],
+                vec![(500, 200), (461, 181)],
+                vec![(500, 200), (461, 220)],
+            ]
+        );
+        assert_eq!(strokes.annotations()[1].style, head_first[0].style);
+        assert!(strokes.append((200, 500)));
+        assert_eq!(
+            strokes.annotations()[1].paths,
+            shape(Tool::Arrow, (200, 500), (200, 200), 5)
+        );
+        strokes.finish();
+        let both = strokes.annotations().to_vec();
+        assert!(!strokes.toggle_arrow_direction());
+        assert!(!strokes.toggle_temporary_pen());
+        assert_eq!(strokes.annotations(), both);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), head_first);
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), both);
+        assert!(!strokes.arrow_tail_first());
+        assert!(strokes.temporary_pen());
     }
 
     #[test]
