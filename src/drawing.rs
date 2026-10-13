@@ -1,4 +1,6 @@
-use crate::strokes::{Annotation, Point};
+use crate::strokes::{Annotation, Point, Style};
+
+const OFFSETS: [f64; 4] = [-0.375, -0.125, 0.125, 0.375];
 
 pub fn render<'a>(
     pixels: &mut [u32],
@@ -7,66 +9,180 @@ pub fn render<'a>(
     annotations: impl IntoIterator<Item = &'a Annotation>,
 ) {
     assert!(width > 0 && pixels.len().is_multiple_of(width));
-    // ponytail: full-screen fill/upload and O(total stroke points) replay per change;
-    // measure at the tested resolution before switching to a GPU renderer.
     pixels.fill(if drawing { 0x01_00_00_00 } else { 0 });
     if pixels.is_empty() {
         return;
     }
+    let mut samples = vec![0; width * 16];
+    let mut segments = Vec::new();
     for annotation in annotations {
-        // Public styles may bypass the model's validation. Round even widths up.
-        let radius = i64::from((annotation.style.thickness.clamp(1, 31) | 1) / 2);
-        let color = annotation.style.color | 0xff_00_00_00; // Opaque premultiplied BGRA DIB.
-        for path in &annotation.paths {
-            if let Some(&point) = path.first() {
-                line(pixels, width, point, point, radius, color);
+        segments.clear();
+        append_segments(&mut segments, annotation, 255);
+        paint_group(pixels, width, &mut samples, &segments, annotation.style);
+    }
+}
+
+/// Paint consecutive parts of each gesture over the existing premultiplied BGRA bitmap.
+/// The first part supplies the group's frozen style; opacity is linear, supplied by the caller.
+pub fn paint_trail<'a>(
+    pixels: &mut [u32],
+    width: usize,
+    parts: impl IntoIterator<Item = (u64, &'a Annotation, u8)>,
+) {
+    assert!(width > 0 && pixels.len().is_multiple_of(width));
+    if pixels.is_empty() {
+        return;
+    }
+    let mut samples = vec![0; width * 16];
+    let mut segments = Vec::new();
+    let mut parts = parts.into_iter().peekable();
+    while let Some((gesture, annotation, opacity)) = parts.next() {
+        segments.clear();
+        append_segments(&mut segments, annotation, opacity);
+        while parts.peek().is_some_and(|part| part.0 == gesture) {
+            let (_, annotation, opacity) = parts.next().unwrap();
+            append_segments(&mut segments, annotation, opacity);
+        }
+        paint_group(pixels, width, &mut samples, &segments, annotation.style);
+    }
+}
+
+struct Segment {
+    start: (f64, f64),
+    delta: (f64, f64),
+    length_squared: f64,
+    opacity: u8,
+}
+
+fn append_segments(segments: &mut Vec<Segment>, annotation: &Annotation, opacity: u8) {
+    if opacity == 0 {
+        return;
+    }
+    let mut append = |start: Point, end: Point| {
+        let start = (f64::from(start.0), f64::from(start.1));
+        let delta = (f64::from(end.0) - start.0, f64::from(end.1) - start.1);
+        segments.push(Segment {
+            start,
+            delta,
+            length_squared: delta.0 * delta.0 + delta.1 * delta.1,
+            opacity,
+        });
+    };
+    for path in &annotation.paths {
+        if path.len() == 1 {
+            append(path[0], path[0]);
+        }
+        for pair in path.windows(2) {
+            append(pair[0], pair[1]);
+        }
+    }
+}
+
+impl Segment {
+    fn distance_squared(&self, x: f64, y: f64) -> f64 {
+        let (px, py) = (x - self.start.0, y - self.start.1);
+        let t = if self.length_squared == 0.0 {
+            0.0
+        } else {
+            ((px * self.delta.0 + py * self.delta.1) / self.length_squared).clamp(0.0, 1.0)
+        };
+        (px - t * self.delta.0).powi(2) + (py - t * self.delta.1).powi(2)
+    }
+
+    fn x_range(&self, y: f64, reach: f64, width: usize) -> std::ops::Range<usize> {
+        let (mut first, mut last) = (0.0_f64, 1.0_f64);
+        if self.delta.1 == 0.0 {
+            if (y - self.start.1).abs() > reach {
+                return 0..0;
             }
-            for segment in path.windows(2) {
-                line(pixels, width, segment[0], segment[1], radius, color);
+        } else {
+            let a = (y - reach - self.start.1) / self.delta.1;
+            let b = (y + reach - self.start.1) / self.delta.1;
+            first = first.max(a.min(b));
+            last = last.min(a.max(b));
+            if first > last {
+                return 0..0;
+            }
+        }
+        let a = self.start.0 + first * self.delta.0;
+        let b = self.start.0 + last * self.delta.0;
+        // Expanded scanline slab bounds work along a diagonal, not its whole bounding box.
+        let left = (a.min(b) - reach).ceil().clamp(0.0, width as f64) as usize;
+        let right = (a.max(b) + reach + 1.0).floor().clamp(0.0, width as f64) as usize;
+        left..right
+    }
+}
+
+fn paint_group(
+    pixels: &mut [u32],
+    width: usize,
+    samples: &mut [u8],
+    segments: &[Segment],
+    style: Style,
+) {
+    // Public styles may bypass the model's validation. Round even widths up.
+    let radius = f64::from(style.thickness.clamp(1, 31) | 1) / 2.0;
+    let reach = radius + OFFSETS[3];
+    let height = pixels.len() / width;
+    let (mut top, mut bottom) = (height, 0);
+    for segment in segments {
+        let (x, y) = segment.start;
+        let (end_x, end_y) = (x + segment.delta.0, y + segment.delta.1);
+        if x.max(end_x) + reach < 0.0 || x.min(end_x) - reach > (width - 1) as f64 {
+            continue;
+        }
+        top = top.min((y.min(end_y) - reach).ceil().clamp(0.0, height as f64) as usize);
+        bottom = bottom.max(
+            (y.max(end_y) + reach + 1.0)
+                .floor()
+                .clamp(0.0, height as f64) as usize,
+        );
+    }
+    // ponytail: O(viewport-clipped row span * group segments), plus covered samples;
+    // bin segments by row if long gestures make this scan the replay bottleneck.
+    for y in top..bottom {
+        samples.fill(0);
+        for segment in segments {
+            for x in segment.x_range(y as f64, reach, width) {
+                for (sy, oy) in OFFSETS.iter().enumerate() {
+                    for (sx, ox) in OFFSETS.iter().enumerate() {
+                        let sample = &mut samples[x * 16 + sy * 4 + sx];
+                        // Use original endpoints, so clipping never introduces artificial caps.
+                        if *sample < segment.opacity
+                            && segment.distance_squared(x as f64 + ox, y as f64 + oy)
+                                <= radius * radius
+                        {
+                            *sample = segment.opacity;
+                        }
+                    }
+                }
+            }
+        }
+        for (pixel, coverage) in pixels[y * width..(y + 1) * width]
+            .iter_mut()
+            .zip(samples.chunks_exact(16))
+        {
+            let alpha = (coverage.iter().map(|&v| u32::from(v)).sum::<u32>() + 8) / 16;
+            if alpha != 0 {
+                *pixel = source_over(*pixel, style.color, alpha);
             }
         }
     }
 }
 
-fn line(pixels: &mut [u32], width: usize, start: Point, end: Point, radius: i64, color: u32) {
-    let (x, y) = (i64::from(start.0), i64::from(start.1));
-    let (dx, dy) = ((i64::from(end.0) - x).abs(), (i64::from(end.1) - y).abs());
-    let (sx, sy) = (
-        if x < i64::from(end.0) { 1 } else { -1 },
-        if y < i64::from(end.1) { 1 } else { -1 },
-    );
-    let height = (pixels.len() / width) as i64;
-    let steps = dx.max(dy);
-    let (origin, direction, limit) = if dx >= dy {
-        (x, sx, width as i64)
-    } else {
-        (y, sy, height)
-    };
-    // Jump to visible major-axis steps without changing Bresenham's rounding.
-    // i128 products cover the full i32 endpoint range without overflow.
-    let (first, last) = if direction > 0 {
-        (
-            (-radius - origin).max(0),
-            (limit - 1 + radius - origin).min(steps),
-        )
-    } else {
-        (
-            (origin - (limit - 1 + radius)).max(0),
-            (origin + radius).min(steps),
-        )
-    };
-    for step in first..=last {
-        let offset = |delta| {
-            ((i128::from(step) * i128::from(delta) + i128::from(steps / 2))
-                / i128::from(steps.max(1))) as i64
+fn source_over(destination: u32, color: u32, alpha: u32) -> u32 {
+    let mut result = 0;
+    for shift in [0, 8, 16, 24] {
+        let source = if shift == 24 {
+            255
+        } else {
+            (color >> shift) & 255
         };
-        let (x, y) = (x + sx * offset(dx), y + sy * offset(dy));
-        for py in (y - radius).max(0)..=(y + radius).min(height - 1) {
-            for px in (x - radius).max(0)..=(x + radius).min(width as i64 - 1) {
-                pixels[py as usize * width + px as usize] = color;
-            }
-        }
+        let dest = (destination >> shift) & 255;
+        let channel = (source * alpha + 127) / 255 + (dest * (255 - alpha) + 127) / 255;
+        result |= channel << shift;
     }
+    result
 }
 
 #[cfg(test)]
@@ -94,20 +210,47 @@ mod tests {
     }
 
     #[test]
-    fn single_point_is_an_opaque_five_pixel_dot() {
-        let mut pixels = vec![0; 11 * 11];
-        render(&mut pixels, 11, false, &[annotation(vec![vec![(5, 5)]])]);
+    fn poc7_circular_dots_and_round_caps() {
+        let mut dot = vec![0; 15 * 11];
+        render(&mut dot, 15, false, &[annotation(vec![vec![(5, 5)]])]);
+        assert_eq!(dot[5 * 15 + 5], INK);
+        assert_eq!(dot[5 * 15 + 3], INK);
+        assert_eq!(dot[3 * 15 + 3], 0x30_2f_16_04); // 3 of 16 samples, not a square corner.
+        assert_eq!(dot[2 * 15 + 5], 0);
+        let mut capsule = vec![0; 15 * 11];
+        render(
+            &mut capsule,
+            15,
+            false,
+            &[annotation(vec![vec![(5, 5), (9, 5)]])],
+        );
         for y in 0..11 {
-            for x in 0..11 {
-                let expected = if (3..=7).contains(&x) && (3..=7).contains(&y) {
-                    INK
-                } else {
-                    0
-                };
-                assert_eq!(pixels[y * 11 + x], expected);
+            for x in 0..=5 {
+                assert_eq!(capsule[y * 15 + x], dot[y * 15 + x]);
+                assert_eq!(capsule[y * 15 + 14 - x], dot[y * 15 + x]);
             }
         }
         assert_eq!(INK.to_le_bytes(), [0x16, 0x73, 0xf9, 0xff]);
+    }
+
+    #[test]
+    fn poc7_fractional_aa_edges_preserve_nominal_odd_width() {
+        let thin = Annotation {
+            paths: vec![vec![(5, 5), (9, 5)]],
+            style: Style {
+                thickness: 1,
+                ..Style::default()
+            },
+        };
+        let mut pixels = vec![0; 15 * 11];
+        render(&mut pixels, 15, false, &[thin]);
+        assert_eq!(pixels[5 * 15 + 7], INK);
+        assert_eq!(pixels[5 * 15 + 5] >> 24, 223); // Round cap covers 14 samples.
+        assert_eq!(pixels[4 * 15 + 7], 0);
+        let mut dot = annotation(vec![vec![(5, 5)]]);
+        dot.style.thickness = 1;
+        render(&mut pixels, 15, false, &[dot]);
+        assert_eq!(pixels[5 * 15 + 5] >> 24, 191); // Radius 0.5, not an opaque square.
     }
 
     #[test]
@@ -146,11 +289,7 @@ mod tests {
                 false,
                 &[annotation(vec![vec![end, (20, 20)]])],
             );
-            for step in 0..=6 {
-                let x = 20 + (end.0 - 20) * step / 6;
-                let y = 20 + (end.1 - 20) * step / 6;
-                assert_eq!(reversed[y as usize * 40 + x as usize], INK);
-            }
+            assert_eq!(pixels, reversed);
         }
     }
 
@@ -176,25 +315,33 @@ mod tests {
 
     #[test]
     fn thick_arrow_keeps_two_visible_wings_at_the_press_point() {
-        use crate::strokes::{Strokes, Tool};
         for width in [5, 15, 31] {
-            let mut strokes = Strokes::default();
-            strokes.set_thickness(width);
-            strokes.select(Tool::Arrow);
-            strokes.begin((100, 150));
-            strokes.append((400, 150));
-            strokes.finish();
-            let mut pixels = vec![0; 500 * 320];
-            render(&mut pixels, 500, false, strokes.annotations());
-            let head = 24 + 3 * width as usize;
-            let half = (head as f64 / 2.0).round() as usize;
-            assert_eq!(pixels[150 * 500 + 100], INK);
-            assert_eq!(pixels[150 * 500 + 400], INK);
-            assert_eq!(pixels[(150 + half) * 500 + 100 + head], INK);
-            assert_eq!(pixels[(150 - half) * 500 + 100 + head], INK);
-            assert_eq!(pixels[(150 + half) * 500 + 400], 0);
-            // Head wings extend far beyond the shaft, with space between them.
-            assert_eq!(pixels[(150 + width as usize) * 500 + 100 + head], 0);
+            for length in [100, 300] {
+                // Renderer-only fixture uses the shared 48+6w, 75%-cap geometry contract.
+                // Model geometry is tested by strokes.rs, not this focused renderer check.
+                let head = (48.0 + 6.0 * f64::from(width)).min(f64::from(length) * 0.75);
+                let half = (head / 2.0).round() as usize;
+                let head = head.round() as usize;
+                let arrow = Annotation {
+                    paths: vec![
+                        vec![(100, 150), (100 + length, 150)],
+                        vec![(100, 150), ((100 + head) as i32, (150 + half) as i32)],
+                        vec![(100, 150), ((100 + head) as i32, (150 - half) as i32)],
+                    ],
+                    style: Style {
+                        thickness: width,
+                        ..Style::default()
+                    },
+                };
+                let mut pixels = vec![0; 500 * 320];
+                render(&mut pixels, 500, false, &[arrow]);
+                assert_eq!(pixels[150 * 500 + 100], INK);
+                assert_eq!(pixels[150 * 500 + (100 + length) as usize], INK);
+                assert_eq!(pixels[(150 + half) * 500 + 100 + head], INK);
+                assert_eq!(pixels[(150 - half) * 500 + 100 + head], INK);
+                assert_eq!(pixels[(150 + half + width as usize) * 500 + 100 + head], 0);
+                assert_eq!(pixels[(150 + width as usize / 2 + 1) * 500 + 100 + head], 0);
+            }
         }
     }
 
@@ -213,16 +360,14 @@ mod tests {
                 vec![(20, 20), (30, 30)],
             ])],
         );
-        for y in 0..10 {
-            for x in 0..10 {
-                let expected = if (3..=7).contains(&y) || (y <= 2 && (x <= 1 || x == 9)) {
-                    INK
-                } else {
-                    0
-                };
-                assert_eq!(pixels[y * 10 + x], expected, "at ({x}, {y})");
-            }
+        for y in 3..=7 {
+            assert!(pixels[y * 10..(y + 1) * 10].iter().all(|&p| p == INK));
         }
+        assert_eq!(pixels[0], INK); // Center of the left offscreen dot still reaches the viewport.
+        assert_eq!(pixels[9], INK);
+        assert!(pixels[2 * 10 + 1] >> 24 > 0 && pixels[2 * 10 + 1] >> 24 < 255);
+        assert_eq!(pixels[2 * 10 + 5], 0);
+        assert!(pixels[8 * 10..].iter().all(|&p| p == 0));
     }
 
     #[test]
@@ -272,20 +417,18 @@ mod tests {
         let mut pixels = vec![0; 21 * 17];
         for drawing in [false, true, false] {
             render(&mut pixels, 21, drawing, &annotations);
-            for y in 0..17 {
-                for x in 0..21 {
-                    let expected = if x == 10 && (3..=13).contains(&y) {
-                        0xff3b82f6
-                    } else if (2..=18).contains(&x) && (5..=11).contains(&y) {
-                        0xffef4444
-                    } else if drawing {
-                        0x01000000
-                    } else {
-                        0
-                    };
-                    assert_eq!(pixels[y * 21 + x], expected, "at ({x}, {y})");
-                }
+            for y in 4..=12 {
+                assert_eq!(pixels[y * 21 + 10], 0xff3b82f6);
             }
+            for (x, y) in [(5, 8), (15, 8), (7, 5), (13, 11)] {
+                assert_eq!(pixels[y * 21 + x], 0xffef4444);
+            }
+            assert_eq!(pixels[4 * 21 + 7], if drawing { 0x01000000 } else { 0 });
+            assert_eq!(pixels[5 * 21 + 2], if drawing { 0x01000000 } else { 0 });
+            let mut reversed = vec![0; 21 * 17];
+            render(&mut reversed, 21, drawing, annotations.iter().rev());
+            assert_eq!(reversed[8 * 21 + 10], 0xffef4444);
+            assert_ne!(pixels, reversed);
         }
     }
 
@@ -317,7 +460,9 @@ mod tests {
             (12, 16),
             (15, 13),
         ] {
-            assert_eq!(pixels[y * 40 + x], 0xff22c55e);
+            let pixel = pixels[y * 40 + x];
+            assert!(pixel >> 24 >= 191, "visible branch sample at ({x}, {y})");
+            assert_eq!(pixel, source_over(0, 0xff22c55e, pixel >> 24));
         }
         for (x, y) in [(12, 7), (12, 13), (15, 16), (22, 10)] {
             assert_eq!(pixels[y * 40 + x], 0);
@@ -326,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn public_styles_are_bounded_odd_and_opaque() {
+    fn public_styles_are_bounded_odd_with_opaque_color_and_aa_coverage() {
         for (thickness, expected_width) in [
             (0, 1),
             (1, 1),
@@ -347,34 +492,62 @@ mod tests {
                         style: Style { color, thickness },
                     }],
                 );
-                let radius = expected_width / 2;
-                for y in 0..35 {
-                    for x in 0..35 {
-                        let expected = if (17 - radius..=17 + radius).contains(&x)
-                            && (17 - radius..=17 + radius).contains(&y)
-                        {
-                            color | 0xff000000
-                        } else {
-                            0
-                        };
-                        assert_eq!(pixels[y * 35 + x], expected);
-                    }
+                let mut normalized = vec![0; 35 * 35];
+                render(
+                    &mut normalized,
+                    35,
+                    false,
+                    &[Annotation {
+                        paths: vec![vec![(17, 17)]],
+                        style: Style {
+                            color: color | 0xff000000,
+                            thickness: expected_width,
+                        },
+                    }],
+                );
+                assert_eq!(pixels, normalized);
+                let radius = expected_width as usize / 2;
+                assert_eq!(
+                    pixels[17 * 35 + 17] >> 24,
+                    if expected_width == 1 { 191 } else { 255 }
+                );
+                assert!(pixels[17 * 35 + 17 + radius] >> 24 > 0);
+                assert_eq!(pixels[17 * 35 + 18 + radius], 0);
+                for pixel in pixels {
+                    let alpha = pixel >> 24;
+                    assert_eq!(pixel, source_over(0, color | 0xff000000, alpha));
                 }
             }
         }
     }
 
     #[test]
-    fn full_i32_extremes_clip_without_overflow_or_offscreen_traversal() {
-        for (start, end, axis) in [
-            ((i32::MIN, 5), (i32::MAX, 5), 0),
-            ((5, i32::MAX), (5, i32::MIN), 1),
-            ((i32::MIN, i32::MIN), (i32::MAX, i32::MAX), 2),
-            ((i32::MAX, i32::MAX), (i32::MIN, i32::MIN), 2),
-            ((i32::MIN, i32::MAX), (i32::MAX, i32::MIN), 3),
-            ((i32::MAX, i32::MIN), (i32::MIN, i32::MAX), 3),
-            ((i32::MIN, i32::MIN), (i32::MIN, i32::MIN), 3),
-            ((i32::MAX, i32::MAX), (i32::MAX, i32::MAX), 3),
+    fn poc7_full_i32_extremes_clip_without_overflow_or_offscreen_traversal() {
+        for (start, end, visible) in [
+            ((i32::MIN, 5), (i32::MAX, 5), vec![(-30, 5), (30, 5)]),
+            ((5, i32::MAX), (5, i32::MIN), vec![(5, 30), (5, -30)]),
+            (
+                (i32::MIN, i32::MIN),
+                (i32::MAX, i32::MAX),
+                vec![(-30, -30), (30, 30)],
+            ),
+            (
+                (i32::MAX, i32::MAX),
+                (i32::MIN, i32::MIN),
+                vec![(30, 30), (-30, -30)],
+            ),
+            (
+                (i32::MIN, i32::MAX),
+                (i32::MAX, i32::MIN),
+                vec![(-30, 29), (29, -30)],
+            ),
+            (
+                (i32::MAX, i32::MIN),
+                (i32::MIN, i32::MAX),
+                vec![(29, -30), (-30, 29)],
+            ),
+            ((i32::MIN, i32::MIN), (i32::MIN, i32::MIN), vec![]),
+            ((i32::MAX, i32::MAX), (i32::MAX, i32::MAX), vec![]),
         ] {
             let mut pixels = vec![0; 10 * 10];
             render(
@@ -389,62 +562,79 @@ mod tests {
                     },
                 }],
             );
-            for y in 0..10 {
-                for x in 0..10 {
-                    let ink = match axis {
-                        0 => y == 5,
-                        1 => x == 5,
-                        2 => x == y,
-                        _ => false,
-                    };
-                    assert_eq!(pixels[y * 10 + x], if ink { INK } else { 0 });
-                }
-            }
+            let mut expected = vec![0; 10 * 10];
+            render(
+                &mut expected,
+                10,
+                false,
+                &[Annotation {
+                    paths: vec![visible],
+                    style: Style {
+                        color: INK,
+                        thickness: 1,
+                    },
+                }],
+            );
+            assert_eq!(pixels, expected, "{start:?} to {end:?}");
         }
     }
 
     #[test]
-    fn bounded_steps_match_bresenham_including_clipped_ties() {
+    fn bounded_scan_matches_unclipped_capsule_reference() {
         let coordinates = [-6, -1, 0, 2, 4, 5, 10];
         for x in coordinates {
             for y in coordinates {
                 for end_x in coordinates {
                     for end_y in coordinates {
-                        for radius in [0, 2, 15] {
+                        for thickness in [1, 5, 31] {
                             let mut actual = vec![0; 5 * 5];
-                            line(&mut actual, 5, (x, y), (end_x, end_y), radius, INK);
-                            let mut expected = vec![0; 5 * 5];
-                            let (mut px, mut py) = (x, y);
-                            let (dx, dy) = ((end_x - x).abs(), -(end_y - y).abs());
-                            let (sx, sy) = (
-                                if x < end_x { 1 } else { -1 },
-                                if y < end_y { 1 } else { -1 },
+                            render(
+                                &mut actual,
+                                5,
+                                false,
+                                &[Annotation {
+                                    paths: vec![vec![(x, y), (end_x, end_y)]],
+                                    style: Style {
+                                        color: INK,
+                                        thickness,
+                                    },
+                                }],
                             );
-                            let mut error = dx + dy;
-                            loop {
-                                for by in py - radius as i32..=py + radius as i32 {
-                                    for bx in px - radius as i32..=px + radius as i32 {
-                                        if (0..5).contains(&bx) && (0..5).contains(&by) {
-                                            expected[by as usize * 5 + bx as usize] = INK;
+                            let mut expected = vec![0; 5 * 5];
+                            let (dx, dy) = (f64::from(end_x - x), f64::from(end_y - y));
+                            let length = dx.hypot(dy);
+                            for py in 0..5 {
+                                for px in 0..5 {
+                                    let mut covered = 0;
+                                    for oy in OFFSETS {
+                                        for ox in OFFSETS {
+                                            let (rx, ry) = (
+                                                px as f64 + ox - f64::from(x),
+                                                py as f64 + oy - f64::from(y),
+                                            );
+                                            let along = if length == 0.0 {
+                                                0.0
+                                            } else {
+                                                (rx * dx + ry * dy) / length
+                                            };
+                                            let distance = if along <= 0.0 {
+                                                rx.hypot(ry)
+                                            } else if along >= length {
+                                                (rx - dx).hypot(ry - dy)
+                                            } else {
+                                                (rx * dy - ry * dx).abs() / length
+                                            };
+                                            covered +=
+                                                u32::from(distance <= f64::from(thickness) / 2.0);
                                         }
                                     }
-                                }
-                                if (px, py) == (end_x, end_y) {
-                                    break;
-                                }
-                                let twice_error = 2 * error;
-                                if twice_error >= dy {
-                                    error += dy;
-                                    px += sx;
-                                }
-                                if twice_error <= dx {
-                                    error += dx;
-                                    py += sy;
+                                    expected[py * 5 + px] =
+                                        source_over(0, INK, (covered * 255 + 8) / 16);
                                 }
                             }
                             assert_eq!(
                                 actual, expected,
-                                "{x},{y} to {end_x},{end_y}, radius {radius}"
+                                "{x},{y} to {end_x},{end_y}, thickness {thickness}"
                             );
                         }
                     }
