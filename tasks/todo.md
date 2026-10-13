@@ -4,11 +4,12 @@
 
 Approved scope: tasks/poc5-spec.md. The user now has test hardware; sharing remains deferred. Final evidence: tasks/poc5-progress.md.
 
-- [ ] Virtual-desktop origin/dimensions with bounds validation; negative-origin placement preserved.
-- [ ] Bitmap upload preserves the window position; hidden native regression.
-- [ ] Shared tools/history composition, primary indicator and startup reporting.
-- [ ] Posted desktop checks on every monitor and across an available adjacent seam; legacy regression retained.
-- [ ] Combined build/test/check and applicable smoke; validated main promotion.
+- [x] Virtual-desktop origin/dimensions with bounds validation; negative-origin placement preserved.
+- [x] Bitmap upload preserves the window position; hidden native regression.
+- [x] Shared tools/history composition, primary indicator and startup reporting.
+- [x] Posted desktop checks implemented for every monitor and an available adjacent seam; parse/self-check passed. Desktop execution remains blocked by capture access.
+- [x] Combined build/test/check passed at 776713e, 68 tests.
+- [ ] Desktop smoke passes on an accessible interactive desktop; validated main promotion. Current gate is blocked, not passed.
 - [ ] User observes real input across screens, mixed-DPI alignment/picker behavior and click-through typing.
 
 ## Disk color picker follow-up
