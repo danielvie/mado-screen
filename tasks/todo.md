@@ -1,5 +1,31 @@
 # Windows prototype tasks
 
+## PoC 2: freehand drawing
+
+User reported PoC 1 works and approved this increment. No PoC 2 behavior has been validated yet.
+
+- [ ] P2-state: `strokes.rs` stores separate paths and active drag, rejects hover/duplicate points, preserves ink on finish, clears safely. Dependencies: PoC 1. Verify pure state tests. Owns only strokes.rs.
+- [ ] P2-render: replace automatic shapes with dots and connected freehand paths in drawing.rs/surface.rs. Dependencies: fixed state/path contract, not state implementation. Verify empty startup, dots, sparse interpolation, separate paths, clipped points, mode alpha and GDI cleanup. Owns only drawing.rs/surface.rs.
+- [ ] P2-input: input.rs decodes mouse/timer/cancel messages and owns active-only native capture watchdog; overlay.rs drops obsolete logging. Dependencies: PoC 1. Verify signed coordinates, HWND/timer filtering, primary-button semantics and guard cleanup without visible desktop interaction. Owns only input.rs/overlay.rs.
+- [ ] P2-compose: main owns stroke/mode/drag guard, draws on changed points, keeps ink in click-through, clears/ends/releases safely; README and smoke match new empty startup. Dependencies: P2-state, P2-render, P2-input integrated. Owns main.rs/README.md/scripts/smoke.ps1. Verify build/test/check and safe app-local smoke, no injected system input.
+- [ ] P2-integrator: one completion-order queue, isolated integration worktrees, checks after cherry-pick, fast-forward main; at most four workers, no concurrent integration.
+- [ ] P2-supervisor: review final sources/commits, run final checks, record app-local smoke versus actual hardware/manual evidence, commit verification in a worktree.
+
+### PoC 2 acceptance
+
+- [ ] Empty startup; logical primary-button drag produces a fixed orange 5-pixel stroke, including a click dot and sparse-event interpolation.
+- [ ] Distinct strokes do not join; hover does not draw; mode switches end current stroke and preserve ink.
+- [ ] Clear while dragging releases capture, empties canvas and does not resume on a held button; toggle and quit during drag also release safely.
+- [ ] Button release outside the primary display, capture loss and stale timer events do not leave drawing stuck.
+- [ ] Draw over Notepad, toggle to click-through, type/click normally, then resume drawing without unwanted focus changes.
+- [ ] Idle still blocks with no timer after drag; actual pointer responsiveness at the tested resolution is observed and not inferred from unit tests.
+
+### PoC 2 results
+
+Pending. PoC 1 historical results and deferred multi-display/presentation tasks remain below.
+
+## PoC 1 history
+
 PoC 1 implemented and integrated: native overlay, automatic shapes, controls, and nine passing tests. Build, formatting and Clippy pass. Desktop rendering/cleanup smoke checks pass; real input and focus checks remain manual. First-level PoC includes tasks 1 through 3 on the primary display; tasks 4 and 5 come later.
 
 ## Parallel implementation queue
@@ -59,7 +85,7 @@ Dependencies: 2. Scope: small, 1-2 files plus proof results.
 
 - [ ] Launch and see the automatic line and rectangle; use the underlying application while they remain visible.
 - [ ] Static rendering, safe input switching, clear, quit, and idle checks have explicit results.
-- [ ] Human reviews the primary-display PoC before later drawing or display/capture validation.
+- [x] Human reviews the primary-display PoC before later drawing or display/capture validation. User reports it works fine and approved PoC 2; this is not a detailed automated input matrix.
 
 ## 4. Monitor and DPI correctness
 
@@ -89,7 +115,7 @@ Dependencies: 3; include 4 when multiple displays are available. Scope: results 
 
 - [x] Run, build, test, and clean commands work. `task run` launched the overlay and exited via queued quit; `task clean` passed in the verification worktree.
 - [x] Every proof has a result or an explicit reason it remains untested. See results; input/focus and deferred display/capture checks are not claimed as passed.
-- [ ] Human decides whether to extend the prototype into an application.
+- [x] Human decides whether to extend the prototype into an application. Approved the next freehand proof; no full-product scope approved.
 
 ## Results
 
@@ -111,4 +137,4 @@ Integrated source reviewed at 7de673c; final verification also sets WS_EX_TOPMOS
 - The smoke test queues clear/quit directly; it proves action handling, not global keyboard delivery. It does not exercise capture mode.
 - Persistence across actual mode switching and underlying-window movement, and clearing without focus changes still need controlled desktop observation.
 - Multiple displays/mixed DPI, screen sharing and fullscreen compatibility are deferred to tasks 4/5. Sharing application is still unspecified.
-- Human approval of the first-level PoC remains pending.
+- User subsequently reported PoC 1 works fine and approved PoC 2. Detailed scenarios above were not individually signed off.

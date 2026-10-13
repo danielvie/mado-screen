@@ -1,14 +1,39 @@
 # Windows annotation proof of concept
 
-## Status and goal
+## Current increment: PoC 2 freehand pen
 
-PoC 1 implemented through isolated workers and serial integration. Build, 9 tests, formatting, Clippy, and desktop rendering/cleanup smoke checks pass. Actual input and focus checks remain manual. Scope is tasks 1 through 3 on the primary display; tasks 4 and 5 remain deferred. Runtime proof results are tracked in tasks/todo.md.
+Approved by the user after reporting PoC 1 works. Replace automatic shapes with an empty startup canvas and one fixed orange 5-pixel pen. Ctrl+Alt+D toggles drawing/click-through; Ctrl+Alt+C clears all strokes; Ctrl+Alt+Q quits. Drag the logical primary mouse button to draw. Switching mode ends the current stroke and preserves its visible points. Clear ends the drag and discards all strokes; holding the button after clear does not resume drawing until a new press. No toolbar, undo, shapes, settings or new dependencies.
+
+### Responsibilities and fixed interfaces
+
+- `strokes.rs`: pure state, independent of Windows and pixels. `#[derive(Default)] pub struct Strokes`; `begin(point: (i32,i32))`, `append(point: (i32,i32)) -> bool`, `finish()`, `clear()`, `is_active() -> bool`, `paths() -> &[Vec<(i32,i32)>]`. Keep separate strokes including the active one, ignore hover/duplicate points, preserve completed paths. All input points come from signed 16-bit Win32 client coordinates.
+- `drawing.rs`: replace automatic geometry with rasterization of provided paths. `render(pixels: &mut [u32], width: usize, drawing: bool, paths: &[Vec<(i32,i32)>])`. A single point draws a dot; interpolate adjacent points without joining separate strokes. Preserve premultiplied alpha, 5-pixel fixed color and clipping.
+- `surface.rs`: retain DIB/DC ownership; change `present(&mut self, hwnd: HWND, drawing: bool, paths: &[Vec<(i32,i32)>]) -> Result<()>`. Empty paths replace the old cleared flag.
+- `input.rs`: decode only overlay HWND messages via `event(&MSG, HWND) -> Option<Event>` with `Event::{Down((i32,i32)), Move { point:(i32,i32), left_down:bool }, Up((i32,i32)), Cancel, CheckRelease}`. Ignore other HWNDs and unrelated timers. Native `DragCapture::begin(HWND) -> Result<Self>` owns capture and a 32ms active-drag-only watchdog; `lost_or_released(&self) -> bool` checks capture ownership and primary-button high bit; Drop stops timer and releases capture only if still owned.
+- `overlay.rs`: window styles/lifecycle/focus as before; remove obsolete mouse-coordinate logging now handled by main. No mutable stroke state in WindowProc.
+- `main.rs`: owns drawing mode, Strokes and Option<DragCapture>; routes queued events, redraws only on changed points/mode/clear, and ends drag on release, capture loss, clear, toggle or exit. Drop drag guard before window, window before surface. Register quit before showing as before.
+
+### Capture and rendering decisions
+
+A nonactivating background window cannot rely on SetCapture for outside-screen button-up. Use a watchdog only during an active drag, not a permanent idle poll. The timer checks GetCapture and GetAsyncKeyState high bit, accounting for SM_SWAPBUTTON and physical left/right semantics. Conservatively end on unavailable input state. Ignore leftover timer messages after a drag. Capture-loss messages may be synchronous to WindowProc; the watchdog observes ownership independently without sharing mutable application state with the callback.
+
+Retain full-screen CPU fill/path replay and bitmap upload for this proof. Measure actual interaction at the tested resolution before switching renderers. This has O(total stroke points) replay plus full-screen upload per changed event; no GPU rewrite or speculative frame scheduler now. Pointer lag and outside-release behavior need real desktop validation, not just CPU timing or posted test messages.
+
+### Dependency-ready work and verification
+
+Three independent workers: stroke state; drawing/surface path rendering; input/overlay. Composition and README/smoke updates start only after all three are integrated. Maximum four workers, isolated worktrees, worker commits, one serial integration queue. Integration of the renderer includes a temporary main call-site adapter using empty paths so every intermediate main builds. Remove that temporary behavior during final composition.
+
+Verify pure state transitions, sparse connected paths/dots/separate strokes/clipping/clear/alpha, signed mouse decoding and capture ownership cleanup where supported. Then build/test/Clippy and safe app-local smoke checks. Do not inject real system mouse/keyboard input on a shared desktop. Manual acceptance: draw over Notepad, switch and type/click normally, resume drawing; release outside the primary display; clear/toggle/quit while dragging; observe lag on the user's display.
+
+## PoC 1 history
+
+PoC 1 was implemented through isolated workers and serial integration. Build, 9 tests, formatting, Clippy, and desktop rendering/cleanup smoke checks passed. User reports it works fine and approved PoC 2. Earlier detailed input/focus matrix was not fully automated. Display/capture tasks 4 and 5 remain deferred. Historical results are preserved below and in tasks/todo.md.
 
 Build one small Rust executable to prove that the proposed native overlay can render a line and rectangle above Windows applications and switch input ownership safely. Draw both shapes programmatically at startup, not through user interaction.
 
 Assumptions: Windows 10/11, mouse input, ordinary non-elevated applications, primary display first. Target OS confirmation is complete; hardware and preferred sharing application are not yet specified.
 
-## Minimal application
+## PoC 1 minimal application
 
 - Start in click-through mode, without stealing foreground focus.
 - Automatically render one fixed line and one outline rectangle at startup, positioned within the primary display. Use fixed color and thickness.
@@ -68,6 +93,15 @@ Proposed diagnostic target, not an established product requirement: idle CPU bel
 - Are multiple monitors and mixed scaling available for validation? Unavailable hardware checks remain untested, not passed.
 
 ## Sources
+
+PoC 2 input behavior:
+- Mouse capture restrictions: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcapture
+- Capture release: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-releasecapture
+- Capture-change delivery: https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-capturechanged
+- Active drag watchdog: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-settimer
+- Queued timer caveat: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-killtimer
+- Physical button state: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate
+- Mouse coordinates and primary-button flag: https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
 
 - Rust Windows bindings: https://github.com/microsoft/windows-rs
 - Layered-window hit testing: https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#layered-windows
