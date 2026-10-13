@@ -70,14 +70,19 @@ impl Surface {
         Ok(surface)
     }
 
-    pub fn present(&mut self, hwnd: HWND, drawing: bool, paths: &[Vec<(i32, i32)>]) -> Result<()> {
+    pub fn present(
+        &mut self,
+        hwnd: HWND,
+        drawing: bool,
+        annotations: &[crate::strokes::Annotation],
+    ) -> Result<()> {
         unsafe {
             // This DIB owns width*height aligned u32 pixels until Surface::drop.
             let pixels = std::slice::from_raw_parts_mut(
                 self.bits.cast::<u32>(),
                 self.width as usize * self.height as usize,
             );
-            crate::drawing::render(pixels, self.width as usize, drawing, paths);
+            crate::drawing::render(pixels, self.width as usize, drawing, annotations);
             let size = SIZE {
                 cx: self.width,
                 cy: self.height,
@@ -123,6 +128,7 @@ impl Drop for Surface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::strokes::{Annotation, Style};
 
     #[test]
     fn invalid_dimensions_fail_before_allocation() {
@@ -166,31 +172,48 @@ mod tests {
             assert_eq!(dib.dsBm.bmBits, surface.bits);
             assert_eq!(GetCurrentObject(surface.dc, OBJ_BITMAP), bitmap);
         }
-        let paths = [vec![(10, 15), (30, 30)], vec![(40, 20)]];
-        for (drawing, supplied_paths) in [
+        let annotations = [
+            Annotation {
+                paths: vec![vec![(10, 15), (30, 30)]],
+                style: Style::default(),
+            },
+            Annotation {
+                paths: vec![vec![(40, 20)]],
+                style: Style {
+                    color: 0xff3b82f6,
+                    thickness: 1,
+                },
+            },
+        ];
+        for (drawing, supplied_annotations) in [
             (false, &[][..]),
-            (false, &paths[..]),
-            (true, &paths[..]),
-            (false, &paths[..]),
+            (false, &annotations[..]),
+            (true, &annotations[..]),
+            (false, &annotations[..]),
             (true, &[][..]),
             (false, &[][..]),
         ] {
             // A null HWND exercises rasterization and the upload error path without showing anything.
             assert!(
                 surface
-                    .present(HWND::default(), drawing, supplied_paths)
+                    .present(HWND::default(), drawing, supplied_annotations)
                     .is_err()
             );
             let pixels = unsafe { std::slice::from_raw_parts(surface.bits.cast::<u32>(), 80 * 60) };
             let background = if drawing { 0x01000000 } else { 0 };
             assert_eq!(pixels[0], background);
             assert_eq!(pixels[30 * 80 + 50], background);
-            if supplied_paths.is_empty() {
+            if supplied_annotations.is_empty() {
                 assert!(pixels.iter().all(|&pixel| pixel == background));
             } else {
                 assert_eq!(pixels[15 * 80 + 10], 0xfff97316);
-                assert_eq!(pixels[20 * 80 + 40], 0xfff97316);
+                assert_eq!(pixels[20 * 80 + 40], 0xff3b82f6);
+                assert_eq!(pixels[15 * 80 + 8], 0xfff97316);
+                assert_eq!(pixels[15 * 80 + 7], background);
+                assert_eq!(pixels[20 * 80 + 39], background);
+                assert_eq!(pixels[19 * 80 + 40], background);
                 unsafe {
+                    assert_eq!(GetPixel(surface.dc, 40, 20), COLORREF(0x00f6823b));
                     assert_eq!(GetPixel(surface.dc, 10, 15), COLORREF(0x001673f9));
                     assert_eq!(GetPixel(surface.dc, 10, 44), COLORREF(0));
                 }
