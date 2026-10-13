@@ -1,5 +1,9 @@
 # Features and remaining work
 
+## PoC 5 scope
+
+The user approved drawing across multiple monitors and confirmed hardware is available. Sharing/recording stays deferred. PoC 5 uses one virtual-desktop overlay, shared annotation history and physical-pixel strokes across screens; all PoC 4 tools remain. Restart after monitor/layout/scaling changes. Specification and results are in tasks/poc5-spec.md and tasks/poc5-progress.md.
+
 ## PoC 4 scope
 
 The user accepted PoC 3 and authorized autonomous PoC 4 delivery with validated remote checkpoints. Specification and stage evidence are in tasks/poc4-spec.md and tasks/poc4-progress.md.
@@ -28,7 +32,7 @@ These remain candidates, not approved requirements or scheduled deliveries.
 | Preferences | Configurable shortcuts and saved settings |
 | Saving | Save/load annotation sessions; annotated-image export |
 | Distribution | Packaged release or installer; optional launch at login |
-| Displays | Multiple monitors, mixed-DPI/negative-coordinate layouts and live layout changes |
+| Displays | Live monitor/layout/scaling changes without restart; layouts beyond the signed client-coordinate limit |
 
 ## Unverified compatibility
 
@@ -43,12 +47,12 @@ Unverified does not mean broken. Verify separately:
 
 Secure desktop and lock-screen drawing remain excluded. No GPU rewrite is justified without measured lag.
 
-## Deferred monitor work
+## Monitor acceptance and deferred sharing
 
-The user currently has no multi-monitor setup. Keep monitor/DPI acceptance open until hardware is available, rather than claiming it passed or adding untestable display behavior now.
+Multi-monitor hardware is now available. PoC 5 automated checks cover the observed layout only. Physical gestures across seams, alternate above/below arrangements and mixed-DPI picker/focus behavior require manual acceptance. Live reconfiguration is deferred; restart the app after display changes.
 
-Sharing/recording validation can run on one monitor when the user names the application. Use a recording or recipient observation, not only a local preview.
+The user deferred sharing/recording validation. When resumed, name the capture application and use a recording or recipient observation, not only a local preview.
 
 ## Proposed next improvements
 
-No further PoC is approved. Recommended follow-up is to validate PoC 4 on real hardware and test single-monitor sharing before adding more tools. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.
+PoC 5 is the approved next increment. After its automated gates, validate real multi-monitor input and responsiveness before adding more tools. If daily use shows a concrete problem, choose one small increment from the remaining capabilities. A tray menu or saved preferences may improve convenience; partial-stroke erasing and text should remain separate increments because their behavior is substantially different.

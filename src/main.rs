@@ -36,10 +36,15 @@ fn main() -> Result<()> {
     let mut strokes = Strokes::default();
     surface.present(overlay.hwnd(), drawing, strokes.annotations())?;
     overlay.show()?;
-    let ui = DesktopUi::new(overlay.hwnd(), width, height)?;
+    // The canvas spans the virtual desktop, but the indicator stays on the primary screen.
+    let ui = DesktopUi::new(
+        overlay.hwnd(),
+        unsafe { GetSystemMetrics(SM_CXSCREEN) },
+        unsafe { GetSystemMetrics(SM_CYSCREEN) },
+    )?;
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
-    println!("PoC 4: stage {STAGE}, empty canvas, styled annotations and history.");
+    println!("PoC 5: stage {STAGE}, multi-monitor canvas, styled annotations and history.");
     println!("Ctrl+Alt+D: toggle; Ctrl+Alt+C: clear; Ctrl+Alt+Q: quit.");
     println!("Drawing only: P/L/R tools, Ctrl+Z/Y undo/redo, [/] thickness, 1..5 colors.");
     if STAGE >= 2 {
@@ -48,7 +53,9 @@ fn main() -> Result<()> {
     println!(
         "Drawing only: C opens the disk picker at the mouse. Apply color or cancel with Escape."
     );
-    println!("Primary display: {width} x {height} physical pixels.");
+    let (left, top) = overlay.origin();
+    println!("Virtual desktop: origin ({left}, {top}), {width} x {height} physical pixels.");
+    println!("Restart after changing monitors, their layout or display scaling.");
     println!("Mode: click-through.");
     let mut message = MSG::default();
     loop {
@@ -470,6 +477,62 @@ mod tests {
         assert!(!strokes.is_active());
         assert!(strokes.annotations().is_empty());
         assert_eq!(strokes.style().thickness, 7);
+    }
+
+    #[test]
+    fn cross_monitor_paths_share_styles_and_one_history_action() {
+        // A left-hand screen occupies client x=0..100 and the primary x=100..200.
+        // The screen origin is not added to these canvas-local input coordinates.
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Rectangle,
+            Tool::Arrow,
+            Tool::Ellipse,
+        ] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.set_color(0xff3b82f6);
+            strokes.set_thickness(7);
+            strokes.begin((80, 30));
+            assert!(
+                handle_input(
+                    Event::Move {
+                        point: (100, 40),
+                        left_down: true
+                    },
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
+            assert!(
+                handle_input(
+                    Event::Up((120, 50)),
+                    true,
+                    &mut strokes,
+                    &mut None,
+                    HWND::default()
+                )
+                .unwrap()
+            );
+            let scene = strokes.annotations().to_vec();
+            assert_eq!(scene.len(), 1);
+            assert_eq!(scene[0].style.color, 0xff3b82f6);
+            assert_eq!(scene[0].style.thickness, 7);
+            assert!(scene[0].paths.iter().flatten().any(|point| point.0 < 100));
+            assert!(scene[0].paths.iter().flatten().any(|point| point.0 > 100));
+            assert!(apply_edit(Action::Undo, &mut strokes, &mut None));
+            assert!(strokes.annotations().is_empty());
+            assert!(apply_edit(Action::Redo, &mut strokes, &mut None));
+            assert_eq!(strokes.annotations(), scene);
+            strokes.clear();
+            assert!(strokes.annotations().is_empty());
+            assert!(apply_edit(Action::Undo, &mut strokes, &mut None));
+            assert_eq!(strokes.annotations(), scene);
+        }
     }
 
     #[test]

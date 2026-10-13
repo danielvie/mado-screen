@@ -4,6 +4,10 @@
 
 Future batches follow [the workflow strategy](../docs/workflow-strategy.md). Use up to four worktree workers, one persistent serial integrator, validation after all deliveries, worker repair loops, and promotion to main only after required checks pass. Earlier per-delivery verification and promotion descriptions below are historical, not the current workflow policy.
 
+## PoC 5: multiple-monitor drawing
+
+User confirmed multi-monitor test hardware, deferred sharing/recording and approved implementation under docs/workflow-strategy.md. Scope and module contracts are in tasks/poc5-spec.md. One virtual-desktop overlay/bitmap preserves shared gestures, styles and history across screens. Monitor discovery is startup-only; restart after layout/scaling changes. Three independent workers own overlay.rs, surface.rs and scripts/smoke.ps1. The supervisor composes main/docs in a separate worktree and performs serial integration and final gates. Original/rebased commits and results are recorded in tasks/poc5-progress.md. Historical no-hardware statements below describe earlier PoCs.
+
 ## Disk picker follow-up
 
 User accepted PoC 4, approved the Excalidraw disk design and requested implementation. The RGB form is replaced by a smooth hue/saturation disk, brightness, candidate swatch/hex, six presets and Apply/Cancel in a dark DPI-scaled pane. Existing main/annotation/control behavior is unchanged. Validated code d670313: build, 59 tests, formatting/Clippy, 79 desktop regressions with zero skipped, and hidden native/offscreen visual review. Specification, delivery records and manual limits are in tasks/disk-picker.md.
