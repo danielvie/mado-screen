@@ -124,34 +124,45 @@ fn paint_group(
     let radius = f64::from(style.thickness.clamp(1, 31) | 1) / 2.0;
     let reach = radius + OFFSETS[3];
     let height = pixels.len() / width;
-    let mut rows = vec![Vec::new(); height];
-    for (index, segment) in segments.iter().enumerate() {
+    let (mut top, mut bottom) = (height, 0);
+    for segment in segments {
         let (x, y) = segment.start;
         let (end_x, end_y) = (x + segment.delta.0, y + segment.delta.1);
         if x.max(end_x) + reach < 0.0 || x.min(end_x) - reach > (width - 1) as f64 {
             continue;
         }
-        let top = (y.min(end_y) - reach).ceil().clamp(0.0, height as f64) as usize;
-        let bottom = (y.max(end_y) + reach + 1.0)
-            .floor()
-            .clamp(0.0, height as f64) as usize;
-        for (y, row) in rows.iter_mut().enumerate().take(bottom).skip(top) {
-            let range = segment.x_range(y as f64, reach, width);
-            if !range.is_empty() {
-                row.push((index, range));
-            }
-        }
+        top = top.min((y.min(end_y) - reach).ceil().clamp(0.0, height as f64) as usize);
+        bottom = bottom.max(
+            (y.max(end_y) + reach + 1.0)
+                .floor()
+                .clamp(0.0, height as f64) as usize,
+        );
     }
-    // Bin by visible row and resolve only the touched span, not the full desktop width.
-    // ponytail: widely separated segments still resolve their shared span;
-    // split spans into tiles if measured sparse-scene cost justifies it.
-    for (y, row) in rows.iter().enumerate().filter(|(_, row)| !row.is_empty()) {
-        let left = row.iter().map(|(_, range)| range.start).min().unwrap();
-        let right = row.iter().map(|(_, range)| range.end).max().unwrap();
-        samples[left * 16..right * 16].fill(0);
-        for (index, range) in row {
-            let segment = &segments[*index];
-            for x in range.clone() {
+    // ponytail: O(visible rows * segments); row bins were slower for measured thick loops.
+    // Profile again before replacing this scan or adding a sparse tile index.
+    for y in top..bottom {
+        samples.fill(0);
+        let (mut left, mut right) = (width, 0);
+        for segment in segments {
+            let range = segment.x_range(y as f64, reach, width);
+            if range.is_empty() {
+                continue;
+            }
+            left = left.min(range.start);
+            right = right.max(range.end);
+            for x in range {
+                // Every subpixel is within sqrt(2)*0.375 of the pixel center.
+                // Classify certain interior/exterior pixels once; only edges need 16 distances.
+                let distance = segment.distance_squared(x as f64, y as f64);
+                if radius >= 0.531 && distance <= (radius - 0.531).powi(2) {
+                    for sample in &mut samples[x * 16..(x + 1) * 16] {
+                        *sample = (*sample).max(segment.opacity);
+                    }
+                    continue;
+                }
+                if distance > (radius + 0.531).powi(2) {
+                    continue;
+                }
                 for (sy, oy) in OFFSETS.iter().enumerate() {
                     for (sx, ox) in OFFSETS.iter().enumerate() {
                         let sample = &mut samples[x * 16 + sy * 4 + sx];
@@ -165,6 +176,9 @@ fn paint_group(
                     }
                 }
             }
+        }
+        if left >= right {
+            continue;
         }
         for (pixel, coverage) in pixels[y * width + left..y * width + right]
             .iter_mut()
