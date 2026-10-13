@@ -2,7 +2,7 @@
 
 ## Status and goal
 
-PoC 1 implementation approved and in progress. Scope is tasks 1 through 3 on the primary display; tasks 4 and 5 remain deferred. Runtime proof results are tracked in tasks/todo.md.
+PoC 1 implemented through isolated workers and serial integration. Build, 9 tests, formatting, Clippy, and desktop rendering/cleanup smoke checks pass. Actual input and focus checks remain manual. Scope is tasks 1 through 3 on the primary display; tasks 4 and 5 remain deferred. Runtime proof results are tracked in tasks/todo.md.
 
 Build one small Rust executable to prove that the proposed native overlay can render a line and rectangle above Windows applications and switch input ownership safely. Draw both shapes programmatically at startup, not through user interaction.
 
@@ -24,7 +24,7 @@ PoC 1 is one application, not several prototypes. Keep modules small and concret
 
 - `drawing.rs`: pure rasterization and pixel checks. Existing implementation is the baseline.
 - `surface.rs`: owns memory DC and DIB; `Surface::new(width: i32, height: i32) -> Result<Self>` and `present(&mut self, hwnd: HWND, capture: bool, cleared: bool) -> Result<()>`. Depends only on drawing and Windows bindings.
-- `overlay.rs`: owns the hidden primary-display window and callback; `Overlay::new() -> Result<Self>`, `hwnd() -> HWND`, `size() -> (i32, i32)`, `show() -> Result<()>`, `set_capture(capture: bool) -> Result<()>`. It does not own rendering or register shortcuts.
+- `overlay.rs`: owns the hidden primary-display window and callback, with topmost style set before the first upload; `Overlay::new() -> Result<Self>`, `hwnd() -> HWND`, `size() -> (i32, i32)`, `show() -> Result<()>`, `set_capture(capture: bool) -> Result<()>`. It does not own rendering or register shortcuts.
 - `controls.rs`: shortcut registration guard `Hotkeys::register() -> Result<Self>` plus `Action::{Toggle, Clear, Quit}` and `action(id: usize) -> Option<Action>`. No window creation or rendering.
 - `main.rs`: DPI initialization, module composition, blocking message loop, capture/clear state. Registers shortcuts before showing the overlay. Declares resources so the window is destroyed before its surface on shutdown.
 

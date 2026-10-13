@@ -11,6 +11,7 @@ Windows 10 version 1703 or newer, or Windows 11, for Per-Monitor V2 DPI awarenes
 | `task run` | `cargo run` | Launch the overlay with console output |
 | `task build` | `cargo build` | Build the executable |
 | `task test` | `cargo test` | Run pixel, control, style, resource and drop-order checks |
+| `task smoke` | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe` after building | Check actual desktop rendering, clear/quit dispatch, shortcut rollback and 30-second idle CPU |
 | `task check` | `cargo fmt --check` then `cargo clippy --all-targets -- -D warnings` | Check formatting and warnings |
 | `task clean` | `cargo clean` | Remove build artifacts |
 
@@ -32,4 +33,8 @@ Only the primary display is covered. Restart after display-layout changes. Multi
 
 Rendering occurs at startup and on toggle or clear. The message loop blocks while idle, without continuous redraw. The CPU-rendered bitmap uploads the whole window on each change. Static shapes do not establish interactive drawing latency or frame rate.
 
-Automated checks do not launch the overlay. Actual visibility, click-through, focus preservation, capture tint, hotkey behavior and idle CPU still require Windows desktop validation. No desktop validation was performed for this module composition.
+Unit tests do not launch the overlay. The optional desktop smoke check needs 64-bit Windows PowerShell and an unlocked desktop with no existing PoC instance. It launches a copied executable in click-through mode, verifies visible shape pixels, measures idle CPU, queues clear/quit actions, and checks shortcut-conflict cleanup. It does not inject mouse or keyboard input or switch to capture mode. Logs and results are saved under `%TEMP%`.
+
+The integrated executable passed 9 unit/native-resource tests, formatting, Clippy, and the desktop smoke check on a 3440x1440 primary display. Measured process CPU time was unchanged over the 30-second idle sample. This is one hardware sample, not a general performance guarantee.
+
+Real keyboard shortcuts, click/scroll routing, focus preservation and capture mode still need manual checks over Notepad and a browser. The smoke check queues actions directly and does not prove global keyboard routing. Full verification results and module responsibilities are in `tasks/todo.md` and `tasks/plan.md`.

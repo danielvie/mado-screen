@@ -17,9 +17,15 @@ tasks:
       - cargo build
 
   test:
-    desc: Check automatic shape rasterization
+    desc: Run PoC unit and native resource checks
     cmds:
       - cargo test
+
+  smoke:
+    desc: Validate desktop rendering, cleanup, and idle CPU over 30 seconds
+    deps: [build]
+    cmds:
+      - powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Exe target/debug/mado-screen-poc.exe
 
   check:
     desc: Check formatting and Rust warnings

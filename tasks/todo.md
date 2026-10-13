@@ -1,6 +1,6 @@
 # Windows prototype tasks
 
-PoC 1 baseline implemented: native overlay, automatic shapes, controls, and three passing pixel tests. Build and Clippy pass. Desktop validation has not yet been performed. First-level PoC includes tasks 1 through 3 on the primary display; tasks 4 and 5 come later.
+PoC 1 implemented and integrated: native overlay, automatic shapes, controls, and nine passing tests. Build, formatting and Clippy pass. Desktop rendering/cleanup smoke checks pass; real input and focus checks remain manual. First-level PoC includes tasks 1 through 3 on the primary display; tasks 4 and 5 come later.
 
 ## Parallel implementation queue
 
@@ -8,9 +8,9 @@ PoC 1 baseline implemented: native overlay, automatic shapes, controls, and thre
 - [x] W1: extract `surface.rs` with DIB/DC ownership and bitmap upload. Implemented and integrated. Dependencies: baseline.
 - [x] W2: extract `overlay.rs` with hidden window creation, input styles, callback, and destruction. Implemented and integrated. Dependencies: baseline.
 - [x] W3: extract `controls.rs` with shortcut guard and action decoding. Implemented and integrated. Dependencies: baseline.
-- [x] W4: compose modules in `main.rs`, add concise README. Implemented and integrated. Dependencies: W1, W2, W3 integrated. Verified with `task build`, `task test` (9 passed), and `task check`; desktop acceptance remains untested.
-- [ ] Integrator: process completed worker commits serially in worktrees; verify and fast-forward main after each integration.
-- [ ] Supervisor: final build/test/check, review integrated diff, perform available desktop checks, record limitations, commit results.
+- [x] W4: compose modules in `main.rs`, add concise README. Implemented and integrated. Dependencies: W1, W2, W3 integrated. Verified with `task build`, `task test` (9 passed), and `task check`; actual input/focus acceptance remains manual.
+- [x] Integrator: process completed worker commits serially in worktrees; verify and fast-forward main after each integration. All four commits integrated; no blocked tasks.
+- [x] Supervisor: final build/test/check, review integrated diff, perform available desktop checks, record limitations, commit results. Verification changes prepared in a separate worktree and integrated serially.
 
 Workers own separate files. At most four workers; integration is strictly serial. The next dependency-ready task starts after its dependencies are integrated.
 
@@ -19,8 +19,8 @@ Workers own separate files. At most four workers; integration is strictly serial
 Create the Cargo executable, Taskfile commands, and primary-monitor layered window. Render one fixed line and one outline rectangle automatically at startup. Start click-through; there are no drawing tools. Add a small runnable check for rasterized shape pixels and premultiplied-alpha math.
 
 Acceptance:
-- [ ] Line and rectangle appear above ordinary windows without user drawing interaction.
-- [ ] Desktop remains visible around the shapes and inside the rectangle.
+- [x] Line and rectangle appear above ordinary windows without user drawing interaction. Actual desktop pixel samples passed.
+- [x] Desktop remains visible around the shapes and inside the rectangle. Transparent pixel tests passed; baseline desktop observation confirmed the unfilled interior.
 - [ ] Clicks and scrolling reach the underlying application through both shapes and blank areas.
 
 Verification: `task test`; `task build`; inspect the actual overlay over Notepad and a browser, including clicks directly on the shapes.
@@ -50,7 +50,7 @@ Validate the startup shapes without adding interaction or new tools. Redraw only
 Acceptance:
 - [ ] Line and rectangle remain visible while switching modes and moving underlying windows.
 - [ ] Clear removes both shapes without leftover pixels or focus theft.
-- [ ] Record idle CPU over 30 seconds, hardware, resolution, and whether idle redraw occurs; report against the proposed idle target.
+- [x] Record idle CPU over 30 seconds, hardware, resolution, and whether idle redraw occurs; report against the proposed idle target. Process CPU time unchanged; blocking loop has no idle redraw timer.
 
 Verification: `task test`; `task build`; actual desktop checks over Notepad/browser. Restart to restore shapes after clearing. Do not interpret a static render as proof of interactive drawing latency.
 Dependencies: 2. Scope: small, 1-2 files plus proof results.
@@ -87,10 +87,28 @@ Dependencies: 3; include 4 when multiple displays are available. Scope: results 
 
 ## Final checkpoint
 
-- [ ] Run, build, test, and clean commands work.
-- [ ] Every proof has a result or an explicit reason it remains untested.
+- [x] Run, build, test, and clean commands work. `task run` launched the overlay and exited via queued quit; `task clean` passed in the verification worktree.
+- [x] Every proof has a result or an explicit reason it remains untested. See results; input/focus and deferred display/capture checks are not claimed as passed.
 - [ ] Human decides whether to extend the prototype into an application.
 
 ## Results
 
-Not run. Hardware configuration and primary sharing application still need to be recorded.
+## Automated results
+
+Integrated source reviewed at 7de673c; final verification also sets WS_EX_TOPMOST at creation after a smoke check observed inconsistent startup z-order. Four worker tasks finished in isolated worktrees and were integrated in completion order: controls, overlay, surface, composition. Main was fast-forwarded after each serial integration; no force/reset or parallel integration was used.
+
+- `task build`: passed.
+- `task test`: 9 passed, covering pixels, alpha, action decoding, style preservation, noactivation callback, dimensions, GDI ownership and resource drop order.
+- `task check`: formatting and Clippy passed.
+- Desktop smoke: 17 checks passed using a copied integrated executable. Verified window creation/styles, visible line/rectangle samples, idle CPU, clear/quit action dispatch, window removal, real shortcut-registration conflicts and rollback. `task smoke` leaves logs/results under `%TEMP%` and does not inject mouse/keyboard input.
+- Hardware: AMD Ryzen 7 7800X3D, 16 logical processors; Windows kernel 10.0.26200.0; primary display 3440x1440 physical pixels.
+- Idle sample: process CPU time delta 0 seconds over 30 seconds, reported utilization 0% normalized over 16 logical processors. One sample only; not a performance guarantee.
+- Final smoke artifact with startup topmost style set at creation: C:/Users/daniel/AppData/Local/Temp/mado-poc1-4095bcbe-148f-44fa-906c-6515411ade5e/results.json.
+
+## Remaining manual checks
+
+- Real Ctrl+Alt+D/C/Q delivery with Notepad/browser active, mouse click/scroll routing across blank areas and shapes, focus preservation, capture-mode tint and quit with mouse held. Earlier baseline synthetic-input checks were partial and became unreliable when desktop focus/cursor changed; they do not count as a complete final pass.
+- The smoke test queues clear/quit directly; it proves action handling, not global keyboard delivery. It does not exercise capture mode.
+- Persistence across actual mode switching and underlying-window movement, and clearing without focus changes still need controlled desktop observation.
+- Multiple displays/mixed DPI, screen sharing and fullscreen compatibility are deferred to tasks 4/5. Sharing application is still unspecified.
+- Human approval of the first-level PoC remains pending.
