@@ -7,7 +7,7 @@ PoC 1 baseline implemented: native overlay, automatic shapes, controls, and thre
 - [x] Baseline: rasterization, native prototype, Cargo project, Taskfile; build/test/check pass.
 - [ ] W1: extract `surface.rs` with DIB/DC ownership and bitmap upload. Dependencies: baseline.
 - [ ] W2: extract `overlay.rs` with hidden window creation, input styles, callback, and destruction. Dependencies: baseline.
-- [ ] W3: extract `controls.rs` with shortcut guard and action decoding. Dependencies: baseline.
+- [x] W3: extract `controls.rs` with shortcut guard and action decoding. Implemented and integrated. Dependencies: baseline.
 - [ ] W4: compose modules in `main.rs`, add concise README. Dependencies: W1, W2, W3 integrated.
 - [ ] Integrator: process completed worker commits serially in worktrees; verify and fast-forward main after each integration.
 - [ ] Supervisor: final build/test/check, review integrated diff, perform available desktop checks, record limitations, commit results.
