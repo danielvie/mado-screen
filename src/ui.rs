@@ -1763,170 +1763,304 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
         PANEL_BORDER,
         scaled(1, s),
     );
-    if geometry.opacity > 0.0 {
-        if let Ok(font) = panel_font(s) {
-            unsafe {
-                let saved = SaveDC(dc);
-                SelectObject(dc, font.0);
-                let toggle = geometry.bounds(PanelHit::Toggle);
-                rounded_pen(
+    if geometry.opacity > 0.0
+        && let Ok(font) = panel_font(s)
+    {
+        unsafe {
+            let saved = SaveDC(dc);
+            SelectObject(dc, font.0);
+            let toggle = geometry.bounds(PanelHit::Toggle);
+            rounded_pen(
+                dc,
+                toggle,
+                scaled(4, s),
+                PANEL_BACKGROUND,
+                if state.drawing.get() {
+                    PANEL_ACCENT
+                } else {
+                    PANEL_BORDER
+                },
+                scaled(1, s),
+            );
+            let switch = rect(
+                toggle.left + scaled(8, s),
+                toggle.top + scaled(7, s),
+                scaled(28, s),
+                scaled(16, s),
+            );
+            rounded_pen(
+                dc,
+                switch,
+                scaled(4, s),
+                PANEL_BACKGROUND,
+                if state.drawing.get() {
+                    PANEL_ACCENT
+                } else {
+                    PANEL_SECONDARY
+                },
+                scaled(1, s),
+            );
+            ellipse(
+                dc,
+                switch.left + scaled(if state.drawing.get() { 20 } else { 8 }, s),
+                switch.top + scaled(8, s),
+                scaled(5, s),
+                PANEL_ACCENT,
+                1,
+                true,
+            );
+            label(
+                dc,
+                if state.drawing.get() {
+                    "Drawing"
+                } else {
+                    "Click-through"
+                },
+                rect(
+                    toggle.left + scaled(42, s),
+                    toggle.top,
+                    scaled(128, s),
+                    scaled(31, s),
+                ),
+                PANEL_TEXT,
+                DT_SINGLELINE | DT_VCENTER,
+            );
+            let header = rect(
+                toggle.left - scaled(90, s),
+                toggle.top + scaled(6, s),
+                scaled(84, s),
+                scaled(18, s),
+            );
+            label(
+                dc,
+                PANEL_TOOLS
+                    .iter()
+                    .find(|entry| entry.0 == state.tool.get())
+                    .map(|entry| entry.1)
+                    .unwrap_or("Pen"),
+                header,
+                PANEL_SECONDARY,
+                DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+            );
+            let preview = geometry.bounds(PanelHit::Current);
+            label(
+                dc,
+                "F4",
+                rect(
+                    toggle.right - scaled(104, s),
+                    toggle.top,
+                    scaled(96, s),
+                    scaled(31, s),
+                ),
+                PANEL_SECONDARY,
+                DT_SINGLELINE | DT_VCENTER | DT_RIGHT,
+            );
+            let y = (preview.top + preview.bottom) / 2;
+            let width = scaled(state.width.get() as i32, s).max(1);
+            let inset = (width + 1) / 2;
+            let left = preview.left + inset;
+            let right = preview.right - inset;
+            panel_line(
+                dc,
+                &[(0, 0), (((right - left) as f64 / s).round() as i32, 0)],
+                s,
+                (left, y),
+                state.color.get(),
+                width,
+            );
+            ellipse(dc, left, y, width / 2, state.color.get(), 1, true);
+            ellipse(dc, right, y, width / 2, state.color.get(), 1, true);
+            let small_font = panel_font(s * 0.72);
+            // Favorites: reserve behind, active in front with a background gap.
+            let target = state.swatch_target();
+            let hover = state.hover.get();
+            let active = geometry.bounds(PanelHit::Active);
+            let reserve = geometry.bounds(PanelHit::Reserve);
+            let edge = |hit, normal| {
+                if target == Some(hit) {
+                    (PANEL_ACCENT, scaled(2, s))
+                } else if hover == Some(hit) {
+                    (PANEL_TEXT, scaled(1, s))
+                } else {
+                    (normal, scaled(1, s))
+                }
+            };
+            let (border, pen) = edge(PanelHit::Reserve, PANEL_SECONDARY);
+            rounded_pen(dc, reserve, 0, state.reserve.get(), border, pen);
+            let gap = scaled(2, s);
+            fill(
+                dc,
+                rect(
+                    active.left - gap,
+                    active.top - gap,
+                    active.right - active.left + 2 * gap,
+                    active.bottom - active.top + 2 * gap,
+                ),
+                PANEL_BACKGROUND,
+            );
+            let (border, pen) = edge(PanelHit::Active, PANEL_TEXT);
+            rounded_pen(dc, active, 0, state.color.get(), border, pen);
+            let swap = geometry.bounds(PanelHit::Swap);
+            let arrow = |points: &[(i32, i32)]| {
+                panel_line(
                     dc,
-                    toggle,
-                    scaled(4, s),
-                    PANEL_BACKGROUND,
-                    if state.drawing.get() {
-                        PANEL_ACCENT
-                    } else {
-                        PANEL_BORDER
-                    },
-                    scaled(1, s),
-                );
-                let switch = rect(
-                    toggle.left + scaled(8, s),
-                    toggle.top + scaled(7, s),
-                    scaled(28, s),
-                    scaled(16, s),
-                );
-                rounded_pen(
-                    dc,
-                    switch,
-                    scaled(4, s),
-                    PANEL_BACKGROUND,
-                    if state.drawing.get() {
-                        PANEL_ACCENT
+                    points,
+                    s,
+                    (swap.left, swap.top),
+                    if hover == Some(PanelHit::Swap) {
+                        PANEL_TEXT
                     } else {
                         PANEL_SECONDARY
                     },
-                    scaled(1, s),
-                );
+                    (1.5 * s).round() as i32,
+                )
+            };
+            // Bent two-headed arrow from the active square to the reserve square.
+            arrow(&[(1, 3), (9, 3), (9, 11)]);
+            arrow(&[(3, 1), (1, 3), (3, 5)]);
+            arrow(&[(7, 9), (9, 11), (11, 9)]);
+            let key = rect(
+                reserve.right + scaled(6, s),
+                active.top + scaled(8, s),
+                scaled(13, s),
+                scaled(17, s),
+            );
+            rounded_pen(
+                dc,
+                key,
+                scaled(2, s),
+                PANEL_BACKGROUND,
+                PANEL_BORDER,
+                scaled(1, s),
+            );
+            if let Ok(ref small) = small_font {
+                SelectObject(dc, small.0);
+            }
+            label(
+                dc,
+                "X",
+                key,
+                PANEL_TEXT,
+                DT_SINGLELINE | DT_CENTER | DT_VCENTER,
+            );
+            SelectObject(dc, font.0);
+            let slider = geometry.bounds(PanelHit::Width);
+            let cy = (slider.top + slider.bottom) / 2;
+            fill(
+                dc,
+                rect(
+                    slider.left,
+                    cy - scaled(2, s),
+                    slider.right - slider.left,
+                    scaled(4, s),
+                ),
+                PANEL_BORDER,
+            );
+            let thumb = slider.left
+                + ((slider.right - slider.left) as f64
+                    * (state.width.get().saturating_sub(1).min(30) as f64 / 30.0))
+                    .round() as i32;
+            fill(
+                dc,
+                rect(
+                    slider.left,
+                    cy - scaled(2, s),
+                    thumb - slider.left,
+                    scaled(4, s),
+                ),
+                PANEL_ACCENT,
+            );
+            ellipse(dc, thumb, cy, scaled(10, s), 0xff364147, 1, true);
+            ellipse(dc, thumb, cy, scaled(6, s), PANEL_ACCENT, 1, true);
+            label(
+                dc,
+                &state.width.get().to_string(),
+                rect(
+                    slider.right + scaled(22, s),
+                    slider.top,
+                    scaled(30, s),
+                    scaled(32, s),
+                ),
+                PANEL_TEXT,
+                DT_SINGLELINE | DT_RIGHT | DT_VCENTER,
+            );
+            for (i, color) in PANEL_PALETTE.iter().copied().enumerate() {
+                let (x, y) = geometry.center(PanelHit::Palette(i));
+                ellipse(dc, x, y, scaled(14, s), color, 1, true);
                 ellipse(
                     dc,
-                    switch.left + scaled(if state.drawing.get() { 20 } else { 8 }, s),
-                    switch.top + scaled(8, s),
-                    scaled(5, s),
-                    PANEL_ACCENT,
-                    1,
-                    true,
-                );
-                label(
-                    dc,
-                    if state.drawing.get() {
-                        "Drawing"
-                    } else {
-                        "Click-through"
-                    },
-                    rect(
-                        toggle.left + scaled(42, s),
-                        toggle.top,
-                        scaled(128, s),
-                        scaled(31, s),
-                    ),
-                    PANEL_TEXT,
-                    DT_SINGLELINE | DT_VCENTER,
-                );
-                let header = rect(
-                    toggle.left - scaled(90, s),
-                    toggle.top + scaled(6, s),
-                    scaled(84, s),
-                    scaled(18, s),
-                );
-                label(
-                    dc,
-                    PANEL_TOOLS
-                        .iter()
-                        .find(|entry| entry.0 == state.tool.get())
-                        .map(|entry| entry.1)
-                        .unwrap_or("Pen"),
-                    header,
+                    x,
+                    y,
+                    scaled(14, s),
                     PANEL_SECONDARY,
-                    DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+                    scaled(1, s),
+                    false,
                 );
-                let preview = geometry.bounds(PanelHit::Current);
-                label(
-                    dc,
-                    "F4",
-                    rect(
-                        toggle.right - scaled(104, s),
-                        toggle.top,
-                        scaled(96, s),
-                        scaled(31, s),
-                    ),
-                    PANEL_SECONDARY,
-                    DT_SINGLELINE | DT_VCENTER | DT_RIGHT,
-                );
-                let y = (preview.top + preview.bottom) / 2;
-                let width = scaled(state.width.get() as i32, s).max(1);
-                let inset = (width + 1) / 2;
-                let left = preview.left + inset;
-                let right = preview.right - inset;
-                panel_line(
-                    dc,
-                    &[(0, 0), (((right - left) as f64 / s).round() as i32, 0)],
-                    s,
-                    (left, y),
-                    state.color.get(),
-                    width,
-                );
-                ellipse(dc, left, y, width / 2, state.color.get(), 1, true);
-                ellipse(dc, right, y, width / 2, state.color.get(), 1, true);
-                let small_font = panel_font(s * 0.72);
-                // Favorites: reserve behind, active in front with a background gap.
-                let target = state.swatch_target();
-                let hover = state.hover.get();
-                let active = geometry.bounds(PanelHit::Active);
-                let reserve = geometry.bounds(PanelHit::Reserve);
-                let edge = |hit, normal| {
-                    if target == Some(hit) {
-                        (PANEL_ACCENT, scaled(2, s))
-                    } else if hover == Some(hit) {
-                        (PANEL_TEXT, scaled(1, s))
-                    } else {
-                        (normal, scaled(1, s))
-                    }
-                };
-                let (border, pen) = edge(PanelHit::Reserve, PANEL_SECONDARY);
-                rounded_pen(dc, reserve, 0, state.reserve.get(), border, pen);
-                let gap = scaled(2, s);
-                fill(
-                    dc,
-                    rect(
-                        active.left - gap,
-                        active.top - gap,
-                        active.right - active.left + 2 * gap,
-                        active.bottom - active.top + 2 * gap,
-                    ),
-                    PANEL_BACKGROUND,
-                );
-                let (border, pen) = edge(PanelHit::Active, PANEL_TEXT);
-                rounded_pen(dc, active, 0, state.color.get(), border, pen);
-                let swap = geometry.bounds(PanelHit::Swap);
-                let arrow = |points: &[(i32, i32)]| {
-                    panel_line(
+                if color & 0xffffff == state.color.get() & 0xffffff {
+                    ellipse(dc, x, y, scaled(18, s), PANEL_ACCENT, scaled(2, s), false);
+                }
+            }
+            let tools = geometry.bounds(PanelHit::Tool(MenuTool::Pen));
+            fill(
+                dc,
+                rect(
+                    tools.left,
+                    tools.top - scaled(8, s),
+                    scaled(408, s),
+                    scaled(1, s),
+                ),
+                PANEL_BORDER,
+            );
+            for (tool, _, key, _) in PANEL_TOOLS {
+                let hit = PanelHit::Tool(tool);
+                let r = geometry.bounds(hit);
+                let selected = state.tool.get() == tool;
+                let hovered = state.hover.get() == Some(hit);
+                let pressed = state.pressed.get() == Some(hit);
+                if selected || hovered || pressed {
+                    rounded_pen(
                         dc,
-                        points,
-                        s,
-                        (swap.left, swap.top),
-                        if hover == Some(PanelHit::Swap) {
+                        r,
+                        scaled(3, s),
+                        if pressed {
+                            0xff426c5f
+                        } else if hovered && selected {
+                            0xff36584d
+                        } else if hovered {
+                            0xff30363d
+                        } else {
+                            0xff263b36
+                        },
+                        if selected && (hovered || pressed) {
                             PANEL_TEXT
+                        } else if selected || pressed {
+                            PANEL_ACCENT
                         } else {
                             PANEL_SECONDARY
                         },
-                        (1.5 * s).round() as i32,
-                    )
-                };
-                // Bent two-headed arrow from the active square to the reserve square.
-                arrow(&[(1, 3), (9, 3), (9, 11)]);
-                arrow(&[(3, 1), (1, 3), (3, 5)]);
-                arrow(&[(7, 9), (9, 11), (11, 9)]);
-                let key = rect(
-                    reserve.right + scaled(6, s),
-                    active.top + scaled(8, s),
+                        scaled(1, s),
+                    );
+                }
+                panel_icon(
+                    dc,
+                    tool,
+                    (r.left + scaled(2, s), r.top + scaled(2, s)),
+                    s,
+                    if selected {
+                        PANEL_TEXT
+                    } else {
+                        PANEL_SECONDARY
+                    },
+                );
+                let badge = rect(
+                    r.right - scaled(15, s),
+                    r.top + scaled(4, s),
                     scaled(13, s),
                     scaled(17, s),
                 );
                 rounded_pen(
                     dc,
-                    key,
+                    badge,
                     scaled(2, s),
                     PANEL_BACKGROUND,
                     PANEL_BORDER,
@@ -1937,159 +2071,25 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 }
                 label(
                     dc,
-                    "X",
                     key,
+                    badge,
                     PANEL_TEXT,
                     DT_SINGLELINE | DT_CENTER | DT_VCENTER,
                 );
                 SelectObject(dc, font.0);
-                let slider = geometry.bounds(PanelHit::Width);
-                let cy = (slider.top + slider.bottom) / 2;
-                fill(
-                    dc,
-                    rect(
-                        slider.left,
-                        cy - scaled(2, s),
-                        slider.right - slider.left,
-                        scaled(4, s),
-                    ),
-                    PANEL_BORDER,
-                );
-                let thumb = slider.left
-                    + ((slider.right - slider.left) as f64
-                        * (state.width.get().saturating_sub(1).min(30) as f64 / 30.0))
-                        .round() as i32;
-                fill(
-                    dc,
-                    rect(
-                        slider.left,
-                        cy - scaled(2, s),
-                        thumb - slider.left,
-                        scaled(4, s),
-                    ),
-                    PANEL_ACCENT,
-                );
-                ellipse(dc, thumb, cy, scaled(10, s), 0xff364147, 1, true);
-                ellipse(dc, thumb, cy, scaled(6, s), PANEL_ACCENT, 1, true);
-                label(
-                    dc,
-                    &state.width.get().to_string(),
-                    rect(
-                        slider.right + scaled(22, s),
-                        slider.top,
-                        scaled(30, s),
-                        scaled(32, s),
-                    ),
-                    PANEL_TEXT,
-                    DT_SINGLELINE | DT_RIGHT | DT_VCENTER,
-                );
-                for (i, color) in PANEL_PALETTE.iter().copied().enumerate() {
-                    let (x, y) = geometry.center(PanelHit::Palette(i));
-                    ellipse(dc, x, y, scaled(14, s), color, 1, true);
-                    ellipse(
-                        dc,
-                        x,
-                        y,
-                        scaled(14, s),
-                        PANEL_SECONDARY,
-                        scaled(1, s),
-                        false,
-                    );
-                    if color & 0xffffff == state.color.get() & 0xffffff {
-                        ellipse(dc, x, y, scaled(18, s), PANEL_ACCENT, scaled(2, s), false);
-                    }
-                }
-                let tools = geometry.bounds(PanelHit::Tool(MenuTool::Pen));
-                fill(
-                    dc,
-                    rect(
-                        tools.left,
-                        tools.top - scaled(8, s),
-                        scaled(408, s),
-                        scaled(1, s),
-                    ),
-                    PANEL_BORDER,
-                );
-                for (tool, _, key, _) in PANEL_TOOLS {
-                    let hit = PanelHit::Tool(tool);
-                    let r = geometry.bounds(hit);
-                    let selected = state.tool.get() == tool;
-                    let hovered = state.hover.get() == Some(hit);
-                    let pressed = state.pressed.get() == Some(hit);
-                    if selected || hovered || pressed {
-                        rounded_pen(
-                            dc,
-                            r,
-                            scaled(3, s),
-                            if pressed {
-                                0xff426c5f
-                            } else if hovered && selected {
-                                0xff36584d
-                            } else if hovered {
-                                0xff30363d
-                            } else {
-                                0xff263b36
-                            },
-                            if selected && (hovered || pressed) {
-                                PANEL_TEXT
-                            } else if selected || pressed {
-                                PANEL_ACCENT
-                            } else {
-                                PANEL_SECONDARY
-                            },
-                            scaled(1, s),
-                        );
-                    }
-                    panel_icon(
-                        dc,
-                        tool,
-                        (r.left + scaled(2, s), r.top + scaled(2, s)),
-                        s,
-                        if selected {
-                            PANEL_TEXT
-                        } else {
-                            PANEL_SECONDARY
-                        },
-                    );
-                    let badge = rect(
-                        r.right - scaled(15, s),
-                        r.top + scaled(4, s),
-                        scaled(13, s),
-                        scaled(17, s),
-                    );
-                    rounded_pen(
-                        dc,
-                        badge,
-                        scaled(2, s),
-                        PANEL_BACKGROUND,
-                        PANEL_BORDER,
-                        scaled(1, s),
-                    );
-                    if let Ok(ref small) = small_font {
-                        SelectObject(dc, small.0);
-                    }
-                    label(
-                        dc,
-                        key,
-                        badge,
-                        PANEL_TEXT,
-                        DT_SINGLELINE | DT_CENTER | DT_VCENTER,
-                    );
-                    SelectObject(dc, font.0);
-                }
-                if let (Some(drag), Some(PanelHit::Palette(i))) = (
-                    state.swatch.get().filter(|drag| drag.moving),
-                    state.pressed.get(),
-                ) {
-                    // Painting uses the supersampled frame; its scale ratio is the sample factor.
-                    let n = (s / state.panel_scale.get()).round() as i32;
-                    let origin = PanelGeometry::new(state).destination(state.panel_anchor.get());
-                    let (x, y) = ((drag.point.x - origin.x) * n, (drag.point.y - origin.y) * n);
-                    ellipse(dc, x, y, scaled(10, s), PANEL_PALETTE[i], 1, true);
-                    ellipse(dc, x, y, scaled(10, s), PANEL_TEXT, scaled(1, s), false);
-                }
-                let _ = RestoreDC(dc, saved);
             }
+            if let (Some(drag), Some(PanelHit::Palette(i))) = (
+                state.swatch.get().filter(|drag| drag.moving),
+                state.pressed.get(),
+            ) {
+                // Painting uses the supersampled frame; its scale ratio is the sample factor.
+                let n = (s / state.panel_scale.get()).round() as i32;
+                let origin = PanelGeometry::new(state).destination(state.panel_anchor.get());
+                let (x, y) = ((drag.point.x - origin.x) * n, (drag.point.y - origin.y) * n);
+                ellipse(dc, x, y, scaled(10, s), PANEL_PALETTE[i], 1, true);
+                ellipse(dc, x, y, scaled(10, s), PANEL_TEXT, scaled(1, s), false);
+            }
+            let _ = RestoreDC(dc, saved);
         }
     }
     // The icon/grip stay opaque; only the body has a border, never an inner badge.
@@ -2240,11 +2240,9 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     } else if state.swatch.get().is_some() {
                         state.move_swatch(screen);
                     } else {
-                        if geometry.contains(x, y) {
-                            if state.allow_hover_reveal(screen) {
-                                state.stop_leave_timer();
-                                state.reveal_panel(true);
-                            }
+                        if geometry.contains(x, y) && state.allow_hover_reveal(screen) {
+                            state.stop_leave_timer();
+                            state.reveal_panel(true);
                         }
                         let geometry = PanelGeometry::new(state);
                         let origin = geometry.destination(state.panel_anchor.get());
@@ -3884,12 +3882,12 @@ mod tests {
         panel_click(hwnd, PanelGeometry::new(&ui.state).center(PanelHit::Toggle));
         assert_eq!(decoded(root.0), [UiEvent::Toggle]);
         assert!(!ui.state.drawing.get());
-        for i in 0..16 {
+        for (i, &color) in PANEL_PALETTE.iter().enumerate() {
             panel_click(
                 hwnd,
                 PanelGeometry::new(&ui.state).center(PanelHit::Palette(i)),
             );
-            assert_eq!(decoded(root.0), [UiEvent::Color(PANEL_PALETTE[i])]);
+            assert_eq!(decoded(root.0), [UiEvent::Color(color)]);
         }
         panel_click(
             hwnd,

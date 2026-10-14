@@ -534,7 +534,7 @@ fn apply_menu_width(
     trail: &mut Trail,
     drag: &mut Option<DragCapture>,
 ) -> bool {
-    if !(1..=31).contains(&width) || width % 2 == 0 || width == strokes.style().thickness {
+    if !(1..=31).contains(&width) || width.is_multiple_of(2) || width == strokes.style().thickness {
         return false;
     }
     trail.finish();
