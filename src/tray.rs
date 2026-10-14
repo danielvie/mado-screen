@@ -1,4 +1,4 @@
-use crate::ui::{WindowClass, tray_icon_pixels};
+use crate::ui::{MenuTool, WindowClass, tool_icon, tray_icon_pixels};
 use std::cell::Cell;
 use windows::{
     Win32::{
@@ -29,8 +29,8 @@ struct State {
     owner: HWND,
     hwnd: Cell<HWND>,
     icon: Cell<HICON>,
-    // (drawing, ink color); color is 0 in click-through so ink changes do not redraw.
-    key: Cell<(bool, u32)>,
+    // Color is 0 in click-through; tool changes still update the dimmed icon.
+    key: Cell<(bool, u32, MenuTool, bool)>,
     panel: Cell<bool>,
     taskbar_created: u32,
 }
@@ -46,11 +46,19 @@ impl State {
             hIcon: self.icon.get(),
             ..Default::default()
         };
-        let tip = if self.key.get().0 {
-            "Mado Screen: Drawing"
-        } else {
-            "Mado Screen: Click-through"
+        let (drawing, _, tool, tail_first) = self.key.get();
+        let mode = if drawing { "Drawing" } else { "Click-through" };
+        let tool = match tool {
+            MenuTool::Pen => "Pen",
+            MenuTool::TemporaryPen => "Temporary pen",
+            MenuTool::Line => "Line",
+            MenuTool::Arrow if tail_first => "Arrow tail-first",
+            MenuTool::Arrow => "Arrow head-first",
+            MenuTool::Rectangle => "Rectangle",
+            MenuTool::Ellipse => "Ellipse",
+            MenuTool::Eraser => "Eraser",
         };
+        let tip = format!("Mado Screen: {mode} | {tool}");
         for (slot, unit) in data.szTip.iter_mut().zip(tip.encode_utf16()) {
             *slot = unit;
         }
@@ -101,7 +109,7 @@ impl State {
                 menu,
                 MF_STRING | panel,
                 MENU_PANEL,
-                w!("Show floating &menu"),
+                w!("Show floating &menu\tH (drawing)"),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(
@@ -150,8 +158,8 @@ impl Tray {
             state: Box::new(State {
                 owner,
                 hwnd: Cell::new(HWND::default()),
-                icon: Cell::new(create_icon(false, 0)?),
-                key: Cell::new((false, 0)),
+                icon: Cell::new(create_icon(false, MenuTool::Pen, false, 0)?),
+                key: Cell::new((false, 0, MenuTool::Pen, false)),
                 panel: Cell::new(true),
                 taskbar_created: unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) },
             }),
@@ -180,12 +188,20 @@ impl Tray {
         Ok(tray)
     }
 
-    pub fn update(&self, drawing: bool, color: u32) -> Result<()> {
-        let key = (drawing, if drawing { color } else { 0 });
+    pub fn update(&self, drawing: bool, tool: &str, color: u32) -> Result<()> {
+        let key = (
+            drawing,
+            if drawing { color } else { 0 },
+            tool_icon(tool),
+            tool == "Arrow tail-first",
+        );
         if self.state.key.get() == key {
             return Ok(());
         }
-        let old = self.state.icon.replace(create_icon(key.0, key.1)?);
+        let old = self
+            .state
+            .icon
+            .replace(create_icon(key.0, key.2, key.3, key.1)?);
         self.state.key.set(key);
         unsafe {
             let _ = Shell_NotifyIconW(NIM_MODIFY, &self.state.data());
@@ -233,9 +249,9 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<TrayEvent> {
 
 // ponytail: sized once from SM_CXSMICON (system DPI). A later DPI change keeps the
 // startup size until restart, like the rest of the monitor layout.
-fn create_icon(drawing: bool, color: u32) -> Result<HICON> {
+fn create_icon(drawing: bool, tool: MenuTool, tail_first: bool, color: u32) -> Result<HICON> {
     let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16);
-    let pixels = tray_icon_pixels(size, drawing, color)?;
+    let pixels = tray_icon_pixels(size, drawing, tool, tail_first, color)?;
     // All-zero AND mask: the 32-bit color bitmap's alpha supplies the shape.
     let mask_bits = vec![0_u8; ((size as usize).div_ceil(16) * 2) * size as usize];
     unsafe {
@@ -300,7 +316,7 @@ mod tests {
         let mut directory = vec![0, 0, 1, 0, sizes.len() as u8, 0];
         let mut images = Vec::new();
         for size in sizes {
-            let pixels = tray_icon_pixels(size as i32, false, 0)?;
+            let pixels = tray_icon_pixels(size as i32, false, MenuTool::Pen, false, 0)?;
             let stride = size.div_ceil(32) * 4;
             let length = 40 + size * size * 4 + stride * size;
             let offset = 6 + sizes.len() as u32 * 16 + images.len() as u32;
@@ -375,7 +391,7 @@ mod tests {
             assert_eq!(dword(offset + 8), size as u32 * 2);
             assert_eq!(word(offset + 12), 1);
             assert_eq!(word(offset + 14), 32);
-            let pixels = tray_icon_pixels(size, false, 0)?;
+            let pixels = tray_icon_pixels(size, false, MenuTool::Pen, false, 0)?;
             for y in 0..size {
                 for x in 0..size {
                     let stored = dword(offset + 40 + ((size - 1 - y) * size + x) as usize * 4);
@@ -420,12 +436,105 @@ mod tests {
     }
 
     #[test]
+    fn tray_arrow_direction_changes_glyph_without_changing_dot_or_shape() -> Result<()> {
+        for size in [16, 20, 24, 32] {
+            for drawing in [false, true] {
+                let head = tray_icon_pixels(size, drawing, MenuTool::Arrow, false, 0xff0085dc)?;
+                let tail = tray_icon_pixels(size, drawing, MenuTool::Arrow, true, 0xff0085dc)?;
+                assert_ne!(head, tail, "Arrow variants match at {size}px");
+                assert!(head.iter().zip(&tail).all(|(a, b)| a >> 24 == b >> 24));
+                let u = size as f64 / 16.0;
+                let dot = ((12.5 * u) as i32 * size + (3.5 * u) as i32) as usize;
+                assert_eq!(head[dot], tail[dot]);
+                create_icon(drawing, MenuTool::Arrow, true, 0xff0085dc)
+                    .map(|icon| unsafe { DestroyIcon(icon) })??;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tray_tools_have_distinct_icons_in_both_modes() -> Result<()> {
+        let tools = [
+            MenuTool::Pen,
+            MenuTool::TemporaryPen,
+            MenuTool::Line,
+            MenuTool::Arrow,
+            MenuTool::Rectangle,
+            MenuTool::Ellipse,
+            MenuTool::Eraser,
+        ];
+        for size in [16, 20, 24, 32] {
+            for drawing in [false, true] {
+                let mut rendered = Vec::new();
+                for tool in tools {
+                    let pixels = tray_icon_pixels(size, drawing, tool, false, 0xff0085dc)?;
+                    assert_eq!(pixels.len(), (size * size) as usize);
+                    assert_eq!(pixels[0] >> 24, 0);
+                    for (previous, image) in &rendered {
+                        assert_ne!(&pixels, image, "{tool:?} matches {previous:?} at {size}px");
+                        // Only the glyph changes, not the icon's alpha/shape.
+                        assert!(pixels.iter().zip(image).all(|(a, b)| a >> 24 == b >> 24));
+                    }
+                    let u = size as f64 / 16.0;
+                    let dot = ((12.5 * u) as i32 * size + (3.5 * u) as i32) as usize;
+                    assert_eq!(pixels[dot], if drawing { 0xff0085dc } else { 0xff191c20 });
+                    if !drawing {
+                        assert_eq!(
+                            pixels,
+                            tray_icon_pixels(size, false, tool, false, 0xfff97316)?
+                        );
+                    }
+                    create_icon(drawing, tool, false, 0xff0085dc)
+                        .map(|icon| unsafe { DestroyIcon(icon) })??;
+                    rendered.push((tool, pixels));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tray_tooltips_follow_selected_tool_and_mode() {
+        let state = State {
+            owner: HWND::default(),
+            hwnd: Cell::new(HWND::default()),
+            icon: Cell::new(HICON::default()),
+            key: Cell::new((false, 0, MenuTool::Pen, false)),
+            panel: Cell::new(true),
+            taskbar_created: 0,
+        };
+        for (label, tool, name) in [
+            ("Pen", MenuTool::Pen, "Pen"),
+            ("Temporary pen", MenuTool::TemporaryPen, "Temporary pen"),
+            ("Line", MenuTool::Line, "Line"),
+            ("Arrow head-first", MenuTool::Arrow, "Arrow head-first"),
+            ("Arrow tail-first", MenuTool::Arrow, "Arrow tail-first"),
+            ("Rectangle", MenuTool::Rectangle, "Rectangle"),
+            ("Ellipse", MenuTool::Ellipse, "Ellipse"),
+            ("Eraser", MenuTool::Eraser, "Eraser"),
+        ] {
+            assert_eq!(tool_icon(label), tool);
+            for drawing in [false, true] {
+                state
+                    .key
+                    .set((drawing, 0xff0085dc, tool, label == "Arrow tail-first"));
+                let data = state.data();
+                let end = data.szTip.iter().position(|&unit| unit == 0).unwrap();
+                let tip = String::from_utf16(&data.szTip[..end]).unwrap();
+                let mode = if drawing { "Drawing" } else { "Click-through" };
+                assert_eq!(tip, format!("Mado Screen: {mode} | {name}"));
+            }
+        }
+    }
+
+    #[test]
     fn tray_icon_shows_ink_dot_and_click_through_ring() -> Result<()> {
         for size in [16, 20, 24, 32] {
             let u = size as f64 / 16.0;
             let px = |x: f64, y: f64| ((y * u) as i32 * size + (x * u) as i32) as usize;
-            let on = tray_icon_pixels(size, true, 0xff0085dc)?;
-            let off = tray_icon_pixels(size, false, 0xff0085dc)?;
+            let on = tray_icon_pixels(size, true, MenuTool::Pen, false, 0xff0085dc)?;
+            let off = tray_icon_pixels(size, false, MenuTool::Pen, false, 0xff0085dc)?;
             assert_eq!(on.len(), (size * size) as usize);
             // Top-left corner is outside both tile and dot.
             assert_eq!(on[0] >> 24, 0);
@@ -435,8 +544,12 @@ mod tests {
             assert_eq!(on[px(3.5, 12.5)], 0xff0085dc);
             assert_eq!(off[px(3.5, 12.5)], 0xff191c20);
             // Click-through never depends on the ink color.
-            assert_eq!(off, tray_icon_pixels(size, false, 0xfff97316)?);
-            create_icon(true, 0xff0085dc).map(|icon| unsafe { DestroyIcon(icon) })??;
+            assert_eq!(
+                off,
+                tray_icon_pixels(size, false, MenuTool::Pen, false, 0xfff97316)?
+            );
+            create_icon(true, MenuTool::Pen, false, 0xff0085dc)
+                .map(|icon| unsafe { DestroyIcon(icon) })??;
         }
         Ok(())
     }

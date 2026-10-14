@@ -4,8 +4,6 @@ use crate::{
 };
 use std::{collections::VecDeque, time::Duration};
 
-const LIFETIME: Duration = Duration::from_secs(1);
-
 #[derive(Copy, Clone)]
 struct Active {
     last: Point,
@@ -16,14 +14,33 @@ struct Active {
 }
 
 /// Temporary ink with caller-supplied monotonic elapsed times, independent of history.
-#[derive(Default)]
 pub struct Trail {
+    lifetime: Duration,
     parts: VecDeque<(Duration, u64, Annotation)>,
     active: Option<Active>,
     gesture: u64,
 }
 
+impl Default for Trail {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(1))
+    }
+}
+
 impl Trail {
+    pub fn new(lifetime: Duration) -> Self {
+        assert!(
+            !lifetime.is_zero(),
+            "Temporary ink lifetime must be positive"
+        );
+        Self {
+            lifetime,
+            parts: VecDeque::new(),
+            active: None,
+            gesture: 0,
+        }
+    }
+
     pub fn begin(&mut self, point: Point, style: Style, now: Duration) -> bool {
         let now = self.parts.back().map_or(now, |part| now.max(part.0));
         self.gesture += 1;
@@ -53,7 +70,7 @@ impl Trail {
             return false;
         }
         let now = now.max(active.then);
-        let path = if now.saturating_sub(active.then) >= LIFETIME {
+        let path = if now.saturating_sub(active.then) >= self.lifetime {
             // A pause starts an isolated dot, not a curve from expired ink.
             active.start = midpoint(point, point);
             active.live = false;
@@ -92,7 +109,7 @@ impl Trail {
             }
         };
         // Dots and new live tails are born at their input time. Each part expires
-        // together after one second, including sparse-event curves. ponytail:
+        // together after the configured lifetime, including sparse-event curves. ponytail:
         // interpolate births along a piece if per-distance expiry is later needed.
         self.parts.push_back((
             now,
@@ -124,7 +141,7 @@ impl Trail {
         while self
             .parts
             .front()
-            .is_some_and(|(born, _, _)| now.saturating_sub(*born) >= LIFETIME)
+            .is_some_and(|(born, _, _)| now.saturating_sub(*born) >= self.lifetime)
         {
             self.parts.pop_front();
             changed = true;
@@ -142,9 +159,9 @@ impl Trail {
 
     pub fn paint_parts(&self, now: Duration) -> impl Iterator<Item = (u64, &Annotation, u8)> {
         self.parts.iter().map(move |(born, gesture, annotation)| {
-            let remaining = LIFETIME.saturating_sub(now.saturating_sub(*born));
-            let alpha =
-                (remaining.as_nanos() * 255 + LIFETIME.as_nanos() / 2) / LIFETIME.as_nanos();
+            let remaining = self.lifetime.saturating_sub(now.saturating_sub(*born));
+            let alpha = (remaining.as_nanos() * 255 + self.lifetime.as_nanos() / 2)
+                / self.lifetime.as_nanos();
             (*gesture, annotation, alpha as u8)
         })
     }
@@ -158,6 +175,28 @@ impl Trail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_duration_controls_fade_expiry_and_pause_boundary() {
+        for lifetime_ms in [1, 250, 2500, 60000] {
+            let lifetime = Duration::from_millis(lifetime_ms);
+            let mut trail = Trail::new(lifetime);
+            trail.begin((0, 0), Style::default(), Duration::ZERO);
+            assert_eq!(trail.paint_parts(Duration::ZERO).next().unwrap().2, 255);
+            assert_eq!(trail.paint_parts(lifetime / 2).next().unwrap().2, 128);
+            assert!(!trail.expire(lifetime - Duration::from_nanos(1)));
+            assert_eq!(trail.paint_parts(lifetime).next().unwrap().2, 0);
+            assert!(trail.expire(lifetime));
+            assert!(trail.is_empty());
+            // Movement after a full lifetime starts an isolated dot, even during a drag.
+            trail.append((10, 10), lifetime);
+            assert_eq!(paths(&trail), [vec![(10, 10)]]);
+            trail.finish();
+            assert_eq!(trail.paint_parts(lifetime).next().unwrap().2, 255);
+            assert!(!trail.expire(lifetime * 2 - Duration::from_nanos(1)));
+            assert!(trail.expire(lifetime * 2));
+        }
+    }
 
     fn ms(value: u64) -> Duration {
         Duration::from_millis(value)

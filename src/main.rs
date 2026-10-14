@@ -1,21 +1,21 @@
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod bezier;
-mod config;
 mod controls;
 mod drawing;
 mod input;
 mod overlay;
+mod settings;
 mod strokes;
 mod surface;
 mod trail;
 mod tray;
 mod ui;
 
-use config::Favorites;
-use controls::{Action, Hotkeys};
+use controls::{Action, ActivationKey, Hotkeys};
 use input::{DragCapture, Event, ExpiryTimer, MouseWheel};
 use overlay::Overlay;
+use settings::Favorites;
 use std::{
     io::{IsTerminal, Write},
     path::Path,
@@ -54,7 +54,7 @@ Global shortcuts
 
 Drawing shortcuts
   Escape       Return to click-through so underlying apps receive input
-  P            Pen; press again to toggle temporary ink (fades in 1 second)
+  P            Pen; press again to toggle temporary ink (default fade: 1 second)
   L            Straight line
   R            Rectangle outline
   A            Arrow; press again to switch head-first / tail-first
@@ -62,6 +62,8 @@ Drawing shortcuts
   E            Erase a whole annotation
   C            Clear all ink, undoable for permanent ink
   X            Swap active and reserve colors
+  T            Swap current and previously selected tool
+  H            Hide / show the floating menu
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
@@ -78,12 +80,19 @@ Floating menu
   Click the tray icon to switch modes; right-click it to hide the menu, clear or quit.
 
 Default brush: orange, 5 pixels; reserve blue. Restart after changing the monitor layout.
-Favorite colors are saved in ~/.mado/mado-screen/config.ini.
+Settings and favorite colors are saved in ~/.mado/mado-screen/settings.toml.
 ";
 
-fn startup_help(styled: bool) -> String {
+fn startup_help(styled: bool, activation_key: ActivationKey) -> String {
+    let activation = activation_key.label();
+    let guide = STARTUP_HELP
+        .replace("Press F4 ", &format!("Press {activation} "))
+        .replace(
+            "  F4           Switch",
+            &format!("  {activation:<13}Switch"),
+        );
     if !styled {
-        return STARTUP_HELP.to_owned();
+        return guide;
     }
     const RESET: &str = "\x1b[0m";
     // Pi dark palette: mdCode/accent, mdLink and mdHeading, resolved from OKHSL.
@@ -91,7 +100,7 @@ fn startup_help(styled: bool) -> String {
     const COMMAND: &str = "\x1b[38;2;105;173;208m";
     const TITLE: &str = "\x1b[1;38;2;205;154;34m";
     let mut help = String::new();
-    for line in STARTUP_HELP.lines() {
+    for line in guide.lines() {
         if matches!(
             line,
             "Mado Screen" | "Global shortcuts" | "Drawing shortcuts" | "Floating menu"
@@ -116,7 +125,7 @@ fn startup_help(styled: bool) -> String {
             ));
         } else {
             let mut text = line.to_owned();
-            for shortcut in ["F4", "Ctrl+Alt+D", "Drawing / Click-through"] {
+            for shortcut in [activation, "Ctrl+Alt+D", "Drawing / Click-through"] {
                 text = text.replace(shortcut, &format!("{SHORTCUT}{shortcut}{RESET}"));
             }
             for command in ["Hover", "Click", "Drag"] {
@@ -132,7 +141,7 @@ fn startup_help(styled: bool) -> String {
     help
 }
 
-fn print_startup_help() {
+fn print_startup_help(activation_key: ActivationKey) {
     // VT styling requires console output mode; redirected/unsupported output stays plain.
     // https://learn.microsoft.com/en-us/windows/console/setconsolemode
     let console = if std::io::stdout().is_terminal() {
@@ -152,7 +161,7 @@ fn print_startup_help() {
     } else {
         None
     };
-    println!("{}", startup_help(console.is_some()));
+    println!("{}", startup_help(console.is_some(), activation_key));
     if let Some((handle, mode)) = console {
         let _ = std::io::stdout().flush();
         unsafe {
@@ -184,9 +193,19 @@ fn clear_ink(
 
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
+    let settings_path = settings::path();
+    let startup = settings_path
+        .as_deref()
+        .map(settings::load)
+        .unwrap_or_default();
     let _hotkeys = Hotkeys::register()?;
-    let _function_key = Hotkeys::function_toggle()
-        .map_err(|error| eprintln!("{error} F4 is unavailable; use Ctrl+Alt+D."))
+    let _function_key = Hotkeys::function_toggle(startup.activation_key)
+        .map_err(|error| {
+            eprintln!(
+                "{error} {} is unavailable; use Ctrl+Alt+D.",
+                startup.activation_key.label()
+            )
+        })
         .ok();
     // Reverse drop order: drag, drawing keys, tray, UI, window, surface, permanent keys.
     let mut surface;
@@ -195,11 +214,14 @@ fn main() -> Result<()> {
     surface = Surface::new(width, height)?;
     let mut drawing = false;
     let mut strokes = Strokes::default();
-    let config_path = config::path();
-    let mut saved = config_path.as_deref().map(config::load).unwrap_or_default();
-    strokes.set_color(saved.active);
-    let mut reserve = saved.reserve;
-    let mut trail = Trail::default();
+    let mut saved = (startup.favorites, startup.thickness_px, startup.tail_first);
+    strokes.set_color(saved.0.active);
+    strokes.set_thickness(startup.thickness_px);
+    if startup.tail_first {
+        strokes.toggle_arrow_direction();
+    }
+    let mut reserve = saved.0.reserve;
+    let mut trail = Trail::new(Duration::from_millis(startup.duration_ms));
     let clock = Instant::now();
     surface.present_scene(
         overlay.hwnd(),
@@ -214,16 +236,19 @@ fn main() -> Result<()> {
         overlay.hwnd(),
         unsafe { GetSystemMetrics(SM_CXSCREEN) },
         unsafe { GetSystemMetrics(SM_CYSCREEN) },
+        startup.visible_on_start,
+        startup.activation_key,
     )?;
     ui.set_reserve(reserve)?;
     ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
     let tray = Tray::new(overlay.hwnd())?;
-    let mut panel_visible = true;
-    tray.update(drawing, strokes.style().color)?;
+    let mut panel_visible = startup.visible_on_start;
+    tray.set_panel_visible(panel_visible);
+    tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
     let mut tool_keys: Option<(Hotkeys, MouseWheel)> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    print_startup_help();
+    print_startup_help(startup.activation_key);
     let mut message = MSG::default();
     loop {
         match unsafe { GetMessageW(&mut message, None, 0, 0) }.0 {
@@ -278,12 +303,13 @@ fn main() -> Result<()> {
             }
             ui.set_reserve(reserve)?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
-            tray.update(drawing, strokes.style().color)?;
+            tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
             persist(
                 &mut saved,
-                strokes.style().color,
+                strokes.style(),
                 reserve,
-                config_path.as_deref(),
+                strokes.arrow_tail_first(),
+                settings_path.as_deref(),
             );
             continue;
         }
@@ -309,14 +335,10 @@ fn main() -> Result<()> {
                     )?;
                 }
                 TrayEvent::Quit => break,
-                TrayEvent::Panel => {
-                    panel_visible = !panel_visible;
-                    ui.set_visible(panel_visible)?;
-                    tray.set_panel_visible(panel_visible);
-                }
+                TrayEvent::Panel => toggle_panel(&mut panel_visible, &ui, &tray)?,
             }
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
-            tray.update(drawing, strokes.style().color)?;
+            tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
             continue;
         }
         if message.message == WM_HOTKEY {
@@ -345,6 +367,7 @@ fn main() -> Result<()> {
                     )?;
                 }
                 Action::Quit => break,
+                Action::Panel if drawing => toggle_panel(&mut panel_visible, &ui, &tray)?,
                 Action::Swap if drawing => {
                     if swap_colors(&mut reserve, &mut strokes, &mut trail, &mut drag) {
                         surface.present_scene(
@@ -375,12 +398,13 @@ fn main() -> Result<()> {
             }
             ui.set_reserve(reserve)?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
-            tray.update(drawing, strokes.style().color)?;
+            tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
             persist(
                 &mut saved,
-                strokes.style().color,
+                strokes.style(),
                 reserve,
-                config_path.as_deref(),
+                strokes.arrow_tail_first(),
+                settings_path.as_deref(),
             );
         } else if let Some(event) = input::event(&message, overlay.hwnd()) {
             if handle_canvas_input(
@@ -401,6 +425,13 @@ fn main() -> Result<()> {
             }
             if matches!(event, Event::Wheel(_)) {
                 ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+                persist(
+                    &mut saved,
+                    strokes.style(),
+                    reserve,
+                    strokes.arrow_tail_first(),
+                    settings_path.as_deref(),
+                );
             }
             if !trail.is_empty() && expiry.is_none() {
                 expiry = Some(ExpiryTimer::begin(overlay.hwnd())?);
@@ -413,6 +444,15 @@ fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// Tray and keyboard share one visibility state; hiding the UI never alters the canvas.
+fn toggle_panel(visible: &mut bool, ui: &DesktopUi, tray: &Tray) -> Result<()> {
+    let next = !*visible;
+    ui.set_visible(next)?;
+    *visible = next;
+    tray.set_panel_visible(next);
     Ok(())
 }
 
@@ -482,17 +522,31 @@ fn swap_colors(
 }
 
 // Writes only on change, so idle loops and repeated selections never touch the disk.
-fn persist(saved: &mut Favorites, active: u32, reserve: u32, path: Option<&Path>) {
-    let current = Favorites { active, reserve };
+fn persist(
+    saved: &mut (Favorites, u32, bool),
+    style: strokes::Style,
+    reserve: u32,
+    tail_first: bool,
+    path: Option<&Path>,
+) {
+    let current = (
+        Favorites {
+            active: style.color,
+            reserve,
+        },
+        style.thickness,
+        tail_first,
+    );
     if *saved == current {
         return;
     }
-    *saved = current;
     if let Some(path) = path
-        && let Err(error) = config::save(path, current)
+        && let Err(error) = settings::save_brush(path, current.0, current.1, current.2)
     {
         eprintln!("Could not save {}: {error}", path.display());
+        return;
     }
+    *saved = current;
 }
 
 // Menu choices are exact selections, unlike repeated P/A hotkey actions.
@@ -518,10 +572,11 @@ fn apply_menu_tool(
     }
     trail.finish();
     drop(drag.take());
-    let mut changed = strokes.select(tool);
-    if variant_changes {
-        changed |= strokes.toggle_temporary_pen();
-    }
+    let mut changed = if tool == Tool::Pen {
+        strokes.select_pen(temporary)
+    } else {
+        strokes.select(tool)
+    };
     if flip_arrow {
         changed |= strokes.toggle_arrow_direction();
     }
@@ -550,6 +605,13 @@ fn animate_trail(trail: &mut Trail, now: Duration, tick: bool) -> bool {
 }
 
 fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCapture>) -> bool {
+    if action == Action::PreviousTool {
+        if !strokes.has_previous_tool() {
+            return false;
+        }
+        drop(drag.take());
+        return strokes.swap_previous_tool();
+    }
     let tool = match action {
         Action::Pen => Some(Tool::Pen),
         Action::Line => Some(Tool::Line),
@@ -622,6 +684,7 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
 
 fn interrupts_trail(action: &Action, strokes: &Strokes) -> bool {
     match action {
+        Action::PreviousTool => strokes.has_previous_tool(),
         Action::Blue => strokes.style().color != 0xff3b82f6,
         Action::Orange => strokes.style().color != 0xfff97316,
         Action::Red => strokes.style().color != 0xffef4444,
@@ -762,8 +825,10 @@ mod tests {
             "E            Erase",
             "C            Clear all ink",
             "X            Swap active and reserve",
+            "T            Swap current and previously selected tool",
+            "H            Hide / show the floating menu",
             "F4           Switch between drawing",
-            "~/.mado/mado-screen/config.ini",
+            "~/.mado/mado-screen/settings.toml",
             "Ctrl+Z",
             "Ctrl+Y",
             "[ / ]",
@@ -810,8 +875,8 @@ mod tests {
 
     #[test]
     fn startup_help_styling_preserves_text_and_highlights_controls() {
-        let plain = startup_help(false);
-        let styled = startup_help(true);
+        let plain = startup_help(false, ActivationKey::default());
+        let styled = startup_help(true, ActivationKey::default());
         let mut unstyled = String::new();
         let mut characters = styled.chars();
         while let Some(character) = characters.next() {
@@ -870,6 +935,19 @@ mod tests {
     }
 
     #[test]
+    fn settings_activation_key_updates_startup_help() {
+        for label in ["F1", "F9", "F10", "F11"] {
+            let key = ActivationKey::parse(label).unwrap();
+            let plain = startup_help(false, key);
+            assert!(plain.contains(&format!("Press {label} or Ctrl+Alt+D")));
+            assert!(plain.contains(&format!("  {label:<13}Switch between drawing")));
+            assert!(!plain.contains("F4"));
+            let styled = startup_help(true, key);
+            assert!(styled.contains(&format!("\x1b[38;2;167;152;215m{label}\x1b[0m")));
+        }
+    }
+
+    #[test]
     fn escape_only_deactivates_and_never_enters_drawing() {
         for drawing in [false, true] {
             assert!(is_mode_toggle_action(&Action::Toggle, drawing));
@@ -923,14 +1001,150 @@ mod tests {
 
         let path = std::env::temp_dir()
             .join(format!("mado-persist-test-{}", std::process::id()))
-            .join("config.ini");
+            .join("settings.toml");
         let defaults = Favorites::default();
-        let mut saved = defaults;
-        persist(&mut saved, defaults.active, defaults.reserve, Some(&path));
-        assert!(!path.exists(), "Unchanged favorites must not write");
-        persist(&mut saved, 0xff123456, 0xff0085dc, Some(&path));
-        assert_eq!(config::load(&path), saved);
-        assert_eq!(saved.active, 0xff123456);
+        let mut saved = (defaults, 5, false);
+        let mut style = strokes::Style::default();
+        persist(&mut saved, style, defaults.reserve, false, Some(&path));
+        assert!(!path.exists(), "Unchanged brush must not write");
+        style.color = 0xff123456;
+        persist(&mut saved, style, 0xff0085dc, false, Some(&path));
+        assert_eq!(settings::load(&path).favorites, saved.0);
+        assert_eq!(saved.0.active, 0xff123456);
+        style.thickness = 13;
+        persist(&mut saved, style, 0xff0085dc, false, Some(&path));
+        assert_eq!(settings::load(&path).thickness_px, 13);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn settings_thickness_persists_from_wheel_slider_and_keys() {
+        let path = std::env::temp_dir()
+            .join(format!("mado-thickness-test-{}", std::process::id()))
+            .join("settings.toml");
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        let mut saved = (Favorites::default(), 5, false);
+        let reserve = saved.0.reserve;
+        handle_canvas_input(
+            Event::Wheel(1),
+            true,
+            (&mut strokes, &mut trail),
+            &mut None,
+            HWND::default(),
+            Duration::ZERO,
+        )
+        .unwrap();
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert_eq!(settings::load(&path).thickness_px, 7);
+        apply_menu_width(15, &mut strokes, &mut trail, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert_eq!(settings::load(&path).thickness_px, 15);
+        apply_edit(Action::Thinner, &mut strokes, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert_eq!(settings::load(&path).thickness_px, 13);
+        apply_edit(Action::Thicker, &mut strokes, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        let startup = settings::load(&path);
+        let mut restarted = Strokes::default();
+        restarted.set_thickness(startup.thickness_px);
+        assert_eq!(restarted.style().thickness, 15);
+        // A failed save must remain retryable, never marked successfully persisted.
+        std::fs::write(&path, "[brush").unwrap();
+        let before = saved;
+        strokes.set_thickness(17);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert_eq!(saved, before);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "[brush");
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn settings_arrow_direction_persists_from_shortcut_menu_and_previous_tool() {
+        let path = std::env::temp_dir()
+            .join(format!("mado-arrow-preference-test-{}", std::process::id()))
+            .join("settings.toml");
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        let mut saved = (Favorites::default(), 5, false);
+        let reserve = saved.0.reserve;
+        apply_edit(Action::Arrow, &mut strokes, &mut None);
+        apply_edit(Action::Arrow, &mut strokes, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert!(settings::load(&path).tail_first);
+        // Choosing another tool keeps the remembered arrow preference.
+        apply_menu_tool(MenuTool::Pen, &mut strokes, &mut trail, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert!(settings::load(&path).tail_first);
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        assert!(!settings::load(&path).tail_first);
+        apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+        persist(
+            &mut saved,
+            strokes.style(),
+            reserve,
+            strokes.arrow_tail_first(),
+            Some(&path),
+        );
+        let startup = settings::load(&path);
+        assert!(startup.tail_first);
+        let mut restarted = Strokes::default();
+        if startup.tail_first {
+            restarted.toggle_arrow_direction();
+        }
+        assert!(!restarted.has_previous_tool());
+        restarted.select(Tool::Arrow);
+        assert_eq!(restarted.tool_label(), "Arrow tail-first");
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -1149,6 +1363,106 @@ mod tests {
         assert_eq!(strokes.annotations(), old);
         assert!(trail.is_active());
         assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), temporary);
+    }
+
+    #[test]
+    fn previous_tool_swaps_menu_and_shortcut_choices_with_variants() {
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        let mut drag = None;
+        assert!(!strokes.has_previous_tool());
+        assert!(!interrupts_trail(&Action::PreviousTool, &strokes));
+        assert!(!apply_edit(Action::PreviousTool, &mut strokes, &mut drag));
+        apply_edit(Action::Arrow, &mut strokes, &mut drag);
+        for label in ["Pen", "Arrow head-first", "Pen", "Arrow head-first"] {
+            apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+            assert_eq!(strokes.tool_label(), label);
+        }
+        // Repeating A is itself a variant selection; T restores the exact previous variant.
+        apply_edit(Action::Arrow, &mut strokes, &mut drag);
+        assert_eq!(strokes.tool_label(), "Arrow tail-first");
+        for label in ["Arrow head-first", "Arrow tail-first"] {
+            apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+            assert_eq!(strokes.tool_label(), label);
+        }
+        apply_menu_tool(MenuTool::TemporaryPen, &mut strokes, &mut trail, &mut drag);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
+        for label in ["Arrow tail-first", "Temporary pen"] {
+            apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+            assert_eq!(strokes.tool_label(), label);
+        }
+        // Exact menu pen selection is one transaction, not Pen followed by variant toggle.
+        apply_menu_tool(MenuTool::Pen, &mut strokes, &mut trail, &mut drag);
+        for label in ["Temporary pen", "Pen"] {
+            apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+            assert_eq!(strokes.tool_label(), label);
+        }
+        apply_menu_tool(MenuTool::Line, &mut strokes, &mut trail, &mut drag);
+        apply_menu_tool(MenuTool::Line, &mut strokes, &mut trail, &mut drag);
+        apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+        assert_eq!(strokes.tool_label(), "Pen"); // Re-selecting the same tool keeps history.
+        let style = strokes.style();
+        strokes.clear();
+        apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
+        assert_eq!(strokes.tool_label(), "Line");
+        assert_eq!(strokes.style(), style);
+    }
+
+    #[test]
+    fn previous_tool_settles_gestures_without_changing_completed_ink() {
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Arrow,
+            Tool::Rectangle,
+            Tool::Eraser,
+        ] {
+            let mut strokes = Strokes::default();
+            strokes.begin((1, 1));
+            strokes.finish();
+            let completed = strokes.annotations().to_vec();
+            strokes.select(Tool::Ellipse);
+            strokes.select(tool);
+            strokes.begin((20, 20));
+            strokes.append((40, 40));
+            let changed = apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+            assert_eq!(
+                changed,
+                matches!(tool, Tool::Line | Tool::Arrow | Tool::Rectangle)
+            );
+            assert!(!strokes.is_active());
+            assert_eq!(strokes.tool(), Tool::Ellipse);
+            assert_eq!(&strokes.annotations()[..completed.len()], completed);
+            if tool == Tool::Pen {
+                assert_eq!(strokes.annotations().len(), 2);
+                let all = strokes.annotations().to_vec();
+                assert!(strokes.undo());
+                assert_eq!(strokes.annotations(), completed);
+                assert!(strokes.redo());
+                assert_eq!(strokes.annotations(), all);
+            } else {
+                assert_eq!(strokes.annotations(), completed);
+            }
+            let settled = strokes.annotations().to_vec();
+            apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+            assert_eq!(strokes.tool(), tool);
+            assert_eq!(strokes.annotations(), settled);
+        }
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        apply_menu_tool(MenuTool::Arrow, &mut strokes, &mut trail, &mut None);
+        apply_menu_tool(MenuTool::TemporaryPen, &mut strokes, &mut trail, &mut None);
+        trail.begin((10, 10), strokes.style(), Duration::ZERO);
+        trail.append((20, 20), Duration::from_millis(100));
+        let parts = trail.annotations().cloned().collect::<Vec<_>>();
+        assert!(interrupts_trail(&Action::PreviousTool, &strokes));
+        trail.finish(); // Same pre-edit routing as a drawing hotkey in the main loop.
+        apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Arrow head-first");
+        assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+        assert!(!trail.is_active());
+        apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
     }
 
     #[test]

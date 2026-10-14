@@ -1,7 +1,7 @@
 use windows::{
     Win32::UI::Input::KeyboardAndMouse::{
         HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey,
-        VK_ESCAPE, VK_F4, VK_OEM_4, VK_OEM_6,
+        VK_ESCAPE, VK_F1, VK_F4, VK_F11, VK_OEM_4, VK_OEM_6,
     },
     core::{Error, Result},
 };
@@ -28,6 +28,8 @@ const SWAP: usize = 19;
 const QUICK_CLEAR: usize = 20;
 const DEACTIVATE: usize = 21;
 const FUNCTION_TOGGLE: usize = 22;
+const PREVIOUS_TOOL: usize = 23;
+const PANEL: usize = 24;
 
 const PERMANENT_MODIFIERS: HOT_KEY_MODIFIERS =
     HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0);
@@ -42,7 +44,7 @@ const PERMANENT_KEYS: [Key; 3] = [
     (CLEAR, b'C' as u16, PERMANENT_MODIFIERS),
     (QUIT, b'Q' as u16, PERMANENT_MODIFIERS),
 ];
-const BASIC_KEYS: [Key; 15] = [
+const BASIC_KEYS: [Key; 17] = [
     (PEN, b'P' as u16, BARE_MODIFIERS),
     (LINE, b'L' as u16, BARE_MODIFIERS),
     (RECTANGLE, b'R' as u16, BARE_MODIFIERS),
@@ -58,9 +60,40 @@ const BASIC_KEYS: [Key; 15] = [
     (QUICK_CLEAR, b'C' as u16, BARE_MODIFIERS),
     (SWAP, b'X' as u16, BARE_MODIFIERS),
     (DEACTIVATE, VK_ESCAPE.0, BARE_MODIFIERS),
+    (PREVIOUS_TOOL, b'T' as u16, BARE_MODIFIERS),
+    (PANEL, b'H' as u16, BARE_MODIFIERS),
 ];
-// Bare F4 is global for the whole session; Alt+F4 still reaches other apps.
-const FUNCTION_KEYS: [Key; 1] = [(FUNCTION_TOGGLE, VK_F4.0, BARE_MODIFIERS)];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActivationKey(u16);
+
+impl Default for ActivationKey {
+    fn default() -> Self {
+        Self(VK_F4.0)
+    }
+}
+
+impl ActivationKey {
+    const LABELS: [&str; 11] = [
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
+    ];
+
+    pub fn parse(text: &str) -> Option<Self> {
+        // F12 is reserved for the Windows debugger; drawing keys must not collide.
+        Self::LABELS
+            .iter()
+            .position(|label| label.eq_ignore_ascii_case(text))
+            .map(|index| Self(VK_F1.0 + index as u16))
+    }
+
+    pub fn label(self) -> &'static str {
+        Self::LABELS[(self.0 - VK_F1.0) as usize]
+    }
+}
+
+// The selected bare function key is global; modified keys such as Alt+F4 remain available.
+fn activation_binding(key: ActivationKey) -> [Key; 1] {
+    [(FUNCTION_TOGGLE, key.0, BARE_MODIFIERS)]
+}
 const ADVANCED_KEYS: [Key; 3] = [
     (ARROW, b'A' as u16, BARE_MODIFIERS),
     (ELLIPSE, b'O' as u16, BARE_MODIFIERS),
@@ -82,7 +115,9 @@ fn key_label(key: u16, modifiers: HOT_KEY_MODIFIERS) -> String {
     };
     let name = match key {
         key if key == VK_ESCAPE.0 => return "Escape".into(),
-        key if key == VK_F4.0 => return "F4".into(),
+        key if (VK_F1.0..=VK_F11.0).contains(&key) => {
+            return format!("F{}", key - VK_F1.0 + 1);
+        }
         key if key == VK_OEM_4.0 => '[',
         key if key == VK_OEM_6.0 => ']',
         key => char::from_u32(key as u32).unwrap(),
@@ -97,9 +132,9 @@ impl Hotkeys {
         Self::register_keys(PERMANENT_KEYS)
     }
 
-    // Kept separate so another app owning F4 does not block startup.
-    pub fn function_toggle() -> Result<Self> {
-        Self::register_keys(FUNCTION_KEYS)
+    // Kept separate so another app owning the activation key does not block startup.
+    pub fn function_toggle(key: ActivationKey) -> Result<Self> {
+        Self::register_keys(activation_binding(key))
     }
 
     pub fn drawing_keys(advanced: bool) -> Result<Self> {
@@ -160,6 +195,8 @@ pub enum Action {
     Swap,
     QuickClear,
     Deactivate,
+    PreviousTool,
+    Panel,
 }
 
 pub fn action(id: usize) -> Option<Action> {
@@ -186,6 +223,8 @@ pub fn action(id: usize) -> Option<Action> {
         QUICK_CLEAR => Some(Action::QuickClear),
         DEACTIVATE => Some(Action::Deactivate),
         FUNCTION_TOGGLE => Some(Action::Toggle),
+        PREVIOUS_TOOL => Some(Action::PreviousTool),
+        PANEL => Some(Action::Panel),
         _ => None,
     }
 }
@@ -219,11 +258,13 @@ mod tests {
             Action::QuickClear,
             Action::Deactivate,
             Action::Toggle,
+            Action::PreviousTool,
+            Action::Panel,
         ];
         for (index, expected) in actions.into_iter().enumerate() {
             assert_eq!(action(index + 1), Some(expected));
         }
-        for id in [0, 23, usize::MAX] {
+        for id in [0, 25, usize::MAX] {
             assert_eq!(action(id), None);
         }
     }
@@ -257,6 +298,8 @@ mod tests {
             (20, b'C' as u16),
             (19, b'X' as u16),
             (21, VK_ESCAPE.0),
+            (23, b'T' as u16),
+            (24, b'H' as u16),
             (16, b'A' as u16),
             (17, b'O' as u16),
             (18, b'E' as u16),
@@ -281,8 +324,17 @@ mod tests {
     #[test]
     fn staged_lists_keep_basic_keys_and_gate_advanced() {
         for (advanced, expected) in [
-            (false, (4..=15).chain([20, 19, 21]).collect::<Vec<_>>()),
-            (true, (4..=15).chain([20, 19, 21]).chain(16..=18).collect()),
+            (
+                false,
+                (4..=15).chain([20, 19, 21, 23, 24]).collect::<Vec<_>>(),
+            ),
+            (
+                true,
+                (4..=15)
+                    .chain([20, 19, 21, 23, 24])
+                    .chain(16..=18)
+                    .collect(),
+            ),
         ] {
             assert_eq!(
                 drawing_key_list(advanced)
@@ -306,10 +358,69 @@ mod tests {
     }
 
     #[test]
+    fn previous_tool_is_drawing_only_and_suppresses_repeat() {
+        for advanced in [false, true] {
+            assert!(
+                drawing_key_list(advanced)
+                    .any(|key| key == (PREVIOUS_TOOL, b'T' as u16, MOD_NOREPEAT))
+            );
+        }
+        assert!(
+            PERMANENT_KEYS
+                .into_iter()
+                .chain(activation_binding(ActivationKey::default()))
+                .all(|(_, key, _)| key != b'T' as u16)
+        );
+        assert_eq!(action(PREVIOUS_TOOL), Some(Action::PreviousTool));
+    }
+
+    #[test]
+    fn panel_shortcut_is_drawing_only_and_suppresses_repeat() {
+        for advanced in [false, true] {
+            assert!(
+                drawing_key_list(advanced).any(|key| key == (PANEL, b'H' as u16, MOD_NOREPEAT))
+            );
+        }
+        assert!(
+            PERMANENT_KEYS
+                .into_iter()
+                .chain(activation_binding(ActivationKey::default()))
+                .all(|(_, key, _)| key != b'H' as u16)
+        );
+        assert_eq!(action(PANEL), Some(Action::Panel));
+        assert_eq!(key_label(b'H' as u16, BARE_MODIFIERS), "H");
+    }
+
+    #[test]
     fn f4_toggles_from_any_mode_without_modifiers() {
-        assert_eq!(FUNCTION_KEYS, [(FUNCTION_TOGGLE, VK_F4.0, MOD_NOREPEAT)]);
+        assert_eq!(
+            activation_binding(ActivationKey::default()),
+            [(FUNCTION_TOGGLE, VK_F4.0, MOD_NOREPEAT)]
+        );
         assert_eq!(action(FUNCTION_TOGGLE), Some(Action::Toggle));
         assert!(drawing_key_list(true).all(|(_, key, _)| key != VK_F4.0));
+    }
+
+    #[test]
+    fn settings_activation_keys_validate_and_bind_without_drawing_collisions() {
+        for number in 1..=11 {
+            let label = format!("F{number}");
+            let key = ActivationKey::parse(&label).unwrap();
+            assert_eq!(ActivationKey::parse(&label.to_lowercase()), Some(key));
+            assert_eq!(key.label(), label);
+            assert_eq!(
+                activation_binding(key),
+                [(FUNCTION_TOGGLE, VK_F1.0 + number - 1, MOD_NOREPEAT)]
+            );
+            assert_eq!(key_label(key.0, BARE_MODIFIERS), label);
+            assert!(drawing_key_list(true).all(|(_, vk, _)| vk != key.0));
+            assert!(PERMANENT_KEYS.into_iter().all(|(_, vk, _)| vk != key.0));
+        }
+        for invalid in [
+            "", "F0", "F12", "F24", "F04", "F4 ", "P", "Escape", "Alt+F4",
+        ] {
+            assert_eq!(ActivationKey::parse(invalid), None, "{invalid}");
+        }
     }
 
     #[test]
@@ -333,6 +444,8 @@ mod tests {
             "C",
             "X",
             "Escape",
+            "T",
+            "H",
             "A",
             "O",
             "E",
@@ -342,7 +455,7 @@ mod tests {
             PERMANENT_KEYS
                 .into_iter()
                 .chain(drawing_key_list(true))
-                .chain(FUNCTION_KEYS)
+                .chain(activation_binding(ActivationKey::default()))
                 .map(|(_, key, modifiers)| key_label(key, modifiers))
                 .collect::<Vec<_>>(),
             expected

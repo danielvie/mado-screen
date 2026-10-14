@@ -38,6 +38,7 @@ pub struct Annotation {
 pub struct Strokes {
     annotations: Vec<Annotation>,
     tool: Tool,
+    previous_tool: Option<(Tool, bool)>,
     temporary_pen: bool,
     arrow_tail_first: bool,
     style: Style,
@@ -66,12 +67,18 @@ impl Strokes {
     }
 
     pub fn toggle_temporary_pen(&mut self) -> bool {
+        if self.tool == Tool::Pen {
+            return self.select_pen(!self.temporary_pen);
+        }
         let changed = self.cancel();
         self.temporary_pen = !self.temporary_pen;
         changed
     }
 
     pub fn toggle_arrow_direction(&mut self) -> bool {
+        if self.tool == Tool::Arrow {
+            return self.select_variant(Tool::Arrow, !self.arrow_tail_first);
+        }
         let changed = self.cancel();
         self.arrow_tail_first = !self.arrow_tail_first;
         changed
@@ -90,13 +97,52 @@ impl Strokes {
         }
     }
 
-    pub fn select(&mut self, tool: Tool) -> bool {
-        if self.tool == tool {
+    fn selection(&self) -> (Tool, bool) {
+        let variant = match self.tool {
+            Tool::Pen => self.temporary_pen,
+            Tool::Arrow => self.arrow_tail_first,
+            _ => false,
+        };
+        (self.tool, variant)
+    }
+
+    fn select_variant(&mut self, tool: Tool, variant: bool) -> bool {
+        if self.selection() == (tool, variant) {
             return false;
         }
         let changed = self.cancel();
+        self.previous_tool = Some(self.selection());
         self.tool = tool;
+        match tool {
+            Tool::Pen => self.temporary_pen = variant,
+            Tool::Arrow => self.arrow_tail_first = variant,
+            _ => {}
+        }
         changed
+    }
+
+    pub fn select(&mut self, tool: Tool) -> bool {
+        let variant = match tool {
+            Tool::Pen => self.temporary_pen,
+            Tool::Arrow => self.arrow_tail_first,
+            _ => false,
+        };
+        self.select_variant(tool, variant)
+    }
+
+    pub fn select_pen(&mut self, temporary: bool) -> bool {
+        self.select_variant(Tool::Pen, temporary)
+    }
+
+    pub fn has_previous_tool(&self) -> bool {
+        self.previous_tool.is_some()
+    }
+
+    pub fn swap_previous_tool(&mut self) -> bool {
+        let Some((tool, variant)) = self.previous_tool else {
+            return false;
+        };
+        self.select_variant(tool, variant)
     }
 
     pub fn style(&self) -> Style {

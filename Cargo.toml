@@ -7,6 +7,7 @@ edition = "2024"
 embed-resource = "=3.0.12"
 
 [dependencies]
+toml_edit = { version = "=0.22.27", default-features = false, features = ["parse", "display"] }
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

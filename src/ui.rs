@@ -1,4 +1,5 @@
-use crate::config::Favorites;
+use crate::controls::ActivationKey;
+use crate::settings::Favorites;
 use crate::strokes::{Style, Tool};
 use std::{
     cell::{Cell, RefCell},
@@ -167,6 +168,7 @@ struct State {
     tool: Cell<MenuTool>,
     tool_label: RefCell<String>,
     drawing: Cell<bool>,
+    activation_key: Cell<ActivationKey>,
     width: Cell<u32>,
     expanded: Cell<bool>,
     motion: Cell<PanelMotion>,
@@ -203,6 +205,7 @@ impl State {
             tool: Cell::new(MenuTool::Pen),
             tool_label: RefCell::new("Pen".into()),
             drawing: Cell::new(false),
+            activation_key: Cell::new(ActivationKey::default()),
             width: Cell::new(Style::default().thickness),
             expanded: Cell::new(false),
             motion: Cell::new(PanelMotion::settled(false)),
@@ -239,7 +242,13 @@ pub struct DesktopUi {
 }
 
 impl DesktopUi {
-    pub fn new(owner: HWND, width: i32, height: i32) -> Result<Self> {
+    pub fn new(
+        owner: HWND,
+        width: i32,
+        height: i32,
+        visible: bool,
+        activation_key: ActivationKey,
+    ) -> Result<Self> {
         if width <= 0 || height <= 0 {
             return Err(Error::new(E_INVALIDARG, "Invalid desktop dimensions"));
         }
@@ -249,6 +258,7 @@ impl DesktopUi {
             status_class: WindowClass::new(instance, "Status", Some(status_proc))?,
             _thread: PhantomData,
         };
+        ui.state.activation_key.set(activation_key);
         unsafe {
             // Only the occupied rounded region receives mouse input. Do not use
             // WS_EX_TRANSPARENT: it bypasses layered-window hit testing entirely.
@@ -271,15 +281,17 @@ impl DesktopUi {
             ui.state.create_tooltip(instance)?;
             ui.state.anchor_panel(GetDpiForWindow(hwnd))?;
             ui.update(false, Tool::Pen, Style::default())?;
-            SetWindowPos(
-                hwnd,
-                Some(HWND_TOPMOST),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-            )?;
+            if visible {
+                SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                )?;
+            }
         }
         Ok(ui)
     }
@@ -646,7 +658,7 @@ fn circle_contains_pixel(cx: i32, cy: i32, radius: f64, x: i32, y: i32) -> bool 
     dx * dx + dy * dy <= radius * radius
 }
 
-fn tool_icon(label: &str) -> MenuTool {
+pub(crate) fn tool_icon(label: &str) -> MenuTool {
     match label {
         "Temporary pen" => MenuTool::TemporaryPen,
         "Line" => MenuTool::Line,
@@ -1052,9 +1064,10 @@ impl State {
         };
         let description = match hit {
             PanelHit::Grip => "Drag the tool icon to move the menu.".to_string(),
-            PanelHit::Toggle => {
-                "Drawing / Click-through. F4 or Ctrl+Alt+D toggles canvas input.".into()
-            }
+            PanelHit::Toggle => format!(
+                "Drawing / Click-through. {} or Ctrl+Alt+D toggles canvas input.",
+                self.activation_key.get().label()
+            ),
             PanelHit::Active => format!(
                 "Active color {}. Drop a palette color here to draw with it.",
                 hex(self.color.get())
@@ -1622,7 +1635,7 @@ fn panel_line(dc: HDC, points: &[(i32, i32)], s: f64, origin: (i32, i32), color:
     }
 }
 
-fn panel_icon(dc: HDC, tool: MenuTool, origin: (i32, i32), s: f64, color: u32) {
+fn panel_icon(dc: HDC, tool: MenuTool, tail_first: bool, origin: (i32, i32), s: f64, color: u32) {
     let line = |points: &[(i32, i32)]| panel_line(dc, points, s, origin, color, scaled(2, s));
     match tool {
         MenuTool::Pen | MenuTool::TemporaryPen => {
@@ -1636,7 +1649,11 @@ fn panel_icon(dc: HDC, tool: MenuTool, origin: (i32, i32), s: f64, color: u32) {
         }
         MenuTool::Arrow => {
             line(&[(4, 26), (24, 6)]);
-            line(&[(12, 6), (24, 6), (24, 18)]);
+            if tail_first {
+                line(&[(12, 6), (24, 6), (24, 18)]);
+            } else {
+                line(&[(4, 14), (4, 26), (16, 26)]);
+            }
         }
         MenuTool::Line => line(&[(4, 26), (24, 6)]),
         MenuTool::Rectangle => line(&[(3, 9), (25, 9), (25, 25), (3, 25), (3, 9)]),
@@ -1662,10 +1679,16 @@ fn panel_icon(dc: HDC, tool: MenuTool, origin: (i32, i32), s: f64, color: u32) {
     }
 }
 
-// Tray mark "mini badge" on a 16-unit grid: graphite tile, the panel pencil and a
+// Tray mark "mini badge" on a 16-unit grid: graphite tile, the selected panel tool and a
 // brush-tip dot. Drawing fills the dot with the ink; click-through shows a gray ring.
 // Returns straight-alpha BGRA rows, top-down, as 32-bit icon color bitmaps expect.
-pub(crate) fn tray_icon_pixels(size: i32, drawing: bool, color: u32) -> Result<Vec<u32>> {
+pub(crate) fn tray_icon_pixels(
+    size: i32,
+    drawing: bool,
+    tool: MenuTool,
+    tail_first: bool,
+    color: u32,
+) -> Result<Vec<u32>> {
     let n = PANEL_SAMPLES;
     let u = (size * n) as f64 / 16.0;
     let at = |v: f64| (v * u).round() as i32;
@@ -1702,7 +1725,7 @@ pub(crate) fn tray_icon_pixels(size: i32, drawing: bool, color: u32) -> Result<V
     let s = 9.0 * u / 20.0;
     let origin = (at(9.5) - scaled(14, s), at(7.0) - (15.5 * s).round() as i32);
     let ink = if drawing { PANEL_TEXT } else { PANEL_SECONDARY };
-    panel_icon(sample.dc, MenuTool::Pen, origin, s, ink);
+    panel_icon(sample.dc, tool, tail_first, origin, s, ink);
     ellipse(sample.dc, dot.0, dot.1, at(3.5), PANEL_BACKGROUND, 1, true);
     if drawing {
         // A thin rim keeps black ink visible on the graphite tile.
@@ -1845,7 +1868,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
             let preview = geometry.bounds(PanelHit::Current);
             label(
                 dc,
-                "F4",
+                state.activation_key.get().label(),
                 rect(
                     toggle.right - scaled(104, s),
                     toggle.top,
@@ -2044,6 +2067,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 panel_icon(
                     dc,
                     tool,
+                    *state.tool_label.borrow() == "Arrow tail-first",
                     (r.left + scaled(2, s), r.top + scaled(2, s)),
                     s,
                     if selected {
@@ -2097,6 +2121,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
     panel_icon(
         dc,
         state.tool.get(),
+        *state.tool_label.borrow() == "Arrow tail-first",
         (badge.left + scaled(2, s), badge.top + scaled(6, s)),
         s,
         // ON/OFF matches the tray mark: bright while drawing, dimmed in click-through.
@@ -2669,6 +2694,103 @@ mod tests {
         )
         .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
         Ok((pixels, elapsed))
+    }
+
+    #[test]
+    fn settings_hidden_menu_startup_stays_hidden_during_style_updates() -> Result<()> {
+        let ui = DesktopUi::new(HWND::default(), 1920, 1080, false, ActivationKey::default())?;
+        let hwnd = ui.state.status.get();
+        assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+        ui.update_label(
+            false,
+            "Arrow tail-first",
+            Style {
+                color: 0xff123456,
+                thickness: 9,
+            },
+        )?;
+        ui.set_reserve(0xffabcdef)?;
+        assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+        assert_eq!(ui.state.width.get(), 9);
+        assert_eq!(ui.state.tool_label.borrow().as_str(), "Arrow tail-first");
+        Ok(())
+    }
+
+    #[test]
+    fn panel_arrow_direction_changes_compact_and_expanded_glyphs() -> Result<()> {
+        let state = State::new(HWND::default())?;
+        state.tool.set(MenuTool::Arrow);
+        for scale in [1.0, 1.25, 2.0] {
+            state.panel_scale.set(scale);
+            for drawing in [false, true] {
+                state.drawing.set(drawing);
+                for expanded in [false, true] {
+                    state.expanded.set(expanded);
+                    state.motion.set(PanelMotion::settled(expanded));
+                    let g = PanelGeometry::new(&state);
+                    *state.tool_label.borrow_mut() = "Arrow head-first".into();
+                    let head = panel_bitmap(&state)?.1;
+                    *state.tool_label.borrow_mut() = "Arrow tail-first".into();
+                    let tail = panel_bitmap(&state)?.1;
+                    assert_ne!(head, tail);
+                    assert!(head.iter().zip(&tail).all(|(a, b)| a >> 24 == b >> 24));
+                    let differs_in = |r: RECT| {
+                        (r.top..r.bottom).any(|y| {
+                            (r.left..r.right).any(|x| {
+                                let i = (y * g.width + x) as usize;
+                                head[i] != tail[i]
+                            })
+                        })
+                    };
+                    assert!(differs_in(g.badge()));
+                    if expanded {
+                        assert!(differs_in(g.bounds(PanelHit::Tool(MenuTool::Arrow))));
+                    }
+                    if scale == 1.25 && drawing {
+                        for (label, name) in [
+                            ("Arrow head-first", "head-first"),
+                            ("Arrow tail-first", "tail-first"),
+                        ] {
+                            *state.tool_label.borrow_mut() = label.into();
+                            followup_preview(
+                                &state,
+                                &format!(
+                                    "arrow-{name}-{}",
+                                    if expanded { "expanded" } else { "compact" }
+                                ),
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn settings_activation_key_updates_menu_label_and_tooltip() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "ActivationKeyRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = DesktopUi::new(
+            root.0,
+            1920,
+            1080,
+            false,
+            ActivationKey::parse("F10").unwrap(),
+        )?;
+        assert!(!unsafe { IsWindowVisible(ui.state.status.get()) }.as_bool());
+        ui.state.panel_tooltip(Some(PanelHit::Toggle));
+        assert_eq!(
+            String::from_utf16_lossy(&ui.state.tooltip_text.borrow()),
+            "Drawing / Click-through. F10 or Ctrl+Alt+D toggles canvas input.\0"
+        );
+        menu_open(&ui)?;
+        let (custom, _) = followup_preview(&ui.state, "activation-f10")?;
+        ui.state.activation_key.set(ActivationKey::default());
+        let (default, _) = followup_preview(&ui.state, "activation-f4")?;
+        assert_ne!(custom, default);
+        Ok(())
     }
 
     #[test]

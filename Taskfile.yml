@@ -47,6 +47,11 @@ tasks:
     cmds:
       - cargo test generate_executable_icon -- --ignored --exact tray::tests::generate_executable_icon
 
+  test-settings:
+    desc: Check settings completion, validation, activation key, preservation and temporary-pen duration
+    cmds:
+      - cargo test --release settings_ -- --test-threads=1
+
   test-menu:
     desc: Run only new floating-menu feature tests
     cmds:
