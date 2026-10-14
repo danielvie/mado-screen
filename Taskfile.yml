@@ -49,6 +49,13 @@ tasks:
       - cargo build --release
       - powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/menu-followup-check.ps1
 
+  test-clear-help:
+    desc: Run only quick-clear, shortcut-binding and terminal-help checks
+    cmds:
+      - cargo test --release controls::tests -- --test-threads=1
+      - cargo test --release quick_clear_ -- --test-threads=1
+      - cargo test --release startup_help_ -- --test-threads=1
+
   smoke:
     desc: Validate desktop rendering, cleanup, and idle CPU over 30 seconds
     deps: [build]

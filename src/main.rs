@@ -12,7 +12,10 @@ mod ui;
 use controls::{Action, Hotkeys};
 use input::{DragCapture, Event, ExpiryTimer};
 use overlay::Overlay;
-use std::time::{Duration, Instant};
+use std::{
+    io::{IsTerminal, Write},
+    time::{Duration, Instant},
+};
 use strokes::{Strokes, Tool};
 use surface::Surface;
 use trail::Trail;
@@ -20,6 +23,10 @@ use ui::{DesktopUi, MenuTool, UiEvent};
 use windows::{
     Win32::{
         Foundation::HWND,
+        System::Console::{
+            ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode,
+            GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleMode,
+        },
         UI::{HiDpi::*, WindowsAndMessaging::*},
     },
     core::{Error, Result},
@@ -45,6 +52,7 @@ Drawing shortcuts (while the color picker is closed)
   A            Arrow; press again to switch head-first / tail-first
   O            Ellipse outline
   E            Erase a whole annotation
+  X            Clear all ink, undoable for permanent ink
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
@@ -62,6 +70,107 @@ Floating menu and picker
 
 Default brush: orange, 5 pixels. Restart after changing the monitor layout.
 ";
+
+fn startup_help(styled: bool) -> String {
+    if !styled {
+        return STARTUP_HELP.to_owned();
+    }
+    const RESET: &str = "\x1b[0m";
+    const SHORTCUT: &str = "\x1b[38;2;124;199;180m";
+    const COMMAND: &str = "\x1b[38;2;255;223;50m";
+    let mut help = String::new();
+    for line in STARTUP_HELP.lines() {
+        if matches!(
+            line,
+            "Mado Screen"
+                | "Global shortcuts"
+                | "Drawing shortcuts (while the color picker is closed)"
+                | "Floating menu and picker"
+        ) {
+            help.push_str(&format!("\x1b[1m{line}{RESET}"));
+        } else if let Some((key, description)) = line
+            .strip_prefix("  ")
+            .and_then(|row| row.split_once("   "))
+        {
+            // ponytail: fixed guide rows use padded columns and punctuation before
+            // explanations. Use explicit spans if the guide's layout becomes dynamic.
+            let command_start = description.len() - description.trim_start().len();
+            let command_end = description
+                .find([';', ',', '('])
+                .unwrap_or(description.len());
+            let command_end = description[..command_end].trim_end().len();
+            help.push_str(&format!(
+                "  {SHORTCUT}{key}{RESET}   {}{COMMAND}{}{RESET}{}",
+                &description[..command_start],
+                &description[command_start..command_end],
+                &description[command_end..],
+            ));
+        } else {
+            let mut text = line.to_owned();
+            for shortcut in ["Ctrl+Alt+D", "Drawing / Click-through", "Enter", "Escape"] {
+                text = text.replace(shortcut, &format!("{SHORTCUT}{shortcut}{RESET}"));
+            }
+            for command in ["Apply", "Cancel"] {
+                text = text.replace(command, &format!("{COMMAND}{command}{RESET}"));
+            }
+            for command in ["Hover", "Click", "Drag"] {
+                text = text.replace(
+                    &format!("  {command} "),
+                    &format!("  {COMMAND}{command}{RESET} "),
+                );
+            }
+            help.push_str(&text);
+        }
+        help.push('\n');
+    }
+    help
+}
+
+fn print_startup_help() {
+    // VT styling requires console output mode; redirected/unsupported output stays plain.
+    // https://learn.microsoft.com/en-us/windows/console/setconsolemode
+    let console = if std::io::stdout().is_terminal() {
+        (|| -> Result<_> {
+            let handle = unsafe { GetStdHandle(STD_OUTPUT_HANDLE)? };
+            let mut mode = Default::default();
+            unsafe {
+                GetConsoleMode(handle, &mut mode)?;
+                SetConsoleMode(
+                    handle,
+                    mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+                )?;
+            }
+            Ok((handle, mode))
+        })()
+        .ok()
+    } else {
+        None
+    };
+    println!("{}", startup_help(console.is_some()));
+    if let Some((handle, mode)) = console {
+        let _ = std::io::stdout().flush();
+        unsafe {
+            let _ = SetConsoleMode(handle, mode);
+        }
+    }
+}
+
+fn is_clear_action(action: &Action, drawing: bool, picker_open: bool) -> bool {
+    *action == Action::Clear || (*action == Action::QuickClear && drawing && !picker_open)
+}
+
+fn clear_ink(
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+    expiry: &mut Option<ExpiryTimer>,
+) {
+    strokes.cancel();
+    drop(drag.take());
+    strokes.clear();
+    trail.clear();
+    drop(expiry.take());
+}
 
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
@@ -92,7 +201,7 @@ fn main() -> Result<()> {
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    println!("{STARTUP_HELP}");
+    print_startup_help();
     let mut message = MSG::default();
     loop {
         match unsafe { GetMessageW(&mut message, None, 0, 0) }.0 {
@@ -182,13 +291,9 @@ fn main() -> Result<()> {
                         &mut drag,
                     )?;
                 }
-                Action::Clear => {
+                action if is_clear_action(&action, drawing, ui.is_picker_open()) => {
                     ui.close_picker();
-                    strokes.cancel();
-                    drop(drag.take());
-                    strokes.clear();
-                    trail.clear();
-                    drop(expiry.take());
+                    clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
                     surface.present_scene(
                         overlay.hwnd(),
                         drawing,
@@ -628,6 +733,7 @@ mod tests {
             "A            Arrow",
             "O            Ellipse",
             "E            Erase",
+            "X            Clear all ink",
             "Ctrl+Z",
             "Ctrl+Y",
             "[ / ]",
@@ -664,6 +770,124 @@ mod tests {
             runtime.contains("eprintln!("),
             "Actionable errors must remain visible"
         );
+    }
+
+    #[test]
+    fn startup_help_styling_preserves_text_and_highlights_controls() {
+        let plain = startup_help(false);
+        let styled = startup_help(true);
+        let mut unstyled = String::new();
+        let mut characters = styled.chars();
+        while let Some(character) = characters.next() {
+            if character == '\x1b' {
+                assert_eq!(characters.next(), Some('['));
+                assert!(characters.by_ref().any(|character| character == 'm'));
+            } else {
+                unstyled.push(character);
+            }
+        }
+        assert_eq!(plain, STARTUP_HELP);
+        assert_eq!(unstyled, plain);
+        assert!(!plain.contains('\x1b'));
+        for heading in [
+            "Mado Screen",
+            "Global shortcuts",
+            "Drawing shortcuts (while the color picker is closed)",
+            "Floating menu and picker",
+        ] {
+            assert!(styled.contains(&format!("\x1b[1m{heading}\x1b[0m")));
+        }
+        for key in [
+            "Ctrl+Alt+D",
+            "Ctrl+Alt+C",
+            "Ctrl+Alt+Q",
+            "P",
+            "L",
+            "R",
+            "A",
+            "O",
+            "E",
+            "X",
+            "Ctrl+Z",
+            "Ctrl+Y",
+            "[ / ]",
+            "1 / 2 / 3",
+            "4 / 5",
+            "C",
+            "Enter",
+            "Escape",
+            "Drawing / Click-through",
+        ] {
+            assert!(styled.contains(&format!("\x1b[38;2;124;199;180m{key}\x1b[0m")));
+        }
+        for command in ["Pen", "Arrow", "Apply", "Cancel", "Hover", "Click", "Drag"] {
+            assert!(styled.contains(&format!("\x1b[38;2;255;223;50m{command}\x1b[0m")));
+        }
+        // Save both output paths for inspecting styling without starting the overlay.
+        let artifacts =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/terminal-help");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        std::fs::write(artifacts.join("help-plain.txt"), plain).unwrap();
+        std::fs::write(artifacts.join("help-styled.ansi"), styled).unwrap();
+    }
+
+    #[test]
+    fn quick_clear_only_accepts_x_when_drawing_and_picker_closed() {
+        for drawing in [false, true] {
+            for picker_open in [false, true] {
+                assert!(is_clear_action(&Action::Clear, drawing, picker_open));
+                assert_eq!(
+                    is_clear_action(&Action::QuickClear, drawing, picker_open),
+                    drawing && !picker_open
+                );
+                assert!(!is_clear_action(&Action::Pen, drawing, picker_open));
+            }
+        }
+    }
+
+    #[test]
+    fn quick_clear_removes_all_ink_and_preserves_undo_tool_and_style() {
+        for tool in [Tool::Pen, Tool::Line] {
+            let mut strokes = Strokes::default();
+            strokes.begin((10, 10));
+            strokes.finish();
+            let committed = strokes.annotations().to_vec();
+            strokes.select(tool);
+            strokes.set_color(0xff35c7ef);
+            strokes.set_thickness(31);
+            let style = strokes.style();
+            strokes.begin((20, 20));
+            strokes.append((40, 30));
+            let before_clear = strokes.annotations().to_vec();
+            let mut trail = Trail::default();
+            trail.begin((20, 20), style, Duration::ZERO);
+            let mut drag = None;
+            let mut expiry = None;
+            clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
+            assert!(strokes.annotations().is_empty() && !strokes.is_active());
+            assert!(trail.is_empty() && !trail.is_active());
+            assert!(drag.is_none() && expiry.is_none());
+            assert_eq!(strokes.tool(), tool);
+            assert_eq!(strokes.style(), style);
+            assert!(strokes.undo());
+            assert_eq!(
+                strokes.annotations(),
+                if tool == Tool::Pen {
+                    &before_clear
+                } else {
+                    &committed
+                }
+            );
+            assert!(trail.is_empty(), "Temporary ink must not return with undo");
+            assert!(strokes.redo());
+            assert!(strokes.annotations().is_empty());
+            clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
+            assert!(
+                strokes.undo(),
+                "An empty clear must not add a history entry"
+            );
+            assert!(!strokes.annotations().is_empty());
+        }
     }
 
     #[test]

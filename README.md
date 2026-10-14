@@ -16,6 +16,7 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 | `task test-menu` | Only new floating-menu feature tests |
 | `task test-menu-followup` | Only reference-layout and compact brush-tip feature tests, optimized |
 | `task test-menu-live` | Targeted release-app menu checks, without physical input injection |
+| `task test-clear-help` | Only quick-clear, shortcut-binding and terminal-help checks |
 | `task check` | Formatting and Clippy |
 | `task smoke` | Copied-app desktop checks, including 30-second idle sample |
 | `task clean` / `cargo clean` | Remove build artifacts |
@@ -24,7 +25,7 @@ For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy B
 
 ## Controls
 
-Startup prints a grouped guide to shortcuts and color-panel controls. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
+Startup prints a grouped guide to shortcuts and color-panel controls. Supported terminals show bold titles, teal shortcuts and yellow command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
 
 Permanent global controls:
 - `Ctrl+Alt+D`: drawing/click-through toggle.
@@ -35,6 +36,7 @@ Drawing-mode-only controls:
 - `P` selects Pen; press `P` while Pen is selected to toggle permanent/temporary ink.
 - `A` selects Arrow; press `A` while Arrow is selected to toggle head-first/tail-first drawing.
 - `L` straight line, `R` outline rectangle, `O` ellipse, `E` eraser.
+- `X` clears all permanent and temporary ink, like `Ctrl+Alt+C`. Permanent ink can be restored with undo. `X` is inactive in click-through and while the picker is open.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.

@@ -20,3 +20,23 @@ Assembled checks passed:
 No desktop smoke or full Rust suite ran. Worker also checked PowerShell7 syntax, but its -SelfCheck failed on a pre-existing Add-Type Win32Exception reference issue reproduced on the base commit. That compatibility issue was not changed or labeled passed.
 
 Boundaries: preserve local README.md/Taskfile.yml install edits and both untracked drawings. No full suite, real input, cursor/focus changes, app launch, installed-app replacement or remote push. Copy the release build to the project only; use a distinct filename if normal executable is locked.
+
+## X shortcut and highlighted help follow-up
+
+Implemented directly on main at the user's request, without another worktree.
+
+- `X` clears permanent and temporary ink while drawing and the picker is closed. `Ctrl+Alt+C` keeps its existing global behavior. Both use the same clear handler, including capture/timer cleanup and undoable permanent ink. Tool and style remain unchanged.
+- `X` has its own hotkey ID 20, uses the existing drawing-only registration guard and suppresses key repeat. Stale queued X actions are ignored in click-through and while editing the picker.
+- Help titles use bold styling. Shortcut names use teal #7CC7B4 and command labels use yellow #FFDF32. Explanations remain normal text, with the original column spacing preserved.
+- Enable virtual-terminal output only for a supported terminal. Flush the guide and restore the previous console mode afterward. Redirected and unsupported output remains plain text. No new dependency was added; only the existing windows crate's console feature is enabled.
+
+Windows output-mode and styling references:
+- https://learn.microsoft.com/en-us/windows/console/setconsolemode
+- https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences
+
+Verification:
+- `task test-clear-help`: 9 focused release tests passed, covering bindings, drawing/picker guards, clear/undo/redo, active gesture settlement, style preservation, heading/shortcut/command styling and unchanged plain text.
+- `cargo build --release`, `cargo fmt --check`, `task --list` and `git diff --check`: passed.
+- `cargo clippy --bin mado-screen-poc -- -D warnings`: blocked by three pre-existing warnings. Two nested-if warnings are in unchanged src/ui.rs; the even-width expression in apply_menu_width is also unchanged from main. These unrelated lines were not modified.
+
+The styling test saves target/terminal-help/help-plain.txt and help-styled.ansi for inspection without starting the overlay. Full tests and desktop smoke were not run. Physical X delivery and the terminal's actual bold-font rendering remain manual checks. Local install edits and untracked design files are preserved; no application was launched, installed or pushed.

@@ -25,6 +25,7 @@ const ARROW: usize = 16;
 const ELLIPSE: usize = 17;
 const ERASER: usize = 18;
 const PICKER: usize = 19;
+const QUICK_CLEAR: usize = 20;
 
 const PERMANENT_MODIFIERS: HOT_KEY_MODIFIERS =
     HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0);
@@ -39,7 +40,7 @@ const PERMANENT_KEYS: [Key; 3] = [
     (CLEAR, b'C' as u16, PERMANENT_MODIFIERS),
     (QUIT, b'Q' as u16, PERMANENT_MODIFIERS),
 ];
-const BASIC_KEYS: [Key; 12] = [
+const BASIC_KEYS: [Key; 13] = [
     (PEN, b'P' as u16, BARE_MODIFIERS),
     (LINE, b'L' as u16, BARE_MODIFIERS),
     (RECTANGLE, b'R' as u16, BARE_MODIFIERS),
@@ -52,6 +53,7 @@ const BASIC_KEYS: [Key; 12] = [
     (RED, b'3' as u16, BARE_MODIFIERS),
     (GREEN, b'4' as u16, BARE_MODIFIERS),
     (WHITE, b'5' as u16, BARE_MODIFIERS),
+    (QUICK_CLEAR, b'X' as u16, BARE_MODIFIERS),
 ];
 const ADVANCED_KEYS: [Key; 3] = [
     (ARROW, b'A' as u16, BARE_MODIFIERS),
@@ -146,6 +148,7 @@ pub enum Action {
     Ellipse,
     Eraser,
     Picker,
+    QuickClear,
 }
 
 pub fn action(id: usize) -> Option<Action> {
@@ -169,6 +172,7 @@ pub fn action(id: usize) -> Option<Action> {
         ELLIPSE => Some(Action::Ellipse),
         ERASER => Some(Action::Eraser),
         PICKER => Some(Action::Picker),
+        QUICK_CLEAR => Some(Action::QuickClear),
         _ => None,
     }
 }
@@ -199,11 +203,12 @@ mod tests {
             Action::Ellipse,
             Action::Eraser,
             Action::Picker,
+            Action::QuickClear,
         ];
         for (index, expected) in actions.into_iter().enumerate() {
             assert_eq!(action(index + 1), Some(expected));
         }
-        for id in [0, 20, usize::MAX] {
+        for id in [0, 21, usize::MAX] {
             assert_eq!(action(id), None);
         }
     }
@@ -234,6 +239,7 @@ mod tests {
             (13, b'3' as u16),
             (14, b'4' as u16),
             (15, b'5' as u16),
+            (20, b'X' as u16),
             (16, b'A' as u16),
             (17, b'O' as u16),
             (18, b'E' as u16),
@@ -259,10 +265,10 @@ mod tests {
     #[test]
     fn staged_lists_keep_basic_keys_and_gate_advanced_and_picker_independently() {
         for (advanced, picker, expected) in [
-            (false, false, (4..=15).collect::<Vec<_>>()),
-            (true, false, (4..=18).collect()),
-            (false, true, (4..=15).chain([19]).collect()),
-            (true, true, (4..=19).collect()),
+            (false, false, (4..=15).chain([20]).collect::<Vec<_>>()),
+            (true, false, (4..=15).chain([20]).chain(16..=18).collect()),
+            (false, true, (4..=15).chain([20, 19]).collect()),
+            (true, true, (4..=15).chain([20]).chain(16..=19).collect()),
         ] {
             assert_eq!(
                 drawing_key_list(advanced, picker)
@@ -291,6 +297,7 @@ mod tests {
             "3",
             "4",
             "5",
+            "X",
             "A",
             "O",
             "E",
