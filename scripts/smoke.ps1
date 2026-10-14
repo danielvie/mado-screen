@@ -569,12 +569,12 @@ try {
             Check ([PocSmoke]::PostDrag($window, $thread, 18, 0, [int[]]@(($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90), ($lx + 760), ($ly + 90)))) 'Eraser gesture inside ellipse queued'
             Start-Sleep -Milliseconds 200
             Check ((Pixel ($lx + 760) ($ly + 60)) -eq $ink -and (Pixel ($lx + 800) ($ly + 90)) -eq $ink) 'Eraser ignores empty shape interiors'
-            # Value-only app event checks color routing without opening/focusing the popup.
+            # Value-only menu event checks color routing without changing focus.
             Check ([PocSmoke]::PostMessage($window, 0x8028, [UIntPtr]::new([uint64]4279383126), [IntPtr]::new(1))) 'Arbitrary RGB color result queued'
             Check ([PocSmoke]::PostDrag($window, $thread, 4, 0, [int[]]@(($lx + 860), $ly, ($lx + 880), $ly, ($lx + 900), $ly))) 'Custom RGB annotation queued'
             Start-Sleep -Milliseconds 200
             $custom = [Drawing.Color]::FromArgb(255, 18, 52, 86).ToArgb()
-            Check ((Pixel ($lx + 880) $ly) -eq $custom -and (Pixel $lx $ly) -eq $ink) 'Picker result routing applies arbitrary RGB without recoloring old ink'
+            Check ((Pixel ($lx + 880) $ly) -eq $custom -and (Pixel $lx $ly) -eq $ink) 'Menu color routing applies arbitrary RGB without recoloring old ink'
             Check ([PocSmoke]::PostThreadMessage($thread, 0x0312, [UIntPtr]::new(12), [IntPtr]::Zero)) 'Restore orange after custom RGB'
             # Queue cancellation in the same burst, before the physical-release watchdog.
             Check ([PocSmoke]::PostDrag($window, $thread, 5, 6, [int[]]@(($lx + 300), $ly, ($lx + 360), $ly, ($lx + 360), $ly))) 'Line selection, unfinished line, tool cancellation and stale release queued'
@@ -830,8 +830,8 @@ try {
         postedPoc6 = if ($poc6PostedRan) { 'Posted P/A variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
         variantLabelEvidence = 'Current owned status HWND accessible native title read through GetWindowTextW, with process ID and canvas ownership verified. Painted hover labels and compact icons remain manual/untested; this is not physical painted-label acceptance.'
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
-        manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, picker placement/focus/scaling and hardware latency.'
-        mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or picker scaling.'
+        manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, menu placement/scaling and hardware latency.'
+        mixedDpi = 'UNTESTED: posted physical-pixel geometry does not establish mixed-DPI physical-input alignment or menu scaling.'
         limits = 'Empty-canvas checks sample tested geometry, not every pixel; drawing-mode comparisons allow only the intentional alpha-1 black background to darken RGB channels by at most one; click-through comparisons remain exact. Unstable points are skipped/untested, not passed. No injected keyboard/mouse input, cursor movement or focus changes. Only windows owned by the copied child are modified; a pre-existing overlay aborts the run. Restart after display topology/scaling changes. Mirrored displays expose one desktop. Sharing is deferred.'
     } | ConvertTo-Json -Depth 4 | Tee-Object (Join-Path $directory 'results.json')
     Write-Host "Logs and results: $directory"

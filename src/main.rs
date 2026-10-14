@@ -1,24 +1,28 @@
 mod bezier;
+mod config;
 mod controls;
 mod drawing;
 mod input;
 mod overlay;
-mod picker;
 mod strokes;
 mod surface;
 mod trail;
+mod tray;
 mod ui;
 
+use config::Favorites;
 use controls::{Action, Hotkeys};
 use input::{DragCapture, Event, ExpiryTimer};
 use overlay::Overlay;
 use std::{
     io::{IsTerminal, Write},
+    path::Path,
     time::{Duration, Instant},
 };
 use strokes::{Strokes, Tool};
 use surface::Surface;
 use trail::Trail;
+use tray::{Tray, TrayEvent};
 use ui::{DesktopUi, MenuTool, UiEvent};
 use windows::{
     Win32::{
@@ -37,38 +41,41 @@ const STAGE: u8 = 3;
 
 const STARTUP_HELP: &str = "\
 Mado Screen
-Starts in click-through mode. Press Ctrl+Alt+D to draw.
+Starts in click-through mode. Press F4 or Ctrl+Alt+D to draw.
 In drawing mode, drag with the primary mouse button to annotate.
 
 Global shortcuts
+  F4           Switch between drawing and click-through
   Ctrl+Alt+D   Switch between drawing and click-through
   Ctrl+Alt+C   Clear all ink, undoable for permanent ink
   Ctrl+Alt+Q   Quit
 
-Drawing shortcuts (while the color picker is closed)
+Drawing shortcuts
+  Escape       Return to click-through so underlying apps receive input
   P            Pen; press again to toggle temporary ink (fades in 1 second)
   L            Straight line
   R            Rectangle outline
   A            Arrow; press again to switch head-first / tail-first
   O            Ellipse outline
   E            Erase a whole annotation
-  X            Clear all ink, undoable for permanent ink
+  C            Clear all ink, undoable for permanent ink
+  X            Swap active and reserve colors
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
   1 / 2 / 3    Blue / orange / red
   4 / 5        Green / white
-  C            Open the color picker at the pointer
 
-Floating menu and picker
+Floating menu
   Hover over the top-right tool icon to open the dark menu.
   Click tool icons, color slots or the width slider; letters show shortcuts.
   Click Drawing / Click-through to switch canvas input without a shortcut.
-  Drag only the grip beside the tool icon to move the menu.
-  Click the stroke preview or selected color to open the picker.
-  Apply / Enter saves; Cancel / Escape discards changes.
+  Drag a palette color onto the active or reserve square; click the reserve to swap.
+  Drag the tool icon or its grip to move the menu.
+  Click the tray icon to switch modes; right-click it to hide the menu, clear or quit.
 
-Default brush: orange, 5 pixels. Restart after changing the monitor layout.
+Default brush: orange, 5 pixels; reserve blue. Restart after changing the monitor layout.
+Favorite colors are saved in ~/.mado/mado-screen/config.ini.
 ";
 
 fn startup_help(styled: bool) -> String {
@@ -84,10 +91,7 @@ fn startup_help(styled: bool) -> String {
     for line in STARTUP_HELP.lines() {
         if matches!(
             line,
-            "Mado Screen"
-                | "Global shortcuts"
-                | "Drawing shortcuts (while the color picker is closed)"
-                | "Floating menu and picker"
+            "Mado Screen" | "Global shortcuts" | "Drawing shortcuts" | "Floating menu"
         ) {
             help.push_str(&format!("{TITLE}{line}{RESET}"));
         } else if let Some((key, description)) = line
@@ -109,11 +113,8 @@ fn startup_help(styled: bool) -> String {
             ));
         } else {
             let mut text = line.to_owned();
-            for shortcut in ["Ctrl+Alt+D", "Drawing / Click-through", "Enter", "Escape"] {
+            for shortcut in ["F4", "Ctrl+Alt+D", "Drawing / Click-through"] {
                 text = text.replace(shortcut, &format!("{SHORTCUT}{shortcut}{RESET}"));
-            }
-            for command in ["Apply", "Cancel"] {
-                text = text.replace(command, &format!("{COMMAND}{command}{RESET}"));
             }
             for command in ["Hover", "Click", "Drag"] {
                 text = text.replace(
@@ -157,8 +158,12 @@ fn print_startup_help() {
     }
 }
 
-fn is_clear_action(action: &Action, drawing: bool, picker_open: bool) -> bool {
-    *action == Action::Clear || (*action == Action::QuickClear && drawing && !picker_open)
+fn is_mode_toggle_action(action: &Action, drawing: bool) -> bool {
+    *action == Action::Toggle || (*action == Action::Deactivate && drawing)
+}
+
+fn is_clear_action(action: &Action, drawing: bool) -> bool {
+    *action == Action::Clear || (*action == Action::QuickClear && drawing)
 }
 
 fn clear_ink(
@@ -177,13 +182,20 @@ fn clear_ink(
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
     let _hotkeys = Hotkeys::register()?;
-    // Reverse drop order: drag, drawing keys, UI, window, surface, permanent keys.
+    let _function_key = Hotkeys::function_toggle()
+        .map_err(|error| eprintln!("{error} F4 is unavailable; use Ctrl+Alt+D."))
+        .ok();
+    // Reverse drop order: drag, drawing keys, tray, UI, window, surface, permanent keys.
     let mut surface;
     let overlay = Overlay::new()?;
     let (width, height) = overlay.size();
     surface = Surface::new(width, height)?;
     let mut drawing = false;
     let mut strokes = Strokes::default();
+    let config_path = config::path();
+    let mut saved = config_path.as_deref().map(config::load).unwrap_or_default();
+    strokes.set_color(saved.active);
+    let mut reserve = saved.reserve;
     let mut trail = Trail::default();
     let clock = Instant::now();
     surface.present_scene(
@@ -200,6 +212,11 @@ fn main() -> Result<()> {
         unsafe { GetSystemMetrics(SM_CXSCREEN) },
         unsafe { GetSystemMetrics(SM_CYSCREEN) },
     )?;
+    ui.set_reserve(reserve)?;
+    ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+    let tray = Tray::new(overlay.hwnd())?;
+    let mut panel_visible = true;
+    tray.update(drawing, strokes.style().color)?;
     let mut tool_keys: Option<Hotkeys> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
@@ -211,7 +228,7 @@ fn main() -> Result<()> {
             0 => break,
             _ => {}
         }
-        // Animate before picker routing, including click-through. Use one frame time.
+        // Animate before UI routing, including click-through. Use one frame time.
         let now = clock.elapsed();
         let tick = input::event(&message, overlay.hwnd()) == Some(Event::Expire);
         if animate_trail(&mut trail, now, tick) {
@@ -226,14 +243,11 @@ fn main() -> Result<()> {
         if let Some(event) = ui.event(&message) {
             let changed = match event {
                 UiEvent::Color(color) => apply_ui_color(color, &mut strokes, &mut trail, &mut drag),
-                UiEvent::Tool(tool) if !ui.is_picker_open() => {
-                    apply_menu_tool(tool, &mut strokes, &mut trail, &mut drag)
-                }
-                UiEvent::Width(width) if !ui.is_picker_open() => {
+                UiEvent::Tool(tool) => apply_menu_tool(tool, &mut strokes, &mut trail, &mut drag),
+                UiEvent::Width(width) => {
                     apply_menu_width(width, &mut strokes, &mut trail, &mut drag)
                 }
                 UiEvent::Toggle => {
-                    ui.close_picker();
                     toggle_drawing(
                         &mut drawing,
                         &mut tool_keys,
@@ -244,15 +258,11 @@ fn main() -> Result<()> {
                     )?;
                     false
                 }
-                UiEvent::OpenPicker if !ui.is_picker_open() => {
-                    let changed =
-                        prepare_picker(&mut strokes, &mut trail, &mut drag, &mut tool_keys);
-                    if let Err(error) = ui.open_picker(strokes.style().color) {
-                        eprintln!("Cannot open color picker: {error}. Ink preserved.");
-                    }
-                    changed
+                UiEvent::Reserve(color) => {
+                    reserve = color | 0xff000000;
+                    false
                 }
-                _ => false,
+                UiEvent::Swap => swap_colors(&mut reserve, &mut strokes, &mut trail, &mut drag),
             };
             if changed {
                 surface.present_scene(
@@ -263,18 +273,47 @@ fn main() -> Result<()> {
                     now,
                 )?;
             }
-            restore_drawing_keys(
-                &mut drawing,
-                &mut tool_keys,
-                &overlay,
-                &mut surface,
-                (&strokes, &trail, now),
-                &ui,
-            )?;
+            ui.set_reserve(reserve)?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+            tray.update(drawing, strokes.style().color)?;
+            persist(
+                &mut saved,
+                strokes.style().color,
+                reserve,
+                config_path.as_deref(),
+            );
             continue;
         }
-        if ui.handle_message(&message) {
+        // Tray commands reuse the same transactions as Ctrl+Alt+D/C/Q.
+        if let Some(event) = tray.event(&message) {
+            match event {
+                TrayEvent::Toggle => toggle_drawing(
+                    &mut drawing,
+                    &mut tool_keys,
+                    &overlay,
+                    &mut surface,
+                    (&mut strokes, &mut trail, now),
+                    &mut drag,
+                )?,
+                TrayEvent::Clear => {
+                    clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
+                    surface.present_scene(
+                        overlay.hwnd(),
+                        drawing,
+                        strokes.annotations(),
+                        &trail,
+                        now,
+                    )?;
+                }
+                TrayEvent::Quit => break,
+                TrayEvent::Panel => {
+                    panel_visible = !panel_visible;
+                    ui.set_visible(panel_visible)?;
+                    tray.set_panel_visible(panel_visible);
+                }
+            }
+            ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+            tray.update(drawing, strokes.style().color)?;
             continue;
         }
         if message.message == WM_HOTKEY {
@@ -282,8 +321,7 @@ fn main() -> Result<()> {
                 continue;
             };
             match action {
-                Action::Toggle => {
-                    ui.close_picker();
+                action if is_mode_toggle_action(&action, drawing) => {
                     toggle_drawing(
                         &mut drawing,
                         &mut tool_keys,
@@ -293,8 +331,7 @@ fn main() -> Result<()> {
                         &mut drag,
                     )?;
                 }
-                action if is_clear_action(&action, drawing, ui.is_picker_open()) => {
-                    ui.close_picker();
+                action if is_clear_action(&action, drawing) => {
                     clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
                     surface.present_scene(
                         overlay.hwnd(),
@@ -305,10 +342,8 @@ fn main() -> Result<()> {
                     )?;
                 }
                 Action::Quit => break,
-                Action::Picker if drawing && !ui.is_picker_open() => {
-                    let changed =
-                        prepare_picker(&mut strokes, &mut trail, &mut drag, &mut tool_keys);
-                    if changed {
+                Action::Swap if drawing => {
+                    if swap_colors(&mut reserve, &mut strokes, &mut trail, &mut drag) {
                         surface.present_scene(
                             overlay.hwnd(),
                             drawing,
@@ -317,11 +352,8 @@ fn main() -> Result<()> {
                             now,
                         )?;
                     }
-                    if let Err(error) = ui.open_picker(strokes.style().color) {
-                        eprintln!("Cannot open color picker: {error}. Ink preserved.");
-                    }
                 }
-                action if drawing && !ui.is_picker_open() => {
+                action if drawing => {
                     // Identical style selections leave a temporary gesture intact too.
                     if interrupts_trail(&action, &strokes) {
                         trail.finish();
@@ -338,32 +370,16 @@ fn main() -> Result<()> {
                 }
                 _ => {}
             }
-            restore_drawing_keys(
-                &mut drawing,
-                &mut tool_keys,
-                &overlay,
-                &mut surface,
-                (&strokes, &trail, now),
-                &ui,
-            )?;
+            ui.set_reserve(reserve)?;
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+            tray.update(drawing, strokes.style().color)?;
+            persist(
+                &mut saved,
+                strokes.style().color,
+                reserve,
+                config_path.as_deref(),
+            );
         } else if let Some(event) = input::event(&message, overlay.hwnd()) {
-            if ui.is_picker_open() {
-                // An outside canvas press dismisses the popup, never paints a stroke.
-                if matches!(event, Event::Down(_)) {
-                    ui.close_picker();
-                    restore_drawing_keys(
-                        &mut drawing,
-                        &mut tool_keys,
-                        &overlay,
-                        &mut surface,
-                        (&strokes, &trail, now),
-                        &ui,
-                    )?;
-                    ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
-                }
-                continue;
-            }
             if handle_canvas_input(
                 event,
                 drawing,
@@ -394,7 +410,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-// Both the visible input toggle and Ctrl+Alt+D use this transaction.
+// The visible input toggle, Ctrl+Alt+D and drawing-only Escape use this transaction.
 fn toggle_drawing(
     drawing: &mut bool,
     keys: &mut Option<Hotkeys>,
@@ -406,7 +422,7 @@ fn toggle_drawing(
     let (strokes, trail, now) = scene;
     let entering = !*drawing;
     let pending = if entering {
-        match Hotkeys::drawing_keys(true, true) {
+        match Hotkeys::drawing_keys(true) {
             Ok(keys) => Some(keys),
             Err(error) => {
                 eprintln!(
@@ -427,56 +443,48 @@ fn toggle_drawing(
     surface.present_scene(overlay.hwnd(), entering, strokes.annotations(), trail, now)
 }
 
-fn restore_drawing_keys(
-    drawing: &mut bool,
-    keys: &mut Option<Hotkeys>,
-    overlay: &Overlay,
-    surface: &mut Surface,
-    scene: (&Strokes, &Trail, Duration),
-    ui: &DesktopUi,
-) -> Result<()> {
-    let (strokes, trail, now) = scene;
-    if *drawing && keys.is_none() && !ui.is_picker_open() {
-        match Hotkeys::drawing_keys(true, true) {
-            Ok(guard) => *keys = Some(guard),
-            Err(error) => {
-                eprintln!(
-                    "Cannot resume drawing: {error}. Ink preserved; returning to click-through."
-                );
-                *drawing = false;
-                overlay.set_capture(false)?;
-                surface.present_scene(overlay.hwnd(), false, strokes.annotations(), trail, now)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn prepare_picker(
-    strokes: &mut Strokes,
-    trail: &mut Trail,
-    drag: &mut Option<DragCapture>,
-    keys: &mut Option<Hotkeys>,
-) -> bool {
-    let changed = strokes.cancel();
-    trail.finish();
-    drop(drag.take());
-    drop(keys.take());
-    changed
-}
-
-// Picker Apply and recent swatches share the same gesture settlement.
+// Palette changes settle active gestures before applying the new color.
 fn apply_ui_color(
     color: u32,
     strokes: &mut Strokes,
     trail: &mut Trail,
     drag: &mut Option<DragCapture>,
 ) -> bool {
+    if color == strokes.style().color {
+        return false;
+    }
     let changed = strokes.cancel();
     trail.finish();
     drop(drag.take());
     strokes.set_color(color);
     changed
+}
+
+// X and the menu's reserve square exchange the brush color with the reserve favorite.
+fn swap_colors(
+    reserve: &mut u32,
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+) -> bool {
+    let active = strokes.style().color;
+    let changed = apply_ui_color(*reserve, strokes, trail, drag);
+    *reserve = active;
+    changed
+}
+
+// Writes only on change, so idle loops and repeated selections never touch the disk.
+fn persist(saved: &mut Favorites, active: u32, reserve: u32, path: Option<&Path>) {
+    let current = Favorites { active, reserve };
+    if *saved == current {
+        return;
+    }
+    *saved = current;
+    if let Some(path) = path
+        && let Err(error) = config::save(path, current)
+    {
+        eprintln!("Could not save {}: {error}", path.display());
+    }
 }
 
 // Menu choices are exact selections, unlike repeated P/A hotkey actions.
@@ -729,23 +737,24 @@ mod tests {
             "Ctrl+Alt+D",
             "Ctrl+Alt+C",
             "Ctrl+Alt+Q",
+            "Escape       Return to click-through",
             "P            Pen",
             "L            Straight line",
             "R            Rectangle",
             "A            Arrow",
             "O            Ellipse",
             "E            Erase",
-            "X            Clear all ink",
+            "C            Clear all ink",
+            "X            Swap active and reserve",
+            "F4           Switch between drawing",
+            "~/.mado/mado-screen/config.ini",
             "Ctrl+Z",
             "Ctrl+Y",
             "[ / ]",
             "1 / 2 / 3",
             "4 / 5",
-            "C            Open the color picker",
             "Hover over the top-right tool icon",
-            "Click the stroke preview or selected color",
-            "Apply / Enter",
-            "Cancel / Escape",
+            "Click tool icons, color slots or the width slider",
             "1 second",
         ] {
             assert!(
@@ -753,7 +762,15 @@ mod tests {
                 "Missing instruction: {command}"
             );
         }
-        for old_log in ["PoC 7", "Mode:", "Tool:", "Overlay closed."] {
+        for old_log in [
+            "PoC 7",
+            "Mode:",
+            "Tool:",
+            "Overlay closed.",
+            "picker",
+            "Apply",
+            "Cancel",
+        ] {
             assert!(!STARTUP_HELP.contains(old_log));
         }
         let runtime = include_str!("main.rs")
@@ -794,35 +811,35 @@ mod tests {
         for heading in [
             "Mado Screen",
             "Global shortcuts",
-            "Drawing shortcuts (while the color picker is closed)",
-            "Floating menu and picker",
+            "Drawing shortcuts",
+            "Floating menu",
         ] {
             assert!(styled.contains(&format!("\x1b[1;38;2;205;154;34m{heading}\x1b[0m")));
         }
         for key in [
+            "F4",
             "Ctrl+Alt+D",
             "Ctrl+Alt+C",
             "Ctrl+Alt+Q",
+            "Escape",
             "P",
             "L",
             "R",
             "A",
             "O",
             "E",
+            "C",
             "X",
             "Ctrl+Z",
             "Ctrl+Y",
             "[ / ]",
             "1 / 2 / 3",
             "4 / 5",
-            "C",
-            "Enter",
-            "Escape",
             "Drawing / Click-through",
         ] {
             assert!(styled.contains(&format!("\x1b[38;2;167;152;215m{key}\x1b[0m")));
         }
-        for command in ["Pen", "Arrow", "Apply", "Cancel", "Hover", "Click", "Drag"] {
+        for command in ["Pen", "Arrow", "Hover", "Click", "Drag"] {
             assert!(styled.contains(&format!("\x1b[38;2;105;173;208m{command}\x1b[0m")));
         }
         assert!(!styled.contains("\x1b[38;2;124;199;180m"));
@@ -836,17 +853,68 @@ mod tests {
     }
 
     #[test]
-    fn quick_clear_only_accepts_x_when_drawing_and_picker_closed() {
+    fn escape_only_deactivates_and_never_enters_drawing() {
         for drawing in [false, true] {
-            for picker_open in [false, true] {
-                assert!(is_clear_action(&Action::Clear, drawing, picker_open));
-                assert_eq!(
-                    is_clear_action(&Action::QuickClear, drawing, picker_open),
-                    drawing && !picker_open
-                );
-                assert!(!is_clear_action(&Action::Pen, drawing, picker_open));
-            }
+            assert!(is_mode_toggle_action(&Action::Toggle, drawing));
+            assert_eq!(is_mode_toggle_action(&Action::Deactivate, drawing), drawing);
+            assert!(!is_mode_toggle_action(&Action::Pen, drawing));
         }
+    }
+
+    #[test]
+    fn quick_clear_only_accepts_c_when_drawing() {
+        for drawing in [false, true] {
+            assert!(is_clear_action(&Action::Clear, drawing));
+            assert_eq!(is_clear_action(&Action::QuickClear, drawing), drawing);
+            assert!(!is_clear_action(&Action::Pen, drawing));
+        }
+    }
+
+    #[test]
+    fn favorite_swap_exchanges_colors_settles_gestures_and_persists_once() {
+        let mut strokes = Strokes::default();
+        // Like palette changes, a swap discards an unfinished shape.
+        strokes.select(Tool::Line);
+        strokes.begin((10, 10));
+        let mut trail = Trail::default();
+        let mut reserve = 0xff0085dc;
+        assert!(swap_colors(
+            &mut reserve,
+            &mut strokes,
+            &mut trail,
+            &mut None
+        ));
+        assert_eq!((strokes.style().color, reserve), (0xff0085dc, 0xfff97316));
+        assert!(!strokes.is_active() && strokes.annotations().is_empty());
+        assert!(!swap_colors(
+            &mut reserve,
+            &mut strokes,
+            &mut trail,
+            &mut None
+        ));
+        assert_eq!((strokes.style().color, reserve), (0xfff97316, 0xff0085dc));
+        // Equal favorites leave an active gesture alone.
+        reserve = strokes.style().color;
+        strokes.begin((10, 10));
+        assert!(!swap_colors(
+            &mut reserve,
+            &mut strokes,
+            &mut trail,
+            &mut None
+        ));
+        assert!(strokes.is_active());
+
+        let path = std::env::temp_dir()
+            .join(format!("mado-persist-test-{}", std::process::id()))
+            .join("config.ini");
+        let defaults = Favorites::default();
+        let mut saved = defaults;
+        persist(&mut saved, defaults.active, defaults.reserve, Some(&path));
+        assert!(!path.exists(), "Unchanged favorites must not write");
+        persist(&mut saved, 0xff123456, 0xff0085dc, Some(&path));
+        assert_eq!(config::load(&path), saved);
+        assert_eq!(saved.active, 0xff123456);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]
@@ -1339,45 +1407,34 @@ mod tests {
     }
 
     #[test]
-    fn panel_picker_request_preserves_color_and_settles_input() {
-        for tool in [Tool::Pen, Tool::Line] {
+    fn palette_selected_color_keeps_active_gestures() {
+        for tool in [Tool::Pen, Tool::Line, Tool::Rectangle] {
             let mut strokes = Strokes::default();
             strokes.select(tool);
-            strokes.set_color(0xff123456);
             strokes.begin((10, 10));
             strokes.append((30, 30));
+            let before = strokes.annotations().to_vec();
+            let style = strokes.style();
             let mut trail = Trail::default();
-            trail.begin((50, 50), strokes.style(), Duration::ZERO);
+            trail.begin((50, 50), style, Duration::ZERO);
             let parts = trail.annotations().cloned().collect::<Vec<_>>();
-            let mut drag = None;
-            assert_eq!(
-                prepare_picker(&mut strokes, &mut trail, &mut drag, &mut None),
-                tool != Tool::Pen
-            );
-            assert_eq!(strokes.style().color, 0xff123456);
-            assert!(!strokes.is_active() && !trail.is_active());
+            assert!(!apply_ui_color(
+                style.color,
+                &mut strokes,
+                &mut trail,
+                &mut None
+            ));
+            assert!(strokes.is_active() && trail.is_active());
+            assert_eq!(strokes.style(), style);
+            assert_eq!(strokes.annotations(), before);
             assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
-            assert!(
-                !handle_canvas_input(
-                    Event::Up((60, 60)),
-                    true,
-                    (&mut strokes, &mut trail),
-                    &mut drag,
-                    HWND::default(),
-                    Duration::from_millis(500),
-                )
-                .unwrap()
-            );
-            assert!(trail.expire(Duration::from_secs(1)));
-            assert!(trail.is_empty());
-            assert_eq!(strokes.annotations().len(), usize::from(tool == Tool::Pen));
         }
     }
 
     #[test]
-    fn recent_color_settles_gestures_and_ignores_trailing_canvas_input() {
+    fn palette_color_settles_gestures_and_ignores_trailing_canvas_input() {
         for tool in [Tool::Pen, Tool::Line, Tool::Rectangle] {
-            for color in [0xfff97316, 0xff123456] {
+            for color in [0xff35c7ef, 0xff123456] {
                 let mut strokes = Strokes::default();
                 strokes.select(tool);
                 strokes.begin((10, 10));
@@ -1420,7 +1477,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_color_keeps_temporary_births_and_permanent_redo() {
+    fn palette_color_keeps_temporary_births_and_permanent_redo() {
         let mut strokes = Strokes::default();
         strokes.begin((5, 5));
         strokes.finish();

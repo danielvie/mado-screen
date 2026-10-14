@@ -1,6 +1,6 @@
 # Mado Screen PoC 6
 
-Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 7 adds rounded antialiased strokes, one-second temporary fading, larger arrowheads and smoother ellipse outlines. Tools, history, indicator and disk picker are preserved. Scope and checks are in tasks/poc7-spec.md and tasks/poc7-progress.md.
+Native Rust/Win32 annotation overlay across the Windows virtual desktop. Draw on any connected monitor, including across adjacent screen boundaries, with shared tools, styles and undo/redo. Startup is empty and click-through. PoC 7 adds rounded antialiased strokes, one-second temporary fading, larger arrowheads and smoother ellipse outlines. Tools, history and the floating menu are preserved. Scope and checks are in tasks/poc7-spec.md and tasks/poc7-progress.md.
 
 ## Commands
 
@@ -26,22 +26,23 @@ For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy B
 
 ## Controls
 
-Startup prints a grouped guide to shortcuts and color-panel controls. Supported terminals show bold titles and Pi-theme colors for shortcuts and command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
+Startup prints a grouped guide to shortcuts and floating-menu controls. Supported terminals show bold titles and Pi-theme colors for shortcuts and command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
 
 Permanent global controls:
-- `Ctrl+Alt+D`: drawing/click-through toggle.
+- `F4` or `Ctrl+Alt+D`: drawing/click-through toggle. Bare `F4` is reserved system-wide while Mado runs (`Alt+F4` is unaffected); if another app owns it, startup warns and continues.
 - `Ctrl+Alt+C`: clear, undoable.
 - `Ctrl+Alt+Q`: quit.
 
 Drawing-mode-only controls:
+- `Escape` returns to click-through so underlying applications receive input again. It does not enable drawing from click-through.
 - `P` selects Pen; press `P` while Pen is selected to toggle permanent/temporary ink.
 - `A` selects Arrow; press `A` while Arrow is selected to toggle head-first/tail-first drawing.
 - `L` straight line, `R` outline rectangle, `O` ellipse, `E` eraser.
-- `X` clears all permanent and temporary ink, like `Ctrl+Alt+C`. Permanent ink can be restored with undo. `X` is inactive in click-through and while the picker is open.
+- `C` clears all permanent and temporary ink, like `Ctrl+Alt+C`. Permanent ink can be restored with undo. `C` is inactive in click-through.
+- `X` swaps the active and reserve favorite colors.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
-- `C` opens the disk color picker at the mouse, clamped to the nearest monitor work area. Drag around the disk for hue and toward its center for less saturation. Adjust brightness below it, use a preset, or enter `#RRGGBB`. Apply or Enter commits; Cancel, Escape, close or an outside click preserves the old color.
 
 Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Repeating P or A settles the active gesture and toggles its variant; other same-tool or same-style choices do not interrupt it. Variant choices survive tool/mode changes and clear.
 
@@ -51,15 +52,19 @@ Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. A
 
 The floating menu uses a dark graphite theme. Its compact badge shows the selected tool and a separate far-right drag grip, with one overlapping brush-tip circle showing the current ink color and relative width. The circle is visible only when fully compact, is part of the hover area and is not a separate control. Hover opens the full menu directly: canvas-input toggle, stroke preview, width slider, two rows of eight fixed colors and clickable tool icons. Shortcut letters remain visible on the buttons; full names are in tooltips. Bottom buttons give visible hover feedback. The expanded header keeps the tool name on the left and the input toggle alongside it, without a separate compact-badge frame. Pen and Temporary pen clicks choose their exact variant; clicking an already-selected Arrow switches its drawing direction. The Drawing/Click-through button uses the same transition as Ctrl+Alt+D. Tool, color and width selection can prepare the next annotation in click-through without enabling canvas input.
 
-The fixed colors cover warm hues, cool hues and white/gray/black. Slots are populated at startup and never reorder or change after custom picker selections. Click a different slot to select its exact color; click a selected matching slot or the stroke preview to open the full picker. Custom colors with no exact slot match do not highlight an unrelated preset. Existing numeric color shortcuts remain unchanged.
+The compact badge shows ON/OFF the same way: while drawing, the pencil is bright and the brush-tip circle is filled with the ink; in click-through, the pencil is dimmed and the circle is a hollow gray ring that still shows the width.
 
-The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it. Windows disabled-animation preferences are respected. If the Windows client-area-animation setting is off, this transition is intentionally instant. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus. The modeless picker still intentionally takes focus for editing.
+Favorite colors: the expanded menu shows the active color (brush color, front square) overlapping the reserve color (back square). Drag a palette color onto either square to set it; click the reserve square or the swap arrow, or press `X`, to swap. The compact badge shows the reserve as a small square below the grip dots, filled while drawing and hollow in click-through. Both favorites start orange / blue and are saved to `~/.mado/mado-screen/config.ini` on change.
 
-The color picker uses a light rounded pane with a continuous hue/saturation disk, brightness slider, circular swatches, hex input and Cancel/Apply. The modeless picker may intentionally take keyboard focus. While open, drawing-only shortcuts are suspended so its hex input and normal editing shortcuts work; permanent toggle/clear/quit remain available. Closing restores drawing shortcuts, or safely returns to click-through if another application reserved a key meanwhile. Clicking the canvas outside the popup dismisses it without drawing. Focus is restored best-effort only if the picker still owns foreground focus, never if the user switched to another application.
+The tray icon is a miniature of the compact badge: graphite tile, pencil and brush-tip dot. While drawing, the dot shows the current ink color; in click-through it is a hollow gray ring and the pencil is dimmed. Left-click the icon to switch modes. Right-click (or Shift+F10 / the Menu key after Win+B) for Drawing mode, Show floating menu, Clear all ink and Quit. Unchecking Show floating menu hides the panel (for presenting or recording) until you check it again; drawing and shortcuts keep working. It is shown again on every start. The icon returns automatically if Explorer restarts. Its size follows the startup display scale.
+
+The fixed colors cover warm hues, cool hues and white/gray/black. Slots are populated at startup and never reorder. Click a slot to select its exact color; clicking the selected color has no effect. The stroke preview is informational. Colors with no exact slot match do not highlight an unrelated preset. Existing numeric color shortcuts remain unchanged. The separate color picker and its `C` shortcut have been removed because colors are available in the main menu.
+
+The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it. Windows disabled-animation preferences are respected. If the Windows client-area-animation setting is off, this transition is intentionally instant. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus.
 
 ## Temporary ink
 
-Each temporary dot/input segment fades linearly over one second from when it was drawn, then disappears. Expiry continues during a long drag, after release, while the picker is open and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
+Each temporary dot/input segment fades linearly over one second from when it was drawn, then disappears. Expiry continues during a long drag, after release and in click-through. It never restarts the lifetime on release. Clear removes temporary ink immediately. Changing tool/style or undo/redo ends its drag without converting it into permanent ink.
 
 Temporary ink is drawn above permanent annotations, is not undoable and does not discard permanent redo history. Undo/redo affects permanent history only. The eraser edits permanent annotations; temporary ink expires or is cleared. Each received input segment has one age, so sparse movement can show larger steps along the fading tail. Parts of one gesture do not build up opacity at overlapping joins. Separate gestures layer normally. A timer redraws fading ink only while temporary pixels remain; it stops when empty. Permanent strokes stay opaque inside their antialiased edges. Both pens use mild streaming quadratic Bézier smoothing. A live tail reaches the newest pointer point without a timed input buffer. Completed curve geometry is shared with eraser hit-testing; shape tools remain unchanged. Smoothing slightly changes freehand paths.
 
@@ -75,7 +80,9 @@ The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot
 
 ## Verification
 
-The floating-menu implementation and manual checklist are in tasks/panel-menu-progress.md; the reference-layout and compact brush-tip follow-up is recorded in tasks/panel-menu-followup.md. This increment runs only new panel_menu_ feature tests and a release build, not the full suite or desktop smoke. Physical clicks, focus, outside-window release and mixed-DPI placement remain manual checks. Earlier compact-panel checks are recorded in tasks/layout-progress.md.
+Removing the standalone picker passed all 133 release-mode tests, the release build, formatting, the smoke self-check and PowerShell parsing. Hidden menu tests cover repeated selected-color clicks, inert preview clicks and unchanged window/focus state. The main-menu preview was reviewed offscreen. Clippy reports four pre-existing warnings under the current toolchain, also reproduced on the unchanged `db791fd` baseline. No visible app launch or physical-input acceptance check was run.
+
+The floating-menu implementation and manual checklist are in tasks/panel-menu-progress.md; the reference-layout and compact brush-tip follow-up is recorded in tasks/panel-menu-followup.md. That menu increment ran only new panel_menu_ feature tests and a release build, not the full suite or desktop smoke. Physical clicks, focus, outside-window release and mixed-DPI placement remain manual checks. Earlier compact-panel checks are recorded in tasks/layout-progress.md.
 
 The Bézier follow-up measures optimized offscreen rendering and model construction, not physical input latency or Windows bitmap upload. Reproduction and before/after results are in tasks/bezier-performance.md. Use release mode for visual and responsiveness checks.
 
@@ -85,6 +92,6 @@ Historical PoC 5 build, 68 tests, formatting/Clippy and smoke self-check passed.
 
 Historical PoC 4 with the approved disk picker passed build, 59 tests, formatting/Clippy and 79 desktop smoke checks with zero skipped on a 3440x1440 display. Indicator and offscreen native disk-pane visual review passed. The actual picker preview is docs/design/disk-color-picker-implemented.png. Initial idle CPU time was unchanged over 30 seconds. All three stages are pushed separately; evidence is in tasks/poc4-progress.md.
 
-Unit tests do not launch the app. Native UI checks create only hidden windows to verify picker controls, invalid input, Apply/Cancel, value-only events and cleanup without changing focus. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
+Unit tests do not launch the app. Native UI checks create only hidden windows to verify menu controls, committed selections, pointer-free events, nonactivation and cleanup. Desktop smoke uses a copied executable and only app-local posted messages/owned test windows. It does not move the cursor or inject real keyboard/mouse input. Fresh hidden/visible comparisons report moving background samples as skipped/untested, never passed. `scripts/smoke.ps1 -SelfCheck` tests that classifier without opening the app.
 
-Physical mouse/key delivery on each monitor and across boundaries, visible picker drag/Tab/focus/deactivation, assistive-technology behavior, normal typing/focus after toggles, outside-display release, held-button interruption and hardware pointer latency require manual observation. Hidden native checks exercise disk/slider keyboard handlers, candidate/hex/presets, Apply/Cancel/capture loss, resource lifetime and 150% geometry; they do not establish real desktop interaction. PoC 3 worked according to the user; that does not establish these behaviors for PoC 4. Stage evidence and remote pushes are recorded in tasks/poc4-progress.md. Missing features/deferred compatibility remain in docs/feature-roadmap.md; execution rules remain in docs/workflow-strategy.md.
+Physical mouse/key delivery on each monitor and across boundaries, assistive-technology behavior, normal typing/focus after toggles, outside-display release, held-button interruption and hardware pointer latency require manual observation. Hidden native checks do not establish real desktop interaction. Historical picker validation remains recorded in tasks/poc4-progress.md; the picker is no longer part of the app. Missing features/deferred compatibility remain in docs/feature-roadmap.md; execution rules remain in docs/workflow-strategy.md.

@@ -1,8 +1,8 @@
 # Features and remaining work
 
-## Compact panel and picker layout
+## Floating menu and color palette
 
-Approved: tool-icon-only panel at the primary monitor's top-right, leftward content-fitted hover expansion with five session-only recent colors, and selected-color click to open the full picker. The panel-polish follow-up smooths corners and icons through per-pixel alpha rendering. The reference-led light color picker retains Apply/Cancel and existing keyboard controls. Drawing and ink remain unchanged. Scope and evidence: tasks/layout-spec.md and tasks/layout-progress.md. Physical hover/click and mixed-DPI acceptance remain open.
+The dark floating menu provides tools, stroke width and 16 fixed colors. The separate color picker and its drawing-only `C` shortcut have been removed because the menu now provides color selection. Clicking the selected color does nothing, and the stroke preview is informational. The menu's design, nonactivation and drawing behavior remain unchanged. Scope and earlier evidence: tasks/panel-menu-progress.md and tasks/panel-menu-followup.md. Historical picker/layout records below describe earlier versions. Physical hover/click and mixed-DPI acceptance remain open.
 
 ## Bézier and performance follow-up
 
@@ -57,7 +57,6 @@ Unverified does not mean broken. Verify separately:
 - Application-window capture, which may omit a separate overlay window.
 - Borderless and exclusive fullscreen; exclusive fullscreen coverage is not guaranteed.
 - Real keys/mouse, focus restoration, held-button interruptions, capture loss and outside-display release for PoC 4.
-- Interactive disk-picker keyboard navigation, visible placement, dragging and focus on the user's desktop. Hidden native checks and offscreen rendering pass; physical behavior and assistive-technology acceptance remain manual.
 - Long-session memory and pointer responsiveness at high resolution. History snapshots clone the scene, and each changed event replays/uploads a full CPU bitmap.
 - Elevated applications and other topmost windows.
 
@@ -65,7 +64,7 @@ Secure desktop and lock-screen drawing remain excluded. No GPU rewrite is justif
 
 ## Monitor acceptance and deferred sharing
 
-Multi-monitor hardware is now available. PoC 5 automated checks cover the observed layout only. Physical gestures across seams, alternate above/below arrangements and mixed-DPI picker/focus behavior require manual acceptance. Live reconfiguration is deferred; restart the app after display changes.
+Multi-monitor hardware is now available. PoC 5 automated checks cover the observed layout only. Physical gestures across seams, alternate above/below arrangements and mixed-DPI menu placement/focus behavior require manual acceptance. Live reconfiguration is deferred; restart the app after display changes.
 
 The user deferred sharing/recording validation. When resumed, name the capture application and use a recording or recipient observation, not only a local preview.
 

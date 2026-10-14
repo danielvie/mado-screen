@@ -1,7 +1,7 @@
 use windows::{
     Win32::UI::Input::KeyboardAndMouse::{
         HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey,
-        VK_OEM_4, VK_OEM_6,
+        VK_ESCAPE, VK_F4, VK_OEM_4, VK_OEM_6,
     },
     core::{Error, Result},
 };
@@ -24,8 +24,10 @@ const WHITE: usize = 15;
 const ARROW: usize = 16;
 const ELLIPSE: usize = 17;
 const ERASER: usize = 18;
-const PICKER: usize = 19;
+const SWAP: usize = 19;
 const QUICK_CLEAR: usize = 20;
+const DEACTIVATE: usize = 21;
+const FUNCTION_TOGGLE: usize = 22;
 
 const PERMANENT_MODIFIERS: HOT_KEY_MODIFIERS =
     HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0);
@@ -40,7 +42,7 @@ const PERMANENT_KEYS: [Key; 3] = [
     (CLEAR, b'C' as u16, PERMANENT_MODIFIERS),
     (QUIT, b'Q' as u16, PERMANENT_MODIFIERS),
 ];
-const BASIC_KEYS: [Key; 13] = [
+const BASIC_KEYS: [Key; 15] = [
     (PEN, b'P' as u16, BARE_MODIFIERS),
     (LINE, b'L' as u16, BARE_MODIFIERS),
     (RECTANGLE, b'R' as u16, BARE_MODIFIERS),
@@ -53,20 +55,21 @@ const BASIC_KEYS: [Key; 13] = [
     (RED, b'3' as u16, BARE_MODIFIERS),
     (GREEN, b'4' as u16, BARE_MODIFIERS),
     (WHITE, b'5' as u16, BARE_MODIFIERS),
-    (QUICK_CLEAR, b'X' as u16, BARE_MODIFIERS),
+    (QUICK_CLEAR, b'C' as u16, BARE_MODIFIERS),
+    (SWAP, b'X' as u16, BARE_MODIFIERS),
+    (DEACTIVATE, VK_ESCAPE.0, BARE_MODIFIERS),
 ];
+// Bare F4 is global for the whole session; Alt+F4 still reaches other apps.
+const FUNCTION_KEYS: [Key; 1] = [(FUNCTION_TOGGLE, VK_F4.0, BARE_MODIFIERS)];
 const ADVANCED_KEYS: [Key; 3] = [
     (ARROW, b'A' as u16, BARE_MODIFIERS),
     (ELLIPSE, b'O' as u16, BARE_MODIFIERS),
     (ERASER, b'E' as u16, BARE_MODIFIERS),
 ];
-const PICKER_KEYS: [Key; 1] = [(PICKER, b'C' as u16, BARE_MODIFIERS)];
-
-fn drawing_key_list(advanced: bool, picker: bool) -> impl Iterator<Item = Key> {
+fn drawing_key_list(advanced: bool) -> impl Iterator<Item = Key> {
     BASIC_KEYS
         .into_iter()
         .chain(ADVANCED_KEYS.into_iter().take(if advanced { 3 } else { 0 }))
-        .chain(PICKER_KEYS.into_iter().take(if picker { 1 } else { 0 }))
 }
 
 fn key_label(key: u16, modifiers: HOT_KEY_MODIFIERS) -> String {
@@ -78,6 +81,8 @@ fn key_label(key: u16, modifiers: HOT_KEY_MODIFIERS) -> String {
         ""
     };
     let name = match key {
+        key if key == VK_ESCAPE.0 => return "Escape".into(),
+        key if key == VK_F4.0 => return "F4".into(),
         key if key == VK_OEM_4.0 => '[',
         key if key == VK_OEM_6.0 => ']',
         key => char::from_u32(key as u32).unwrap(),
@@ -92,8 +97,13 @@ impl Hotkeys {
         Self::register_keys(PERMANENT_KEYS)
     }
 
-    pub fn drawing_keys(advanced: bool, picker: bool) -> Result<Self> {
-        Self::register_keys(drawing_key_list(advanced, picker))
+    // Kept separate so another app owning F4 does not block startup.
+    pub fn function_toggle() -> Result<Self> {
+        Self::register_keys(FUNCTION_KEYS)
+    }
+
+    pub fn drawing_keys(advanced: bool) -> Result<Self> {
+        Self::register_keys(drawing_key_list(advanced))
     }
 
     fn register_keys(keys: impl IntoIterator<Item = Key>) -> Result<Self> {
@@ -147,8 +157,9 @@ pub enum Action {
     Arrow,
     Ellipse,
     Eraser,
-    Picker,
+    Swap,
     QuickClear,
+    Deactivate,
 }
 
 pub fn action(id: usize) -> Option<Action> {
@@ -171,8 +182,10 @@ pub fn action(id: usize) -> Option<Action> {
         ARROW => Some(Action::Arrow),
         ELLIPSE => Some(Action::Ellipse),
         ERASER => Some(Action::Eraser),
-        PICKER => Some(Action::Picker),
+        SWAP => Some(Action::Swap),
         QUICK_CLEAR => Some(Action::QuickClear),
+        DEACTIVATE => Some(Action::Deactivate),
+        FUNCTION_TOGGLE => Some(Action::Toggle),
         _ => None,
     }
 }
@@ -202,13 +215,15 @@ mod tests {
             Action::Arrow,
             Action::Ellipse,
             Action::Eraser,
-            Action::Picker,
+            Action::Swap,
             Action::QuickClear,
+            Action::Deactivate,
+            Action::Toggle,
         ];
         for (index, expected) in actions.into_iter().enumerate() {
             assert_eq!(action(index + 1), Some(expected));
         }
-        for id in [0, 21, usize::MAX] {
+        for id in [0, 23, usize::MAX] {
             assert_eq!(action(id), None);
         }
     }
@@ -239,13 +254,14 @@ mod tests {
             (13, b'3' as u16),
             (14, b'4' as u16),
             (15, b'5' as u16),
-            (20, b'X' as u16),
+            (20, b'C' as u16),
+            (19, b'X' as u16),
+            (21, VK_ESCAPE.0),
             (16, b'A' as u16),
             (17, b'O' as u16),
             (18, b'E' as u16),
-            (19, b'C' as u16),
         ];
-        let keys: Vec<_> = drawing_key_list(true, true).collect();
+        let keys: Vec<_> = drawing_key_list(true).collect();
         assert_eq!(
             keys.iter()
                 .map(|&(id, key, _)| (id, key))
@@ -263,20 +279,37 @@ mod tests {
     }
 
     #[test]
-    fn staged_lists_keep_basic_keys_and_gate_advanced_and_picker_independently() {
-        for (advanced, picker, expected) in [
-            (false, false, (4..=15).chain([20]).collect::<Vec<_>>()),
-            (true, false, (4..=15).chain([20]).chain(16..=18).collect()),
-            (false, true, (4..=15).chain([20, 19]).collect()),
-            (true, true, (4..=15).chain([20]).chain(16..=19).collect()),
+    fn staged_lists_keep_basic_keys_and_gate_advanced() {
+        for (advanced, expected) in [
+            (false, (4..=15).chain([20, 19, 21]).collect::<Vec<_>>()),
+            (true, (4..=15).chain([20, 19, 21]).chain(16..=18).collect()),
         ] {
             assert_eq!(
-                drawing_key_list(advanced, picker)
+                drawing_key_list(advanced)
                     .map(|(id, _, _)| id)
                     .collect::<Vec<_>>(),
                 expected
             );
         }
+    }
+
+    #[test]
+    fn escape_deactivates_drawing_without_a_permanent_binding() {
+        for advanced in [false, true] {
+            let keys: Vec<_> = drawing_key_list(advanced).collect();
+            assert!(keys.contains(&(DEACTIVATE, VK_ESCAPE.0, MOD_NOREPEAT)));
+        }
+        assert!(PERMANENT_KEYS.iter().all(|(_, key, _)| *key != VK_ESCAPE.0));
+        assert_eq!(action(DEACTIVATE), Some(Action::Deactivate));
+        assert_eq!(key_label(VK_ESCAPE.0, BARE_MODIFIERS), "Escape");
+        assert_eq!(PERMANENT_KEYS[1], (CLEAR, b'C' as u16, PERMANENT_MODIFIERS));
+    }
+
+    #[test]
+    fn f4_toggles_from_any_mode_without_modifiers() {
+        assert_eq!(FUNCTION_KEYS, [(FUNCTION_TOGGLE, VK_F4.0, MOD_NOREPEAT)]);
+        assert_eq!(action(FUNCTION_TOGGLE), Some(Action::Toggle));
+        assert!(drawing_key_list(true).all(|(_, key, _)| key != VK_F4.0));
     }
 
     #[test]
@@ -297,16 +330,19 @@ mod tests {
             "3",
             "4",
             "5",
+            "C",
             "X",
+            "Escape",
             "A",
             "O",
             "E",
-            "C",
+            "F4",
         ];
         assert_eq!(
             PERMANENT_KEYS
                 .into_iter()
-                .chain(drawing_key_list(true, true))
+                .chain(drawing_key_list(true))
+                .chain(FUNCTION_KEYS)
                 .map(|(_, key, modifiers)| key_label(key, modifiers))
                 .collect::<Vec<_>>(),
             expected
