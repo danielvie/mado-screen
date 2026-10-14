@@ -12,6 +12,7 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 | `task run-release` / `cargo run --release` | Start the optimized overlay for normal use |
 | `task perf` | Measure optimized offscreen pen input and rendering |
 | `task build` / `cargo build` | Build |
+| `task install` | Build a release and copy `mado-screen-poc.exe` to `~/.local/bin` |
 | `task test` / `cargo test` | Pure model/render/input/control and native resource checks |
 | `task test-menu` | Only new floating-menu feature tests |
 | `task test-menu-followup` | Only reference-layout and compact brush-tip feature tests, optimized |

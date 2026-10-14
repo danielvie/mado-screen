@@ -28,6 +28,15 @@ tasks:
     cmds:
       - cargo build
 
+  install:
+    desc: Build a release and install it to ~/.local/bin
+    aliases: [i]
+    cmds:
+      - cargo build --release
+      - >-
+        powershell.exe -NoProfile -Command
+        '$ErrorActionPreference = "Stop"; New-Item -ItemType Directory -Force -Path "$HOME/.local/bin" | Out-Null; Copy-Item -Path "target/release/mado-screen-poc.exe" -Destination "$HOME/.local/bin/mado-screen.exe" -Force'
+
   test:
     desc: Run PoC unit and native resource checks
     cmds:
