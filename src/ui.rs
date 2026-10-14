@@ -67,6 +67,7 @@ const PANEL_ROW: i32 = 44;
 const PANEL_SAMPLES: i32 = 4;
 const PANEL_ANIMATION_TIMER: usize = 0x4d01;
 const PANEL_DRAG_TIMER: usize = 0x4d02;
+const PANEL_LEAVE_TIMER: usize = 0x4d03;
 const PANEL_DURATION: Duration = Duration::from_millis(150);
 const PANEL_PALETTE: [u32; 16] = [
     0xffffdf32, 0xffffb51b, 0xfff97316, 0xffe31635, 0xff673b92, 0xff9b4fc0, 0xffd50d81, 0xffb9085e,
@@ -207,7 +208,11 @@ struct State {
     expanded: Cell<bool>,
     motion: Cell<PanelMotion>,
     animation_timer: Cell<bool>,
+    leave_timer: Cell<bool>,
+    circle_leave_point: Cell<Option<POINT>>,
     panel_pixels: RefCell<Vec<u32>>,
+    #[cfg(test)]
+    panel_upload: Cell<Option<(Instant, bool)>>,
     panel_anchor: Cell<POINT>,
     panel_upward: Cell<bool>,
     panel_drag: Cell<Option<PanelDrag>>,
@@ -215,6 +220,7 @@ struct State {
     panel_guard: Cell<bool>,
     tooltip: Cell<HWND>,
     tooltip_hit: Cell<Option<PanelHit>>,
+    hover: Cell<Option<PanelHit>>,
     tooltip_text: RefCell<Vec<u16>>,
     panel_scale: Cell<f64>,
     panel_dpi: Cell<u32>,
@@ -254,7 +260,11 @@ impl State {
             expanded: Cell::new(false),
             motion: Cell::new(PanelMotion::settled(false)),
             animation_timer: Cell::new(false),
+            leave_timer: Cell::new(false),
+            circle_leave_point: Cell::new(None),
             panel_pixels: RefCell::new(Vec::new()),
+            #[cfg(test)]
+            panel_upload: Cell::new(None),
             panel_anchor: Cell::new(POINT::default()),
             panel_upward: Cell::new(false),
             panel_drag: Cell::new(None),
@@ -262,6 +272,7 @@ impl State {
             panel_guard: Cell::new(false),
             tooltip: Cell::new(HWND::default()),
             tooltip_hit: Cell::new(None),
+            hover: Cell::new(None),
             tooltip_text: RefCell::new(Vec::new()),
             panel_scale: Cell::new(1.0),
             panel_dpi: Cell::new(96),
@@ -715,26 +726,42 @@ struct PanelGeometry {
     width: i32,
     height: i32,
     radius: i32,
+    body: RECT,
+    tip_radius: f64,
     scale: f64,
     upward: bool,
     opacity: f64,
 }
 impl PanelGeometry {
     fn new(state: &State) -> Self {
+        Self::with_motion(state, state.motion.get())
+    }
+    fn with_motion(state: &State, motion: PanelMotion) -> Self {
         let scale = state.panel_scale.get();
-        let progress = state.motion.get().progress;
+        let progress = motion.progress;
+        let width = scaled(PANEL_ROW, scale)
+            + scaled(
+                ((PANEL_WIDTH - PANEL_ROW) as f64 * progress).round() as i32,
+                scale,
+            );
+        let height = scaled(PANEL_ROW, scale)
+            + scaled(
+                ((PANEL_HEIGHT - PANEL_ROW) as f64 * progress).round() as i32,
+                scale,
+            );
+        let tip_radius = if progress == 0.0 && motion.to == 0.0 && !state.expanded.get() {
+            (5.0 + state.width.get().saturating_sub(1).min(30) as f64 * 0.2) * scale
+        } else {
+            0.0
+        };
+        let left = tip_radius.ceil() as i32;
+        let bottom = (tip_radius - 4.0 * scale).max(0.0).ceil() as i32;
         Self {
-            width: scaled(PANEL_ROW, scale)
-                + scaled(
-                    ((PANEL_WIDTH - PANEL_ROW) as f64 * progress).round() as i32,
-                    scale,
-                ),
-            height: scaled(PANEL_ROW, scale)
-                + scaled(
-                    ((PANEL_HEIGHT - PANEL_ROW) as f64 * progress).round() as i32,
-                    scale,
-                ),
-            radius: scaled(12, scale).max(1),
+            width: width + left,
+            height: height + bottom,
+            body: rect(left, 0, width, height),
+            tip_radius,
+            radius: scaled(6, scale).max(1),
             scale,
             upward: state.panel_upward.get(),
             opacity: progress,
@@ -742,11 +769,11 @@ impl PanelGeometry {
     }
     fn badge(&self) -> RECT {
         rect(
-            self.width - scaled(44, self.scale),
+            self.body.right - scaled(44, self.scale),
             if self.upward {
-                self.height - scaled(44, self.scale)
+                self.body.bottom - scaled(44, self.scale)
             } else {
-                0
+                self.body.top
             },
             scaled(44, self.scale),
             scaled(44, self.scale),
@@ -754,11 +781,11 @@ impl PanelGeometry {
     }
     fn bounds(&self, hit: PanelHit) -> RECT {
         let s = self.scale;
-        let ox = self.width - scaled(PANEL_WIDTH, s);
+        let ox = self.body.right - scaled(PANEL_WIDTH, s);
         let oy = if self.upward {
-            self.height - scaled(PANEL_HEIGHT, s)
+            self.body.bottom - scaled(PANEL_HEIGHT, s)
         } else {
-            0
+            self.body.top
         };
         let body = if self.upward { -44 } else { 0 };
         let local = match hit {
@@ -771,12 +798,12 @@ impl PanelGeometry {
                     scaled(28, s),
                 );
             }
-            PanelHit::Toggle => rect(16, if self.upward { 264 } else { 4 }, 184, 40),
-            PanelHit::Current => rect(16, 48 + body, 408, 48),
-            PanelHit::Width => rect(24, 96 + body, 348, 32),
+            PanelHit::Toggle => rect(112, if self.upward { 267 } else { 7 }, 266, 31),
+            PanelHit::Current => rect(24, 48 + body, 392, 32),
+            PanelHit::Width => rect(24, 88 + body, 348, 32),
             PanelHit::Palette(i) => rect(
-                30 + (i % 8) as i32 * 50,
-                146 + body + (i / 8) as i32 * 42,
+                37 + (i % 8) as i32 * 48,
+                135 + body + (i / 8) as i32 * 46,
                 30,
                 30,
             ),
@@ -785,7 +812,7 @@ impl PanelGeometry {
                     .iter()
                     .position(|entry| entry.0 == tool)
                     .unwrap();
-                rect(16 + i as i32 * 58, 236 + body, 56, 56)
+                rect(14 + i as i32 * 60, 238 + body, 44, 36)
             }
         };
         rect(
@@ -803,9 +830,34 @@ impl PanelGeometry {
         if x < 0 || y < 0 || x >= self.width || y >= self.height {
             return false;
         }
-        let cx = x.clamp(self.radius, self.width - self.radius - 1);
-        let cy = y.clamp(self.radius, self.height - self.radius - 1);
+        if self.tip_radius > 0.0 {
+            let (cx, cy) = self.tip_center();
+            // Include antialiased edge pixels, not only pixel centers. Native
+            // hit testing still uses the uploaded alpha, so empty corners pass through.
+            let dx = (cx - cx.clamp(x, x + 1)) as f64;
+            let dy = (cy - cy.clamp(y, y + 1)) as f64;
+            if dx * dx + dy * dy <= self.tip_radius.powi(2) {
+                return true;
+            }
+        }
+        let r = self.body;
+        if x < r.left || x >= r.right || y < r.top || y >= r.bottom {
+            return false;
+        }
+        let cx = x.clamp(r.left + self.radius, r.right - self.radius - 1);
+        let cy = y.clamp(r.top + self.radius, r.bottom - self.radius - 1);
         (x - cx).pow(2) + (y - cy).pow(2) <= self.radius.pow(2)
+    }
+    fn tip_center(&self) -> (i32, i32) {
+        let badge = self.badge();
+        (badge.left, badge.top + scaled(40, self.scale))
+    }
+    fn destination(&self, anchor: POINT) -> POINT {
+        let badge = self.badge();
+        POINT {
+            x: anchor.x - badge.right,
+            y: anchor.y - badge.top,
+        }
     }
     fn revealed(&self, hit: PanelHit) -> bool {
         let r = self.bounds(hit);
@@ -872,7 +924,8 @@ fn tool_icon(label: &str) -> MenuTool {
 fn panel_scale(dpi: u32, work: RECT) -> f64 {
     (dpi.max(96) as f64 / 96.0)
         .min((work.right - work.left).max(1) as f64 / PANEL_WIDTH as f64)
-        .min((work.bottom - work.top).max(1) as f64 / PANEL_HEIGHT as f64)
+        // Leave one physical pixel for independently rounded body/tip extents.
+        .min((work.bottom - work.top - 1).max(1) as f64 / (PANEL_HEIGHT + 7) as f64)
 }
 
 // Anchor is the badge's screen-space right edge and top. Upward opening keeps it fixed.
@@ -880,11 +933,12 @@ fn panel_clamp(anchor: POINT, work: RECT, scale: f64) -> (POINT, bool) {
     let width = scaled(PANEL_WIDTH, scale);
     let height = scaled(PANEL_HEIGHT, scale);
     let badge = scaled(PANEL_ROW, scale);
+    let tip_bottom = (7.0 * scale).ceil() as i32;
     let upward = anchor.y + height > work.bottom;
     let y = if upward {
         anchor
             .y
-            .clamp(work.top + height - badge, work.bottom - badge)
+            .clamp(work.top + height - badge, work.bottom - badge - tip_bottom)
     } else {
         anchor.y.clamp(work.top, work.bottom - height)
     };
@@ -992,15 +1046,7 @@ impl State {
         }
         let anchor = self.panel_anchor.get();
         let (surface, pixels) = panel_bitmap(self)?;
-        let destination = POINT {
-            x: anchor.x - geometry.width,
-            y: anchor.y
-                - if geometry.upward {
-                    geometry.height - scaled(44, geometry.scale)
-                } else {
-                    0
-                },
-        };
+        let destination = geometry.destination(anchor);
         let size = SIZE {
             cx: geometry.width,
             cy: geometry.height,
@@ -1028,11 +1074,18 @@ impl State {
             )?;
         }
         *self.panel_pixels.borrow_mut() = pixels;
+        #[cfg(test)]
+        self.panel_upload
+            .set(Some((Instant::now(), self.animation_timer.get())));
         self.tooltip_rect();
         Ok(())
     }
 
     fn reveal_panel(&self, open: bool) {
+        self.start_panel_reveal(open, panel_animations_enabled());
+    }
+
+    fn start_panel_reveal(&self, open: bool, animated: bool) {
         if self.panel_drag.get().is_some() || self.pressed.get() == Some(PanelHit::Width) {
             return;
         }
@@ -1042,14 +1095,24 @@ impl State {
             return;
         }
         self.hide_tooltip();
+        if self.animation_timer.replace(false) {
+            unsafe {
+                let _ = KillTimer(Some(self.status.get()), PANEL_ANIMATION_TIMER);
+            }
+        }
         let now = Instant::now();
-        self.motion.set(
-            self.motion
-                .get()
-                .redirect(open, panel_animations_enabled(), now),
-        );
-        self.sync_animation_timer();
+        self.motion
+            .set(self.motion.get().redirect(open, animated, now));
+        // Upload the current image before starting the clock. Rendering it is not
+        // part of the 150 ms transition, particularly when reversing a large frame.
         let _ = self.resize_panel();
+        let mut motion = self.motion.get();
+        motion.started = Instant::now();
+        self.motion.set(motion);
+        self.sync_animation_timer();
+        if motion.moving() && !self.motion.get().moving() {
+            let _ = self.resize_panel();
+        }
     }
 
     fn sync_animation_timer(&self) {
@@ -1071,9 +1134,86 @@ impl State {
         }
     }
 
+    fn opening_hover_bridge(&self, screen: POINT) -> bool {
+        let motion = self.motion.get();
+        if motion.to != 1.0 || !motion.moving() {
+            return false;
+        }
+        // The first reveal removes the circle's padding. Keep that hover alive
+        // until the growing body reaches it; transparent pixels still pass through.
+        self.target_contains(screen, true) || self.initial_circle_contains(screen)
+    }
+
+    fn target_contains(&self, screen: POINT, open: bool) -> bool {
+        let geometry = PanelGeometry::with_motion(self, PanelMotion::settled(open));
+        let origin = geometry.destination(self.panel_anchor.get());
+        geometry.contains(screen.x - origin.x, screen.y - origin.y)
+    }
+
+    fn initial_circle_contains(&self, screen: POINT) -> bool {
+        let scale = self.panel_scale.get();
+        let anchor = self.panel_anchor.get();
+        let radius = (5.0 + self.width.get().saturating_sub(1).min(30) as f64 * 0.2) * scale;
+        ((screen.x - anchor.x + scaled(44, scale)) as f64).powi(2)
+            + ((screen.y - anchor.y - scaled(40, scale)) as f64).powi(2)
+            <= radius.powi(2)
+    }
+
+    fn allow_hover_reveal(&self, screen: POINT) -> bool {
+        if self.circle_leave_point.get() == Some(screen) {
+            return false;
+        }
+        self.circle_leave_point.set(None);
+        true
+    }
+
+    fn stop_leave_timer(&self) {
+        if self.leave_timer.replace(false) {
+            unsafe {
+                let _ = KillTimer(Some(self.status.get()), PANEL_LEAVE_TIMER);
+            }
+        }
+    }
+
+    fn defer_circle_leave(&self, screen: POINT) -> bool {
+        if !self.expanded.get() || !self.initial_circle_contains(screen) {
+            self.stop_leave_timer();
+            return false;
+        }
+        if self.target_contains(screen, true) {
+            self.track_panel_leave();
+            return true;
+        }
+        // One finite grace period for the exposed upward circle cap. After collapse,
+        // the same stationary pointer cannot immediately reopen it. No idle polling.
+        if !self.leave_timer.get() && !self.status.get().is_invalid() {
+            self.leave_timer.set(unsafe {
+                SetTimer(Some(self.status.get()), PANEL_LEAVE_TIMER, 250, None) != 0
+            });
+        }
+        self.leave_timer.get()
+    }
+
+    fn finish_circle_leave(&self, screen: POINT) {
+        self.stop_leave_timer();
+        if !self.target_contains(screen, true) {
+            if self.initial_circle_contains(screen) {
+                self.circle_leave_point.set(Some(screen));
+            }
+            self.reveal_panel(false);
+        }
+    }
+
     fn panel_leave(&self) {
         self.tracking.set(false);
+        self.set_panel_hover(None);
         self.hide_tooltip();
+        let mut screen = POINT::default();
+        if unsafe { GetCursorPos(&mut screen).is_ok() }
+            && (self.opening_hover_bridge(screen) || self.defer_circle_leave(screen))
+        {
+            return;
+        }
         if self.panel_drag.get().is_none() && self.pressed.get() != Some(PanelHit::Width) {
             self.cancel_panel_gesture();
             self.reveal_panel(false);
@@ -1214,10 +1354,22 @@ impl State {
         }
     }
 
+    fn set_panel_hover(&self, hit: Option<PanelHit>) -> bool {
+        if self.hover.replace(hit) == hit {
+            return false;
+        }
+        let _ = self.resize_panel();
+        true
+    }
+
     fn begin_panel_gesture(&self, hit: Option<PanelHit>, point: POINT) {
         self.cancel_panel_gesture();
         self.hide_tooltip();
         self.pressed.set(hit);
+        self.hover.set(hit);
+        if matches!(hit, Some(PanelHit::Tool(_))) {
+            let _ = self.resize_panel();
+        }
         let hwnd = self.status.get();
         if hit == Some(PanelHit::Grip) {
             // Hold the current interpolation, including a half-revealed menu.
@@ -1275,7 +1427,11 @@ impl State {
     }
 
     fn cancel_panel_gesture(&self) {
-        self.pressed.set(None);
+        let pressed = self.pressed.replace(None);
+        let hover = self.hover.replace(None);
+        if matches!(pressed.or(hover), Some(PanelHit::Tool(_))) {
+            let _ = self.resize_panel();
+        }
         let drag = self.panel_drag.replace(None);
         let hwnd = self.status.get();
         unsafe {
@@ -1314,9 +1470,21 @@ impl State {
                 PanelHit::Tool(tool) => self.post(UiEvent::Tool(tool)),
             }
         }
-        // Resample only after ending a held-size gesture.
+        // Resample only after ending a held-size gesture, retaining feedback at release.
         self.refresh_panel_hover();
+        self.set_panel_hover(if self.tracking.get() { hit } else { None });
         self.reveal_panel(self.tracking.get());
+    }
+
+    fn track_panel_leave(&self) {
+        let mut tracking = TRACKMOUSEEVENT {
+            cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: self.status.get(),
+            ..Default::default()
+        };
+        self.tracking
+            .set(unsafe { TrackMouseEvent(&mut tracking).is_ok() });
     }
 
     fn refresh_panel_hover(&self) {
@@ -1326,11 +1494,15 @@ impl State {
             let inside = unsafe {
                 GetCursorPos(&mut point).is_ok() && ScreenToClient(hwnd, &mut point).as_bool()
             } && PanelGeometry::new(self).contains(point.x, point.y);
-            self.tracking.set(inside);
+            self.tracking.set(false);
+            if inside {
+                self.track_panel_leave();
+            }
         }
     }
 
     fn destroy_panel_resources(&self) {
+        self.stop_leave_timer();
         self.cancel_panel_gesture();
         let hwnd = self.status.get();
         unsafe {
@@ -1846,6 +2018,13 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
         width: geometry.width * n,
         height: geometry.height * n,
         radius: geometry.radius * n,
+        body: rect(
+            geometry.body.left * n,
+            geometry.body.top * n,
+            (geometry.body.right - geometry.body.left) * n,
+            (geometry.body.bottom - geometry.body.top) * n,
+        ),
+        tip_radius: geometry.tip_radius * n as f64,
         scale: geometry.scale * n as f64,
         upward: geometry.upward,
         opacity: geometry.opacity,
@@ -1860,13 +2039,18 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
         let old_pen = SelectObject(sample.dc, GetStockObject(NULL_PEN));
         let _ = RoundRect(
             sample.dc,
-            0,
-            0,
-            large.width,
-            large.height,
+            large.body.left,
+            large.body.top,
+            large.body.right,
+            large.body.bottom,
             large.radius * 2,
             large.radius * 2,
         );
+        if large.tip_radius > 0.0 {
+            let (x, y) = large.tip_center();
+            let r = large.tip_radius.round() as i32;
+            let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
+        }
         SelectObject(sample.dc, old_pen);
         SelectObject(sample.dc, old_brush);
     }
@@ -1886,28 +2070,29 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
                 for dx in 0..n {
                     let i = ((y * n + dy) * large.width + x * n + dx) as usize;
                     if coverage[i] {
-                        sums[3] += 255;
-                        for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
-                            let sx = x * n + dx;
-                            let sy = y * n + dy;
-                            let color = if sx >= badge.left
+                        sums[3] += 1;
+                        let sx = x * n + dx;
+                        let sy = y * n + dy;
+                        let color = if geometry.opacity == 0.0
+                            || (sx >= badge.left
                                 && sx < badge.right
                                 && sy >= badge.top
-                                && sy < badge.bottom
-                            {
-                                source[i]
-                            } else {
-                                blend(PANEL_BACKGROUND, source[i], geometry.opacity)
-                            };
-                            sums[channel] += ((color >> shift) & 255) * 255;
+                                && sy < badge.bottom)
+                        {
+                            source[i]
+                        } else {
+                            blend(PANEL_BACKGROUND, source[i], geometry.opacity)
+                        };
+                        for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
+                            sums[channel] += (color >> shift) & 255;
                         }
                     }
                 }
             }
             let count = (n * n) as u32;
-            let mut pixel = ((sums[3] + count / 2) / count) << 24;
+            let mut pixel = ((sums[3] * 255 + count / 2) / count) << 24;
             for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
-                pixel |= ((sums[channel] + count * 255 / 2) / (count * 255)) << shift;
+                pixel |= ((sums[channel] + count / 2) / count) << shift;
             }
             pixels.push(pixel);
         }
@@ -1989,10 +2174,10 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
     rounded_pen(
         dc,
         rect(
-            inset,
-            inset,
-            geometry.width - 2 * inset,
-            geometry.height - 2 * inset,
+            geometry.body.left + inset,
+            geometry.body.top + inset,
+            geometry.body.right - geometry.body.left - 2 * inset,
+            geometry.body.bottom - geometry.body.top - 2 * inset,
         ),
         geometry.radius,
         PANEL_BACKGROUND,
@@ -2014,7 +2199,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 rounded_pen(
                     dc,
                     toggle,
-                    scaled(6, s),
+                    scaled(4, s),
                     PANEL_BACKGROUND,
                     if state.drawing.get() {
                         PANEL_ACCENT
@@ -2025,14 +2210,14 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 );
                 let switch = rect(
                     toggle.left + scaled(8, s),
-                    toggle.top + scaled(8, s),
+                    toggle.top + scaled(7, s),
                     scaled(28, s),
                     scaled(16, s),
                 );
                 rounded_pen(
                     dc,
                     switch,
-                    scaled(8, s),
+                    scaled(4, s),
                     PANEL_BACKGROUND,
                     if state.drawing.get() {
                         PANEL_ACCENT
@@ -2060,21 +2245,25 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                     rect(
                         toggle.left + scaled(42, s),
                         toggle.top,
-                        scaled(134, s),
-                        scaled(22, s),
+                        scaled(128, s),
+                        scaled(31, s),
                     ),
                     PANEL_TEXT,
                     DT_SINGLELINE | DT_VCENTER,
                 );
                 let header = rect(
-                    toggle.right + scaled(12, s),
-                    toggle.top,
-                    scaled(180, s),
-                    scaled(32, s),
+                    toggle.left - scaled(90, s),
+                    toggle.top + scaled(6, s),
+                    scaled(84, s),
+                    scaled(18, s),
                 );
                 label(
                     dc,
-                    &state.tool_label.borrow(),
+                    PANEL_TOOLS
+                        .iter()
+                        .find(|entry| entry.0 == state.tool.get())
+                        .map(|entry| entry.1)
+                        .unwrap_or("Pen"),
                     header,
                     PANEL_SECONDARY,
                     DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
@@ -2084,29 +2273,17 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                     dc,
                     "Ctrl+Alt+D",
                     rect(
-                        toggle.left + scaled(42, s),
-                        toggle.top + scaled(22, s),
-                        scaled(134, s),
-                        scaled(16, s),
+                        toggle.right - scaled(104, s),
+                        toggle.top,
+                        scaled(96, s),
+                        scaled(31, s),
                     ),
                     PANEL_SECONDARY,
                     DT_SINGLELINE | DT_VCENTER,
                 );
-                label(
-                    dc,
-                    &format!("{}   {} px", hex(state.color.get()), state.width.get()),
-                    rect(
-                        preview.right - scaled(180, s),
-                        preview.top,
-                        scaled(180, s),
-                        scaled(16, s),
-                    ),
-                    text,
-                    DT_SINGLELINE | DT_RIGHT | DT_VCENTER,
-                );
-                let y = preview.top + scaled(30, s);
+                let y = (preview.top + preview.bottom) / 2;
                 let width = scaled(state.width.get() as i32, s).max(1);
-                let inset = scaled(4, s).max((width + 1) / 2);
+                let inset = (width + 1) / 2;
                 let left = preview.left + inset;
                 let right = preview.right - inset;
                 panel_line(
@@ -2145,23 +2322,15 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                     ),
                     PANEL_ACCENT,
                 );
-                ellipse(dc, thumb, cy, scaled(8, s), PANEL_BACKGROUND, 1, true);
-                ellipse(
-                    dc,
-                    thumb,
-                    cy,
-                    scaled(8, s),
-                    PANEL_ACCENT,
-                    scaled(2, s),
-                    false,
-                );
+                ellipse(dc, thumb, cy, scaled(10, s), 0xff364147, 1, true);
+                ellipse(dc, thumb, cy, scaled(6, s), PANEL_ACCENT, 1, true);
                 label(
                     dc,
-                    &format!("{} px", state.width.get()),
+                    &state.width.get().to_string(),
                     rect(
-                        slider.right + scaled(12, s),
+                        slider.right + scaled(22, s),
                         slider.top,
-                        scaled(48, s),
+                        scaled(30, s),
                         scaled(32, s),
                     ),
                     text,
@@ -2195,23 +2364,40 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                     PANEL_BORDER,
                 );
                 let small_font = panel_font(s * 0.72);
-                for (tool, name, key, _) in PANEL_TOOLS {
-                    let r = geometry.bounds(PanelHit::Tool(tool));
+                for (tool, _, key, _) in PANEL_TOOLS {
+                    let hit = PanelHit::Tool(tool);
+                    let r = geometry.bounds(hit);
                     let selected = state.tool.get() == tool;
-                    if selected {
+                    let hovered = !disabled && state.hover.get() == Some(hit);
+                    let pressed = !disabled && state.pressed.get() == Some(hit);
+                    if selected || hovered || pressed {
                         rounded_pen(
                             dc,
                             r,
-                            scaled(6, s),
-                            PANEL_BACKGROUND,
-                            PANEL_ACCENT,
+                            scaled(3, s),
+                            if pressed {
+                                0xff426c5f
+                            } else if hovered && selected {
+                                0xff36584d
+                            } else if hovered {
+                                0xff30363d
+                            } else {
+                                0xff263b36
+                            },
+                            if selected && (hovered || pressed) {
+                                PANEL_TEXT
+                            } else if selected || pressed {
+                                PANEL_ACCENT
+                            } else {
+                                PANEL_SECONDARY
+                            },
                             scaled(1, s),
                         );
                     }
                     panel_icon(
                         dc,
                         tool,
-                        (r.left + scaled(5, s), r.top),
+                        (r.left + scaled(2, s), r.top + scaled(2, s)),
                         s,
                         if selected && !disabled {
                             PANEL_TEXT
@@ -2220,15 +2406,15 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                         },
                     );
                     let badge = rect(
-                        r.right - scaled(18, s),
-                        r.top + scaled(5, s),
-                        scaled(15, s),
+                        r.right - scaled(15, s),
+                        r.top + scaled(4, s),
+                        scaled(13, s),
                         scaled(17, s),
                     );
                     rounded_pen(
                         dc,
                         badge,
-                        scaled(3, s),
+                        scaled(2, s),
                         PANEL_BACKGROUND,
                         PANEL_BORDER,
                         scaled(1, s),
@@ -2243,34 +2429,14 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                         PANEL_TEXT,
                         DT_SINGLELINE | DT_CENTER | DT_VCENTER,
                     );
-                    label(
-                        dc,
-                        name,
-                        rect(
-                            r.left,
-                            r.top + scaled(34, s),
-                            r.right - r.left,
-                            scaled(18, s),
-                        ),
-                        text,
-                        DT_SINGLELINE | DT_CENTER | DT_VCENTER,
-                    );
                     SelectObject(dc, font.0);
                 }
                 let _ = RestoreDC(dc, saved);
             }
         }
     }
-    // Badge is painted independently and is never faded, even during upward opening.
+    // The icon/grip stay opaque; only the body has a border, never an inner badge.
     let badge = geometry.badge();
-    rounded_pen(
-        dc,
-        badge,
-        geometry.radius,
-        PANEL_BACKGROUND,
-        PANEL_BORDER,
-        scaled(1, s),
-    );
     panel_icon(
         dc,
         state.tool.get(),
@@ -2289,6 +2455,26 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 1,
                 true,
             );
+        }
+    }
+    if geometry.tip_radius > 0.0 {
+        let (x, y) = geometry.tip_center();
+        let r = geometry.tip_radius.round() as i32;
+        unsafe {
+            let pen = GdiObject(
+                CreatePen(
+                    PS_SOLID,
+                    (1.25 * s).round().max(1.0) as i32,
+                    colorref(0xff737c85),
+                )
+                .into(),
+            );
+            let brush = GdiObject(CreateSolidBrush(colorref(state.color.get())).into());
+            let old_pen = SelectObject(dc, pen.0);
+            let old_brush = SelectObject(dc, brush.0);
+            let _ = Ellipse(dc, x - r, y - r, x + r, y + r);
+            SelectObject(dc, old_brush);
+            SelectObject(dc, old_pen);
         }
     }
 }
@@ -2827,15 +3013,11 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     let x = l.0 as u16 as i16 as i32;
                     let y = (l.0 >> 16) as u16 as i16 as i32;
                     let geometry = PanelGeometry::new(state);
+                    let mut screen = POINT { x, y };
+                    let _ = ClientToScreen(hwnd, &mut screen);
                     if geometry.contains(x, y) && !state.tracking.get() {
                         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
-                        let mut tracking = TRACKMOUSEEVENT {
-                            cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
-                            dwFlags: TME_LEAVE,
-                            hwndTrack: hwnd,
-                            ..Default::default()
-                        };
-                        state.tracking.set(TrackMouseEvent(&mut tracking).is_ok());
+                        state.track_panel_leave();
                     }
                     if state.panel_drag.get().is_some() {
                         let mut point = POINT { x, y };
@@ -2845,9 +3027,16 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         state.post(UiEvent::Width(geometry.requested_width(x)));
                     } else {
                         if geometry.contains(x, y) {
-                            state.reveal_panel(true);
+                            if state.allow_hover_reveal(screen) {
+                                state.stop_leave_timer();
+                                state.reveal_panel(true);
+                            }
                         }
-                        state.panel_tooltip(geometry.hit(state, x, y));
+                        let geometry = PanelGeometry::new(state);
+                        let origin = geometry.destination(state.panel_anchor.get());
+                        let hit = geometry.hit(state, screen.x - origin.x, screen.y - origin.y);
+                        state.set_panel_hover(hit);
+                        state.panel_tooltip(hit);
                     }
                     return LRESULT(0);
                 }
@@ -2879,6 +3068,20 @@ unsafe extern "system" fn status_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     state.motion.set(state.motion.get().sample(Instant::now()));
                     state.sync_animation_timer();
                     let _ = state.resize_panel();
+                    if !state.motion.get().moving() && state.expanded.get() {
+                        state.refresh_panel_hover();
+                        if !state.tracking.get() {
+                            state.panel_leave();
+                        }
+                    }
+                    return LRESULT(0);
+                }
+                WM_TIMER if w.0 == PANEL_LEAVE_TIMER && state.leave_timer.get() => {
+                    state.stop_leave_timer();
+                    let mut screen = POINT::default();
+                    if GetCursorPos(&mut screen).is_ok() {
+                        state.finish_circle_leave(screen);
+                    }
                     return LRESULT(0);
                 }
                 WM_TIMER if w.0 == PANEL_DRAG_TIMER && state.panel_guard.get() => {
@@ -3116,6 +3319,820 @@ mod tests {
     }
 
     #[test]
+    fn panel_menu_followup_layout_circle_and_reduced_radius() -> Result<()> {
+        let state = State::new(HWND::default())?;
+        for upward in [false, true] {
+            state.panel_upward.set(upward);
+            state.motion.set(PanelMotion::settled(true));
+            let g = PanelGeometry::new(&state);
+            assert_eq!((g.width, g.height, g.radius), (440, 304, 6));
+            let offset = if upward { -44 } else { 0 };
+            assert_eq!(
+                g.bounds(PanelHit::Toggle),
+                rect(112, if upward { 267 } else { 7 }, 266, 31)
+            );
+            assert_eq!(g.bounds(PanelHit::Current), rect(24, 48 + offset, 392, 32));
+            assert_eq!(g.center(PanelHit::Width), (198, 104 + offset));
+            assert_eq!(g.center(PanelHit::Palette(0)), (52, 150 + offset));
+            assert_eq!(g.center(PanelHit::Palette(15)), (388, 196 + offset));
+            for (i, (tool, _, _, _)) in PANEL_TOOLS.iter().enumerate() {
+                assert_eq!(
+                    g.bounds(PanelHit::Tool(*tool)),
+                    rect(14 + 60 * i as i32, 238 + offset, 44, 36)
+                );
+            }
+            for target in [
+                PanelHit::Grip,
+                PanelHit::Toggle,
+                PanelHit::Current,
+                PanelHit::Width,
+            ]
+            .into_iter()
+            .chain((0..16).map(PanelHit::Palette))
+            .chain(PANEL_TOOLS.map(|entry| PanelHit::Tool(entry.0)))
+            {
+                let (x, y) = g.center(target);
+                assert_eq!(g.hit(&state, x, y), Some(target));
+            }
+        }
+        // Removing the redundant *255/div255 preserves premultiplied RGB rounding.
+        for sum in 0_u32..=16 * 255 {
+            assert_eq!((sum + 8) / 16, (sum * 255 + 16 * 255 / 2) / (16 * 255));
+        }
+        state.panel_upward.set(false);
+        state.motion.set(PanelMotion::settled(false));
+        for (width, diameter) in [(1, 10.0), (5, 11.6), (15, 15.6), (31, 22.0)] {
+            state.width.set(width);
+            let g = PanelGeometry::new(&state);
+            assert!((2.0 * g.tip_radius - diameter).abs() < 1e-9);
+            assert_eq!(g.body.right - g.body.left, 44);
+            assert_eq!(g.body.bottom - g.body.top, 44);
+            assert_eq!(g.width, 44 + g.tip_radius.ceil() as i32);
+            assert_eq!(g.height, 44 + (g.tip_radius - 4.0).ceil() as i32);
+            let (x, y) = g.tip_center();
+            assert_eq!((x, y), (g.badge().left, g.badge().top + 40));
+            assert!(g.contains(x - 2, y));
+            assert_eq!(g.hit(&state, x - 2, y), None);
+            assert!(!g.contains(0, 0));
+            let pixels = panel_bitmap(&state)?.1;
+            assert_eq!(pixels[(y * g.width + x - 2) as usize], state.color.get());
+            assert_eq!(pixels[0], 0);
+            assert!(pixels.iter().any(|pixel| (1..255).contains(&(pixel >> 24))));
+            for (i, pixel) in pixels.iter().enumerate() {
+                if pixel >> 24 != 0 && (i % g.width as usize) < g.body.left as usize {
+                    assert!(
+                        g.contains((i % g.width as usize) as i32, (i / g.width as usize) as i32)
+                    );
+                }
+                for shift in [0, 8, 16] {
+                    assert!((pixel >> shift) & 255 <= pixel >> 24);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    struct FollowupThreadDpi(windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT);
+    impl Drop for FollowupThreadDpi {
+        fn drop(&mut self) {
+            unsafe { windows::Win32::UI::HiDpi::SetThreadDpiAwarenessContext(self.0) };
+        }
+    }
+    fn followup_thread_dpi() -> Result<FollowupThreadDpi> {
+        use windows::Win32::UI::HiDpi::{
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext,
+        };
+        let previous =
+            unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+        if previous.0.is_null() {
+            return Err(Error::from_thread());
+        }
+        Ok(FollowupThreadDpi(previous))
+    }
+
+    fn followup_preview(state: &State, name: &str) -> Result<(Vec<u32>, Duration)> {
+        let geometry = PanelGeometry::new(state);
+        let start = Instant::now();
+        let pixels = panel_bitmap(state)?.1;
+        let elapsed = start.elapsed();
+        let composed: Vec<u32> = pixels
+            .iter()
+            .map(|pixel| {
+                let alpha = pixel >> 24;
+                let mut color = 0xff000000;
+                for shift in [0, 8, 16] {
+                    color |= (((pixel >> shift) & 255)
+                        + (((0xff081421_u32 >> shift) & 255) * (255 - alpha) + 127) / 255)
+                        << shift;
+                }
+                color
+            })
+            .collect();
+        let directory =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/panel-menu-followup");
+        std::fs::create_dir_all(&directory).map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        std::fs::write(
+            directory.join(format!("{name}.png")),
+            png(geometry.width as u32, geometry.height as u32, &composed),
+        )
+        .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        Ok((pixels, elapsed))
+    }
+
+    #[test]
+    fn panel_menu_followup_hover_press_tooltips_and_no_idle_repaint() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FollowupHoverRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.create_tooltip(instance)?;
+        menu_open(&ui)?;
+        let g = PanelGeometry::new(&ui.state);
+        let (normal, _) = followup_preview(&ui.state, "full-normal")?;
+        let sample = |hit| {
+            let r = g.bounds(hit);
+            ((r.bottom - 4) * g.width + r.left + 5) as usize
+        };
+        let selected = PanelHit::Tool(MenuTool::Pen);
+        let unselected = PanelHit::Tool(MenuTool::Line);
+        for hit in [selected, unselected] {
+            let (x, y) = g.center(hit);
+            unsafe {
+                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(x, y)));
+            }
+            assert_eq!(ui.state.hover.get(), Some(hit));
+            assert_ne!(
+                ui.state.panel_pixels.borrow()[sample(hit)],
+                normal[sample(hit)]
+            );
+            let r = g.bounds(hit);
+            let edge = (((r.top + r.bottom) / 2) * g.width + r.left) as usize;
+            assert_ne!(ui.state.panel_pixels.borrow()[edge], normal[edge]);
+            let upload = ui.state.panel_upload.get();
+            unsafe {
+                SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(x, y)));
+            }
+            assert_eq!(ui.state.panel_upload.get(), upload);
+            ui.state.hide_tooltip();
+            assert_eq!(ui.state.hover.get(), Some(hit));
+            assert!(!ui.state.set_panel_hover(Some(hit)));
+            assert_eq!(ui.state.panel_upload.get(), upload);
+            let hovered = ui.state.panel_pixels.borrow()[sample(hit)];
+            unsafe {
+                SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(x, y)));
+            }
+            assert_ne!(ui.state.panel_pixels.borrow()[sample(hit)], hovered);
+            unsafe {
+                SendMessageW(hwnd, WM_CANCELMODE, None, None);
+            }
+            assert_eq!(ui.state.hover.get(), None);
+            assert_eq!(ui.state.pressed.get(), None);
+            assert_eq!(ui.state.tool.get(), MenuTool::Pen);
+            assert!(decoded(root.0).is_empty());
+            menu_open(&ui)?;
+        }
+        ui.state.set_panel_hover(Some(unselected));
+        followup_preview(&ui.state, "full-with-hover")?;
+        for (tool, _, key, _) in PANEL_TOOLS {
+            ui.state.panel_tooltip(Some(PanelHit::Tool(tool)));
+            let tooltip = String::from_utf16_lossy(&ui.state.tooltip_text.borrow());
+            let name = if tool == MenuTool::TemporaryPen {
+                "Temporary pen"
+            } else {
+                PANEL_TOOLS[tool as usize].1
+            };
+            assert!(tooltip.contains(name) && tooltip.contains(key));
+        }
+        // With no inner badge outline, its left and bottom joins are flat background.
+        let badge = g.badge();
+        assert_eq!(
+            normal[(30 * g.width + badge.left) as usize],
+            PANEL_BACKGROUND
+        );
+        assert_eq!(
+            normal[((badge.bottom - 1) * g.width + badge.left + 10) as usize],
+            PANEL_BACKGROUND
+        );
+        assert_ne!(
+            normal[(20 * g.width + g.width - 1) as usize],
+            PANEL_BACKGROUND
+        );
+        unsafe {
+            SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
+        }
+        assert_eq!(ui.state.hover.get(), None);
+        assert!(!ui.state.panel_capture.get() && !ui.state.panel_guard.get());
+        drop(ui);
+        assert!(!unsafe { IsWindow(Some(hwnd)).as_bool() });
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_circle_commits_mask_hover_and_gesture_boundaries() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FollowupCommitRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        let before = unsafe {
+            (
+                GetFocus(),
+                GetActiveWindow(),
+                GetCapture(),
+                GetForegroundWindow(),
+            )
+        };
+        let mut timings = String::from(
+            "Offscreen panel_bitmap timings, one frame per snapshot; not animation deadlines.\n",
+        );
+        for (name, color, width) in [
+            ("compact-orange-5", ORANGE, 5),
+            ("compact-orange-31", ORANGE, 31),
+            ("compact-white", 0xfff1f1ef, 15),
+            ("compact-black", 0xff161616, 31),
+        ] {
+            ui.state.motion.set(PanelMotion::settled(false));
+            ui.state.expanded.set(false);
+            ui.update_label(
+                false,
+                "Pen",
+                Style {
+                    color,
+                    thickness: width,
+                },
+            )?;
+            let g = PanelGeometry::new(&ui.state);
+            let (pixels, elapsed) = followup_preview(&ui.state, name)?;
+            timings.push_str(&format!(
+                "{name}: {:.3} ms\n",
+                elapsed.as_secs_f64() * 1000.0
+            ));
+            let (x, y) = g.tip_center();
+            assert_eq!(pixels[(y * g.width + x - 2) as usize], color);
+            assert!(
+                pixels
+                    .iter()
+                    .enumerate()
+                    .any(|(i, pixel)| i % (g.width as usize) < g.body.left as usize
+                        && pixel >> 24 != 0)
+            );
+            let bounds = window_bounds(hwnd)?;
+            let anchor = ui.state.panel_anchor.get();
+            assert_eq!(
+                (bounds.left + g.badge().right, bounds.top + g.badge().top),
+                (anchor.x, anchor.y)
+            );
+            assert_eq!(
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        WM_NCHITTEST,
+                        None,
+                        Some(point(bounds.left + x - 2, bounds.top + y)),
+                    )
+                    .0
+                },
+                HTCLIENT as isize
+            );
+            assert_eq!(
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        WM_NCHITTEST,
+                        None,
+                        Some(point(bounds.left, bounds.top)),
+                    )
+                    .0
+                },
+                HTTRANSPARENT as isize
+            );
+            panel_click(hwnd, (x - 2, y));
+            assert!(decoded(root.0).is_empty());
+            assert!(ui.state.panel_drag.get().is_none());
+        }
+        menu_open(&ui)?;
+        let (pixels, elapsed) = followup_preview(&ui.state, "full-normal")?;
+        timings.push_str(&format!(
+            "full-normal: {:.3} ms\n",
+            elapsed.as_secs_f64() * 1000.0
+        ));
+        let g = PanelGeometry::new(&ui.state);
+        for (i, color) in PANEL_PALETTE.iter().enumerate() {
+            let (x, y) = g.center(PanelHit::Palette(i));
+            assert_eq!(pixels[(y * g.width + x) as usize], *color);
+        }
+        panel_click(hwnd, g.center(PanelHit::Palette(10)));
+        assert_eq!(decoded(root.0), [UiEvent::Color(PANEL_PALETTE[10])]);
+        assert_eq!(ui.state.color.get(), 0xff161616);
+        ui.update_label(
+            true,
+            "Arrow tail-first",
+            Style {
+                color: PANEL_PALETTE[10],
+                thickness: 15,
+            },
+        )?;
+        let picker_hwnd = picker(&ui, ui.state.color.get())?;
+        let disabled_geometry = PanelGeometry::new(&ui.state);
+        for hit in [
+            PanelHit::Current,
+            PanelHit::Width,
+            PanelHit::Palette(2),
+            PanelHit::Tool(MenuTool::Line),
+        ] {
+            let (x, y) = disabled_geometry.center(hit);
+            assert_eq!(disabled_geometry.hit(&ui.state, x, y), None);
+            panel_click(hwnd, (x, y));
+        }
+        assert!(decoded(root.0).is_empty());
+        unsafe {
+            SetWindowTextW(ui.state.edit.get(), w!("#123456"))?;
+        }
+        assert_eq!(ui.state.color.get(), PANEL_PALETTE[10]);
+        click(picker_hwnd, APPLY);
+        assert_eq!(
+            decoded(root.0),
+            [UiEvent::Color(0xff123456), UiEvent::Closed]
+        );
+        ui.update_label(
+            true,
+            "Arrow tail-first",
+            Style {
+                color: 0xff123456,
+                thickness: 15,
+            },
+        )?;
+        // Width keyboard commits use the same update_label path as palette/picker commits.
+        ui.update_label(
+            true,
+            "Arrow tail-first",
+            Style {
+                color: 0xff123456,
+                thickness: 31,
+            },
+        )?;
+        let now = Instant::now();
+        ui.state.expanded.set(false);
+        let close = PanelMotion::settled(true).redirect(false, true, now);
+        for elapsed in [Duration::ZERO, Duration::from_millis(75)] {
+            ui.state.motion.set(close.sample(now + elapsed));
+            assert_eq!(PanelGeometry::new(&ui.state).tip_radius, 0.0);
+        }
+        ui.state.motion.set(close.sample(now + PANEL_DURATION));
+        ui.state.resize_panel()?;
+        let compact = PanelGeometry::new(&ui.state);
+        assert_eq!(compact.tip_radius, 11.0);
+        let (x, y) = compact.tip_center();
+        assert_eq!(
+            ui.state.panel_pixels.borrow()[(y * compact.width + x - 2) as usize],
+            0xff123456
+        );
+        assert_eq!(ui.state.tool.get(), MenuTool::Arrow);
+        menu_open(&ui)?;
+        let slider = PanelGeometry::new(&ui.state).center(PanelHit::Width);
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(slider.0, slider.1)));
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(-50, -50)));
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(500, 350)));
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(-50, -50)));
+        }
+        assert_eq!(
+            decoded(root.0),
+            [UiEvent::Width(1), UiEvent::Width(31), UiEvent::Width(1)]
+        );
+        assert!(!ui.state.panel_capture.get() && !ui.state.panel_guard.get());
+        std::fs::write(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("target/panel-menu-followup/timings.txt"),
+            timings,
+        )
+        .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        assert_eq!(
+            unsafe {
+                (
+                    GetFocus(),
+                    GetActiveWindow(),
+                    GetCapture(),
+                    GetForegroundWindow(),
+                )
+            },
+            before
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_first_frame_anchor_bridge_and_elapsed_animation() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FollowupAnimationRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        let anchor = ui.state.panel_anchor.get();
+        for upward in [false, true] {
+            ui.state.panel_upward.set(upward);
+            ui.state.expanded.set(false);
+            ui.state.motion.set(PanelMotion::settled(false));
+            ui.state.sync_animation_timer();
+            ui.state.resize_panel()?;
+            let compact = PanelGeometry::new(&ui.state);
+            let compact_pixels = panel_bitmap(&ui.state)?.1;
+            let tip_screen = POINT {
+                x: anchor.x - 44,
+                y: anchor.y + 45,
+            };
+            let origin = compact.destination(anchor);
+            assert!(compact.contains(tip_screen.x - origin.x, tip_screen.y - origin.y));
+            ui.state.start_panel_reveal(true, true);
+            let start = ui.state.motion.get();
+            let upload = ui.state.panel_upload.get().unwrap();
+            assert!(upload.0 <= start.started && !upload.1);
+            assert!(ui.state.animation_timer.get());
+            assert_eq!(start.progress, 0.0);
+            assert_eq!(PanelGeometry::new(&ui.state).tip_radius, 0.0);
+            assert_eq!(window_bounds(hwnd)?.right - window_bounds(hwnd)?.left, 44);
+            assert!(ui.state.opening_hover_bridge(tip_screen));
+            assert!(!ui.state.opening_hover_bridge(POINT {
+                x: anchor.x + 10,
+                y: anchor.y - 10
+            }));
+            for elapsed in [
+                Duration::ZERO,
+                Duration::from_millis(35),
+                Duration::from_millis(75),
+                PANEL_DURATION,
+            ] {
+                ui.state.motion.set(start.sample(start.started + elapsed));
+                ui.state.resize_panel()?;
+                let g = PanelGeometry::new(&ui.state);
+                let bounds = window_bounds(hwnd)?;
+                assert_eq!(
+                    (bounds.left + g.badge().right, bounds.top + g.badge().top),
+                    (anchor.x, anchor.y)
+                );
+                assert_eq!(
+                    (bounds.right - bounds.left, bounds.bottom - bounds.top),
+                    (g.width, g.height)
+                );
+                if elapsed == Duration::from_millis(35) {
+                    assert!(g.width > 44 && g.width < 440 && g.height > 44 && g.height < 304);
+                    assert!(g.opacity > 0.0 && g.opacity < 1.0);
+                    let pixels = panel_bitmap(&ui.state)?.1;
+                    // The neutral icon/grip interior stays opaque and frozen during fade.
+                    let badge = g.badge();
+                    for y in 8..30 {
+                        for x in 8..41 {
+                            assert_eq!(
+                                pixels[((badge.top + y) * g.width + badge.left + x) as usize],
+                                compact_pixels[((compact.badge().top + y) * compact.width
+                                    + compact.badge().left
+                                    + x) as usize]
+                            );
+                        }
+                    }
+                    followup_preview(
+                        &ui.state,
+                        if upward {
+                            "intermediate-upward"
+                        } else {
+                            "intermediate"
+                        },
+                    )?;
+                }
+            }
+            assert!(!ui.state.opening_hover_bridge(tip_screen));
+            let final_geometry = PanelGeometry::new(&ui.state);
+            let final_origin = final_geometry.destination(anchor);
+            assert_eq!(
+                final_geometry
+                    .contains(tip_screen.x - final_origin.x, tip_screen.y - final_origin.y),
+                !upward
+            );
+            ui.state.sync_animation_timer();
+            assert!(!ui.state.animation_timer.get());
+            if upward {
+                followup_preview(&ui.state, "full-upward")?;
+            }
+            ui.state.expanded.set(false);
+            let collapse = ui.state.motion.get().redirect(false, true, Instant::now());
+            ui.state
+                .motion
+                .set(collapse.sample(collapse.started + Duration::from_millis(75)));
+            assert_eq!(PanelGeometry::new(&ui.state).tip_radius, 0.0);
+            ui.state
+                .motion
+                .set(collapse.sample(collapse.started + PANEL_DURATION));
+            ui.state.resize_panel()?;
+            let g = PanelGeometry::new(&ui.state);
+            let bounds = window_bounds(hwnd)?;
+            assert!(g.tip_radius > 0.0);
+            assert_eq!(
+                (bounds.left + g.badge().right, bounds.top + g.badge().top),
+                (anchor.x, anchor.y)
+            );
+        }
+        // Instant upward reveal grants one finite grace, then latches the same
+        // screen point. Moving clears the latch without input injection.
+        let tail = POINT {
+            x: anchor.x - 44,
+            y: anchor.y + 45,
+        };
+        ui.state.panel_upward.set(true);
+        ui.state.expanded.set(false);
+        ui.state.start_panel_reveal(true, false);
+        assert!(ui.state.defer_circle_leave(tail));
+        assert!(ui.state.leave_timer.get());
+        ui.state.finish_circle_leave(tail);
+        assert!(!ui.state.leave_timer.get());
+        assert!(!ui.state.expanded.get());
+        let stopped = ui.state.panel_upload.get();
+        unsafe {
+            SendMessageW(hwnd, WM_TIMER, Some(WPARAM(PANEL_LEAVE_TIMER)), None);
+        }
+        assert_eq!(ui.state.panel_upload.get(), stopped);
+        assert!(!ui.state.allow_hover_reveal(tail));
+        assert!(!ui.state.allow_hover_reveal(tail));
+        assert!(ui.state.allow_hover_reveal(POINT {
+            x: tail.x - 1,
+            ..tail
+        }));
+        ui.state.panel_upward.set(false);
+        ui.state.start_panel_reveal(true, false);
+        assert!(ui.state.defer_circle_leave(tail));
+        assert!(!ui.state.leave_timer.get());
+        ui.state.finish_circle_leave(tail);
+        assert!(ui.state.expanded.get());
+        // A held grip at the zero-progress opening frame must not restore the tip.
+        ui.state.motion.set(PanelMotion {
+            from: 0.0,
+            to: 0.0,
+            progress: 0.0,
+            started: Instant::now(),
+        });
+        ui.state
+            .begin_panel_gesture(Some(PanelHit::Grip), POINT::default());
+        assert_eq!(PanelGeometry::new(&ui.state).tip_radius, 0.0);
+        ui.state.cancel_panel_gesture();
+        ui.state.expanded.set(false);
+        ui.state.start_panel_reveal(true, false);
+        assert_eq!(ui.state.motion.get().progress, 1.0);
+        assert!(!ui.state.animation_timer.get());
+        let before = ui.state.panel_upload.get();
+        unsafe {
+            SendMessageW(hwnd, WM_TIMER, Some(WPARAM(PANEL_ANIMATION_TIMER)), None);
+        }
+        assert_eq!(ui.state.panel_upload.get(), before);
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_native_125_percent_controls_and_preview() -> Result<()> {
+        let _dpi = followup_thread_dpi()?;
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "Followup125Root", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.panel_scale.set(1.25);
+        ui.state.panel_dpi.set(120);
+        // Apply the simulated DPI before testing an unchanged default-style update.
+        ui.state.resize_panel()?;
+        let anchor = ui.state.panel_anchor.get();
+        for (color, width) in [
+            (ORANGE, 5),
+            (ORANGE, 31),
+            (0xfff1f1ef, 15),
+            (0xff161616, 31),
+        ] {
+            ui.state.expanded.set(false);
+            ui.state.motion.set(PanelMotion::settled(false));
+            ui.update_label(
+                false,
+                "Pen",
+                Style {
+                    color,
+                    thickness: width,
+                },
+            )?;
+            let g = PanelGeometry::new(&ui.state);
+            let bounds = window_bounds(hwnd)?;
+            assert_eq!((g.body.right - g.body.left, g.body.bottom), (55, 55));
+            assert_eq!(
+                (bounds.left + g.badge().right, bounds.top + g.badge().top),
+                (anchor.x, anchor.y)
+            );
+            let (pixels, _) = followup_preview(
+                &ui.state,
+                &format!("compact-125-{width}-{:06x}", color & 0xffffff),
+            )?;
+            let (x, y) = g.tip_center();
+            assert_eq!(pixels[(y * g.width + x) as usize], color);
+            for (i, pixel) in pixels.iter().enumerate() {
+                if pixel >> 24 != 0 && i % (g.width as usize) < g.body.left as usize {
+                    let px = (i % g.width as usize) as i32;
+                    let py = (i / g.width as usize) as i32;
+                    assert!(
+                        g.contains(px, py),
+                        "Visible circle pixel lacks hover at {px},{py}"
+                    );
+                }
+            }
+        }
+        menu_open(&ui)?;
+        ui.update_label(true, "Pen", Style::default())?;
+        assert_eq!(
+            (
+                PanelGeometry::new(&ui.state).width,
+                PanelGeometry::new(&ui.state).height
+            ),
+            (550, 380)
+        );
+        let (pixels, _) = followup_preview(&ui.state, "full-125-drawing")?;
+        let g = PanelGeometry::new(&ui.state);
+        let s = g.scale;
+        assert_eq!(
+            pixels[(scaled(64, s) * g.width + scaled(220, s)) as usize],
+            ORANGE
+        );
+        assert_eq!(
+            pixels[(scaled(104, s) * g.width + scaled(300, s)) as usize],
+            PANEL_BORDER
+        );
+        let thumb = g.bounds(PanelHit::Width).left
+            + ((g.bounds(PanelHit::Width).right - g.bounds(PanelHit::Width).left) as f64 * 4.0
+                / 30.0)
+                .round() as i32;
+        assert_eq!(
+            pixels[(scaled(104, s) * g.width + thumb) as usize],
+            PANEL_ACCENT
+        );
+        // The reference has no extra RGB/width row between its header and preview.
+        for y in scaled(40, s)..scaled(49, s) {
+            for x in scaled(24, s)..scaled(380, s) {
+                assert_eq!(pixels[(y * g.width + x) as usize], PANEL_BACKGROUND);
+            }
+        }
+        for (tool, _, _, _) in PANEL_TOOLS {
+            let g = PanelGeometry::new(&ui.state);
+            let (x, y) = g.center(PanelHit::Tool(tool));
+            unsafe { SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(x, y))) };
+            assert_eq!(ui.state.hover.get(), Some(PanelHit::Tool(tool)));
+            panel_click(hwnd, (x, y));
+            assert_eq!(decoded(root.0), [UiEvent::Tool(tool)]);
+            assert_eq!(
+                ui.state.hover.get(),
+                Some(PanelHit::Tool(tool)),
+                "Mouse release must keep feedback while still over the tool"
+            );
+        }
+        ui.update_label(
+            false,
+            "Arrow tail-first",
+            Style {
+                color: 0xff123456,
+                thickness: 31,
+            },
+        )?;
+        let g = PanelGeometry::new(&ui.state);
+        assert!(!ui.state.drawing.get());
+        panel_click(hwnd, g.center(PanelHit::Toggle));
+        assert_eq!(decoded(root.0), [UiEvent::Toggle]);
+        assert!(
+            !ui.state.drawing.get(),
+            "Requests must not optimistically flip mode"
+        );
+        followup_preview(&ui.state, "full-125-click-through")?;
+        for (i, color) in PANEL_PALETTE.iter().enumerate() {
+            panel_click(hwnd, g.center(PanelHit::Palette(i)));
+            assert_eq!(decoded(root.0), [UiEvent::Color(*color)]);
+        }
+        ui.state
+            .set_panel_hover(Some(PanelHit::Tool(MenuTool::Line)));
+        followup_preview(&ui.state, "full-125-hover")?;
+        let (x, y) = g.center(PanelHit::Width);
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(x, y)));
+            SendMessageW(hwnd, WM_MOUSEMOVE, None, Some(point(-100, -100)));
+            SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(650, 450)));
+        }
+        assert_eq!(decoded(root.0), [UiEvent::Width(1), UiEvent::Width(31)]);
+        assert!(!ui.state.panel_guard.get() && !ui.state.panel_capture.get());
+        assert!(ui.state.pressed.get().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_real_timer_frames_125_percent() -> Result<()> {
+        let _dpi = followup_thread_dpi()?;
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FollowupTimer125Root", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.panel_scale.set(1.25);
+        ui.state.tracking.set(true);
+        let anchor = ui.state.panel_anchor.get();
+        let mut samples = String::from(
+            "Actual native WM_TIMER frames at 125%, hidden window; animation forced only in this test. Includes one diagnostic render/file write per transition, not a hardware FPS measurement.\n",
+        );
+        for open in [true, false] {
+            ui.state.tracking.set(open);
+            ui.state.start_panel_reveal(open, true);
+            let began = ui.state.motion.get().started;
+            let deadline = began + Duration::from_secs(3);
+            let mut frames = 0;
+            let mut intermediate = 0;
+            while ui.state.animation_timer.get() && Instant::now() < deadline {
+                let mut message = MSG::default();
+                if unsafe { PeekMessageW(&mut message, Some(hwnd), WM_TIMER, WM_TIMER, PM_REMOVE) }
+                    .as_bool()
+                {
+                    unsafe { DispatchMessageW(&message) };
+                    if message.wParam.0 == PANEL_ANIMATION_TIMER {
+                        let g = PanelGeometry::new(&ui.state);
+                        let bounds = window_bounds(hwnd)?;
+                        assert_eq!(
+                            (bounds.left + g.badge().right, bounds.top + g.badge().top),
+                            (anchor.x, anchor.y)
+                        );
+                        frames += 1;
+                        if g.opacity > 0.0 && g.opacity < 1.0 {
+                            intermediate += 1;
+                            if intermediate == 1 {
+                                followup_preview(
+                                    &ui.state,
+                                    if open {
+                                        "timer-opening-125"
+                                    } else {
+                                        "timer-closing-125"
+                                    },
+                                )?;
+                            }
+                        }
+                        samples.push_str(&format!("open={open} frame={frames} elapsed={:.1}ms progress={:.4} size={}x{}\n", began.elapsed().as_secs_f64() * 1000.0, g.opacity, g.width, g.height));
+                    }
+                } else {
+                    // Wait for this thread's timer queue, not a fixed animation frame count.
+                    unsafe { MsgWaitForMultipleObjectsEx(None, 20, QS_TIMER, MWMO_INPUTAVAILABLE) };
+                }
+            }
+            assert!(
+                !ui.state.animation_timer.get(),
+                "Native transition timer failed to settle"
+            );
+            assert!(
+                intermediate > 0,
+                "Native transition jumped directly to endpoint"
+            );
+            assert_eq!(ui.state.motion.get().progress, if open { 1.0 } else { 0.0 });
+            assert!(frames > 1);
+        }
+        let directory =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/panel-menu-followup");
+        std::fs::write(directory.join("native-timer-125.txt"), samples)
+            .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+        assert!(!ui.state.leave_timer.get() && !ui.state.panel_guard.get());
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_clamp_circle_extents_and_dpi() -> Result<()> {
+        let state = State::new(HWND::default())?;
+        state.width.set(31);
+        for (work, dpi) in [
+            (rect(0, 0, 1920, 1040), 96),
+            (rect(0, 0, 1920, 1040), 120),
+            (rect(-1600, -900, 1600, 860), 144),
+            (rect(10, 20, 600, 180), 192),
+        ] {
+            let scale = panel_scale(dpi, work);
+            state.panel_scale.set(scale);
+            let (anchor, upward) = panel_clamp(
+                POINT {
+                    x: work.right + 50,
+                    y: work.bottom + 50,
+                },
+                work,
+                scale,
+            );
+            state.panel_upward.set(upward);
+            for open in [false, true] {
+                state.motion.set(PanelMotion::settled(open));
+                let g = PanelGeometry::new(&state);
+                let origin = g.destination(anchor);
+                assert!(origin.x >= work.left && origin.y >= work.top);
+                assert!(origin.x + g.width <= work.right && origin.y + g.height <= work.bottom);
+                assert_eq!(
+                    (origin.x + g.badge().right, origin.y + g.badge().top),
+                    (anchor.x, anchor.y)
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn panel_menu_fixed_palette_variants_keys_and_bounded_targets() -> Result<()> {
         assert_eq!(
             PANEL_PALETTE,
@@ -3336,7 +4353,7 @@ mod tests {
             let initial = window_bounds(hwnd)?;
             assert_eq!(
                 (initial.right - initial.left, initial.bottom - initial.top),
-                (44, 44)
+                (50, 46)
             );
             assert_eq!(
                 (initial.right, initial.top),
@@ -3378,8 +4395,8 @@ mod tests {
                     WM_NCHITTEST,
                     None,
                     Some(point(
-                        initial.left + (partial % 44) as i32,
-                        initial.top + (partial / 44) as i32
+                        initial.left + (partial % 50) as i32,
+                        initial.top + (partial / 50) as i32
                     ))
                 )
                 .0,
@@ -3409,7 +4426,7 @@ mod tests {
                     PanelGeometry::new(&ui.state).width,
                     PanelGeometry::new(&ui.state).height
                 ),
-                (44, 44)
+                (50, 46)
             );
             assert!(!ui.state.panel_guard.get());
             assert!(!ui.state.panel_capture.get());
@@ -3602,6 +4619,7 @@ mod tests {
         let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
         let ui = hidden_ui(root.0)?;
         status(&ui)?;
+        let compact_geometry = PanelGeometry::new(&ui.state);
         let compact = panel_bitmap(&ui.state)?.1;
         menu_open(&ui)?;
         let pixels = panel_preview(&ui, "panel-menu-full-100")?;
@@ -3624,10 +4642,15 @@ mod tests {
             .flat_map(|y| (0..44).map(move |x| (y * 440 + 396 + x) as usize))
             .map(|i| pixels[i])
             .collect();
-        // Mask corners differ at the join, but the interior tool/grip is identical.
-        for y in 4..40 {
-            for x in 4..40 {
-                assert_eq!(compact[y * 44 + x], full_badge[y * 44 + x]);
+        // Exclude the rounded join and the brush-tip overlap below the icon.
+        for y in 8..32 {
+            for x in 8..40 {
+                assert_eq!(
+                    compact[y * compact_geometry.width as usize
+                        + compact_geometry.body.left as usize
+                        + x],
+                    full_badge[y * 44 + x]
+                );
             }
         }
         ui.state.panel_upward.set(true);

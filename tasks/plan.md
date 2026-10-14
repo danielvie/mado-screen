@@ -1,5 +1,9 @@
 # Windows annotation proof of concept
 
+## Menu reference and compact brush-tip follow-up
+
+Implemented corrected reference order, smaller radii, toolbar hover/release feedback, no inner compact-box border, and the updated compact brush-tip circle in feature/floating-menu after b414fd5 was integrated to main. Seven new release-profile tests and a scoped 15-check release-app trial pass, with actual 125% native/desktop previews inspected. Contract, test boundaries and animation diagnosis: tasks/panel-menu-followup.md. Physical pointer acceptance remains manual. Respect disabled Windows animation preferences unless the user approves an override. Preserve the user's main-checkout design/install edits.
+
 ## Proposed floating menu with mouse controls
 
 Status: implemented in the feature/floating-menu worktree; 14 new-feature tests and release build passed. Physical acceptance remains open. User requests only new-feature tests, not the full or legacy suites, and favors real manual acceptance. Use only the new graphite scheme. Do not promote, push or replace the installed app. Progress: tasks/panel-menu-progress.md. Older acceptance items and user-owned changes remain untouched.

@@ -1,5 +1,18 @@
 # Windows prototype tasks
 
+## Reference menu and compact brush-tip follow-up
+
+Contract and diagnosis: tasks/panel-menu-followup.md. Worktree follow-up to integrated b414fd5.
+
+- [x] Match header/control order and use smaller radii without extra label rows.
+- [x] Add toolbar hover/press feedback, retained after release, with distinct selected state.
+- [x] Remove the compact badge frame from expanded/intermediate rendering.
+- [x] Implement the compact-only brush-tip circle, its hover alpha region and stable anchor.
+- [x] Preserve circle-hover activation and reversible, time-correct animation when enabled.
+- [x] Pass 7 release-profile follow-up tests, release build and diff check; inspect 125% native previews and a scoped 15-check release-app trial.
+- [ ] User observes actual mouse, color/width updates, animation and placement.
+- [ ] User decides whether Mado should animate despite disabled Windows animations.
+
 ## Proposed floating menu with mouse controls
 
 Approved for the feature/floating-menu worktree. Only new panel_menu_ feature tests and a release build run in this loop; physical acceptance remains manual. Contract: tasks/plan.md. Progress: tasks/panel-menu-progress.md. Preserve all older completion and manual-acceptance records below.

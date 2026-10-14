@@ -38,6 +38,17 @@ tasks:
     cmds:
       - cargo test panel_menu_ -- --test-threads=1
 
+  test-menu-followup:
+    desc: Run only reference-layout and compact brush-tip feature tests
+    cmds:
+      - cargo test --release panel_menu_followup_ -- --test-threads=1
+
+  test-menu-live:
+    desc: Check the release menu through owned windows without system input
+    cmds:
+      - cargo build --release
+      - powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/menu-followup-check.ps1
+
   smoke:
     desc: Validate desktop rendering, cleanup, and idle CPU over 30 seconds
     deps: [build]
