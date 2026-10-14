@@ -34,14 +34,16 @@ Continue respecting the Windows preference. Improve the rendering path by calcul
 Implemented and tested in the worktree. Header/control order, reduced radii, icon-only toolbar, hover/press feedback and hover retained after click release were verified. The compact circle's alpha mask, hover behavior, current RGB/relative diameter, hidden-transition behavior and fixed anchor are covered by new tests.
 
 Passed:
-- `cargo test --release panel_menu_followup_ -- --test-threads=1 --nocapture`: 7 passed, 0 failed, 129 older tests filtered out.
+- `cargo test --release panel_menu_followup_ -- --test-threads=1`: 8 passed, 0 failed, 129 older tests filtered out.
 - `cargo build --release`: passed without compiler warnings.
 - `git diff --check`: passed.
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/menu-followup-check.ps1`: 15 targeted release-app checks passed at actual DPI scale 1.25. Owned menu requests reached every tool, repeated Arrow switched direction, both input-toggle transitions changed canvas styles, native full size was 550 x 380 and foreground focus was unchanged. The trial process exited cleanly. No system input was injected.
 
 The targeted app trial also saved an actual desktop image of the expanded menu, inspected against the reference. Screenshot and results: target/panel-menu-followup/native-trial/desktop-full.png and results.json. An initial posted-coordinate click trial was inconclusive because the real outside cursor could trigger menu collapse; it was not counted as a pass. The final live trial validates queued UI requests and committed runtime state, not physical mouse delivery. Native hidden-window tests separately exercise the actual button hit/hover/press/release paths at 125%.
 
-Testing found and fixed a real hover-feedback issue: mouse release cleared the hover while the pointer remained over a tool. A native 125% regression test now checks persistence. A first 125% anchor failure came from a test changing the DPI scale without resizing before an unchanged-style update; the setup was corrected, not the anchor assertion weakened.
+Testing found and fixed a real hover-feedback issue: mouse release cleared the hover while the pointer remained over a tool. A native 125% regression test now checks persistence.
+
+The late independent review confirmed one additional antialiased-circle edge case. At 125% and width 31, visible compact pixel (1,55) belonged to the native hover area but failed the initial-circle point-distance test. The hover area and opening bridge now share the same pixel-inclusive circle predicate. A new test reproduced the failure before the fix and verifies visible outside-body pixels, upward opening, deferred leave and stationary-point suppression. All eight focused release tests, the release build and the 15-check running-app trial passed after this repair. Windows animation preferences remain unchanged. A first 125% anchor failure came from a test changing the DPI scale without resizing before an unchanged-style update; the setup was corrected, not the anchor assertion weakened.
 
 Native timer test dispatches real WM_TIMER messages to a hidden 125% window, with animation enabled only through the test helper. Both directions produced multiple intermediate sizes and stopped at their endpoints. Output: target/panel-menu-followup/native-timer-125.txt. Opening settled around 208 ms and closing around 167 ms in the recorded run, including a diagnostic screenshot render/write. These are not physical animation latency or FPS guarantees, and Windows' setting was not changed.
 

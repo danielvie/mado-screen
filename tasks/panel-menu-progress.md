@@ -2,7 +2,7 @@
 
 ## Latest follow-up
 
-Reference-layout, smaller-radii, retained hover feedback and compact brush-tip updates are implemented in the worktree. Details and stronger scoped tests are in tasks/panel-menu-followup.md: 7 new release tests, actual native timer dispatch, 125% windows/rendering and a 15-check release-app trial. Main still contains the earlier b414fd5 version until this follow-up is explicitly integrated. Physical mouse delivery remains manual; Windows client-area animations are disabled on this machine and no override was applied.
+Reference-layout, smaller-radii, retained hover feedback and compact brush-tip updates are implemented in the worktree. Details and stronger scoped tests are in tasks/panel-menu-followup.md: 8 new release tests, including antialiased circle-edge hover, actual native timer dispatch, 125% windows/rendering and a 15-check release-app trial. Main still contains the earlier b414fd5 version until this follow-up is explicitly integrated. Physical mouse delivery remains manual; Windows client-area animations are disabled on this machine and no override was applied.
 
 ## Scope and workspace
 

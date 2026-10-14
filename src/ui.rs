@@ -832,11 +832,8 @@ impl PanelGeometry {
         }
         if self.tip_radius > 0.0 {
             let (cx, cy) = self.tip_center();
-            // Include antialiased edge pixels, not only pixel centers. Native
-            // hit testing still uses the uploaded alpha, so empty corners pass through.
-            let dx = (cx - cx.clamp(x, x + 1)) as f64;
-            let dy = (cy - cy.clamp(y, y + 1)) as f64;
-            if dx * dx + dy * dy <= self.tip_radius.powi(2) {
+            // Native hit testing still uses uploaded alpha, so empty corners pass through.
+            if circle_contains_pixel(cx, cy, self.tip_radius, x, y) {
                 return true;
             }
         }
@@ -907,6 +904,13 @@ impl PanelGeometry {
             .round() as u32;
         1 + 2 * step
     }
+}
+
+// Match the pixel's area, including partially covered antialiased circle edges.
+fn circle_contains_pixel(cx: i32, cy: i32, radius: f64, x: i32, y: i32) -> bool {
+    let dx = f64::from(cx) - f64::from(cx.clamp(x, x.saturating_add(1)));
+    let dy = f64::from(cy) - f64::from(cy.clamp(y, y.saturating_add(1)));
+    dx * dx + dy * dy <= radius * radius
 }
 
 fn tool_icon(label: &str) -> MenuTool {
@@ -1154,9 +1158,13 @@ impl State {
         let scale = self.panel_scale.get();
         let anchor = self.panel_anchor.get();
         let radius = (5.0 + self.width.get().saturating_sub(1).min(30) as f64 * 0.2) * scale;
-        ((screen.x - anchor.x + scaled(44, scale)) as f64).powi(2)
-            + ((screen.y - anchor.y - scaled(40, scale)) as f64).powi(2)
-            <= radius.powi(2)
+        circle_contains_pixel(
+            anchor.x - scaled(44, scale),
+            anchor.y + scaled(40, scale),
+            radius,
+            screen.x,
+            screen.y,
+        )
     }
 
     fn allow_hover_reveal(&self, screen: POINT) -> bool {
@@ -4093,6 +4101,75 @@ mod tests {
         std::fs::write(directory.join("native-timer-125.txt"), samples)
             .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
         assert!(!ui.state.leave_timer.get() && !ui.state.panel_guard.get());
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_followup_antialiased_circle_edge_keeps_hover_bridge() -> Result<()> {
+        let _dpi = followup_thread_dpi()?;
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "FollowupCircleEdgeRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        status(&ui)?;
+        ui.state.panel_scale.set(1.25);
+        ui.state.panel_dpi.set(120);
+        ui.state.panel_upward.set(true);
+        let work = ui.state.panel_monitor.get();
+        ui.state.panel_anchor.set(POINT {
+            x: work.right - scaled(16, 1.25),
+            y: work.bottom - scaled(80, 1.25),
+        });
+        ui.update_label(
+            false,
+            "Pen",
+            Style {
+                color: ORANGE,
+                thickness: 31,
+            },
+        )?;
+        let compact = PanelGeometry::new(&ui.state);
+        let pixels = panel_bitmap(&ui.state)?.1;
+        let edge = (1, 55);
+        assert!(pixels[(edge.1 * compact.width + edge.0) as usize] >> 24 > 0);
+        assert!(compact.contains(edge.0, edge.1));
+        assert_eq!(compact.hit(&ui.state, edge.0, edge.1), None);
+        let origin = compact.destination(ui.state.panel_anchor.get());
+        let screen = POINT {
+            x: origin.x + edge.0,
+            y: origin.y + edge.1,
+        };
+        assert!(
+            ui.state.initial_circle_contains(screen),
+            "Visible edge must join the hover bridge"
+        );
+        for (i, pixel) in pixels.iter().enumerate() {
+            let x = (i % compact.width as usize) as i32;
+            let y = (i / compact.width as usize) as i32;
+            if pixel >> 24 != 0 && (x < compact.body.left || y >= compact.body.bottom) {
+                assert!(ui.state.initial_circle_contains(POINT {
+                    x: origin.x + x,
+                    y: origin.y + y
+                }));
+            }
+        }
+        ui.state.start_panel_reveal(true, true);
+        assert!(ui.state.opening_hover_bridge(screen));
+        ui.state.motion.set(PanelMotion::settled(true));
+        ui.state.sync_animation_timer();
+        assert!(!ui.state.target_contains(screen, true));
+        assert!(ui.state.defer_circle_leave(screen));
+        assert!(ui.state.leave_timer.get());
+        ui.state.finish_circle_leave(screen);
+        assert!(!ui.state.leave_timer.get());
+        assert!(!ui.state.expanded.get());
+        assert!(!ui.state.allow_hover_reveal(screen));
+        assert!(!ui.state.allow_hover_reveal(screen));
+        assert!(ui.state.allow_hover_reveal(POINT {
+            x: screen.x + 1,
+            ..screen
+        }));
+        assert!(!ui.state.animation_timer.get() && !ui.state.panel_guard.get());
         Ok(())
     }
 

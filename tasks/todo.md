@@ -9,7 +9,7 @@ Contract and diagnosis: tasks/panel-menu-followup.md. Worktree follow-up to inte
 - [x] Remove the compact badge frame from expanded/intermediate rendering.
 - [x] Implement the compact-only brush-tip circle, its hover alpha region and stable anchor.
 - [x] Preserve circle-hover activation and reversible, time-correct animation when enabled.
-- [x] Pass 7 release-profile follow-up tests, release build and diff check; inspect 125% native previews and a scoped 15-check release-app trial.
+- [x] Pass 8 release-profile follow-up tests, release build and diff check; inspect 125% native previews and a scoped 15-check release-app trial.
 - [ ] User observes actual mouse, color/width updates, animation and placement.
 - [ ] User decides whether Mado should animate despite disabled Windows animations.
 
