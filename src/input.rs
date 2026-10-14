@@ -1,14 +1,18 @@
+use std::cell::Cell;
 use windows::{
     Win32::{
-        Foundation::{E_FAIL, E_INVALIDARG, HWND},
+        Foundation::{E_FAIL, E_INVALIDARG, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        System::LibraryLoader::GetModuleHandleW,
         UI::{
             Input::KeyboardAndMouse::{
                 GetAsyncKeyState, GetCapture, ReleaseCapture, SetCapture, VIRTUAL_KEY, VK_LBUTTON,
                 VK_RBUTTON,
             },
             WindowsAndMessaging::{
-                GetSystemMetrics, KillTimer, MSG, SM_SWAPBUTTON, SetTimer, WM_CANCELMODE,
-                WM_CAPTURECHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_TIMER,
+                CallNextHookEx, GetSystemMetrics, HC_ACTION, HHOOK, KillTimer, MSG, MSLLHOOKSTRUCT,
+                PostMessageW, SM_SWAPBUTTON, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx,
+                WH_MOUSE_LL, WHEEL_DELTA, WM_APP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_LBUTTONDOWN,
+                WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_TIMER,
             },
         },
     },
@@ -17,12 +21,14 @@ use windows::{
 
 const DRAG_TIMER_ID: usize = 1;
 const EXPIRY_TIMER_ID: usize = 2;
+const WHEEL_EVENT: u32 = WM_APP + 43;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     Down((i32, i32)),
     Move { point: (i32, i32), left_down: bool },
     Up((i32, i32)),
+    Wheel(i32),
     Cancel,
     CheckRelease,
     Expire,
@@ -44,11 +50,89 @@ pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
             left_down: message.wParam.0 & MK_LBUTTON != 0,
         }),
         WM_LBUTTONUP => Some(Event::Up(point)),
+        WHEEL_EVENT => Some(Event::Wheel(message.wParam.0 as i32)),
         WM_CANCELMODE | WM_CAPTURECHANGED => Some(Event::Cancel),
         WM_TIMER if message.wParam.0 == DRAG_TIMER_ID => Some(Event::CheckRelease),
         WM_TIMER if message.wParam.0 == EXPIRY_TIMER_ID => Some(Event::Expire),
         _ => None,
     }
+}
+
+#[derive(Clone, Copy, Default)]
+struct WheelState {
+    owner: HWND,
+    pending: i32,
+}
+
+thread_local! {
+    static WHEEL_STATE: Cell<WheelState> = Cell::new(WheelState::default());
+}
+
+// WM_MOUSEWHEEL normally targets keyboard focus. This hook avoids activating the overlay.
+// https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousewheel
+// Installed only while drawing; the callback only accumulates deltas and posts work.
+// ponytail: long main-thread renders can exceed LowLevelHooksTimeout and remove the hook.
+// Move it to a dedicated message-loop thread if rendering stalls approach that timeout.
+// https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelmouseproc
+pub struct MouseWheel(HHOOK);
+
+impl MouseWheel {
+    pub fn begin(owner: HWND) -> Result<Self> {
+        if owner.is_invalid() {
+            return Err(Error::new(E_INVALIDARG, "Mouse wheel requires a window"));
+        }
+        let hook = unsafe {
+            SetWindowsHookExW(
+                WH_MOUSE_LL,
+                Some(wheel_proc),
+                Some(HINSTANCE(GetModuleHandleW(None)?.0)),
+                0,
+            )?
+        };
+        WHEEL_STATE.set(WheelState { owner, pending: 0 });
+        Ok(Self(hook))
+    }
+}
+
+impl Drop for MouseWheel {
+    fn drop(&mut self) {
+        WHEEL_STATE.set(WheelState::default());
+        unsafe {
+            let _ = UnhookWindowsHookEx(self.0);
+        }
+    }
+}
+
+fn wheel_steps(pending: &mut i32, delta: i16) -> i32 {
+    *pending += i32::from(delta);
+    let steps = *pending / WHEEL_DELTA as i32;
+    *pending %= WHEEL_DELTA as i32;
+    steps
+}
+
+unsafe extern "system" fn wheel_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 && w.0 == WM_MOUSEWHEEL as usize {
+        let mut state = WHEEL_STATE.get();
+        if !state.owner.is_invalid() {
+            let data = unsafe { &*(l.0 as *const MSLLHOOKSTRUCT) };
+            let steps = wheel_steps(&mut state.pending, (data.mouseData >> 16) as i16);
+            if steps == 0
+                || unsafe {
+                    PostMessageW(
+                        Some(state.owner),
+                        WHEEL_EVENT,
+                        WPARAM(steps as usize),
+                        LPARAM::default(),
+                    )
+                }
+                .is_ok()
+            {
+                WHEEL_STATE.set(state);
+                return LRESULT(1); // Consumed: do not also scroll the focused application.
+            }
+        }
+    }
+    unsafe { CallNextHookEx(None, code, w, l) }
 }
 
 pub struct DragCapture {
@@ -152,6 +236,99 @@ mod tests {
     }
 
     #[test]
+    fn wheel_accumulates_signed_partial_and_multiple_notches() {
+        let mut pending = 0;
+        for (delta, steps, remainder) in [
+            (30, 0, 30),
+            (60, 0, 90),
+            (30, 1, 0),
+            (-60, 0, -60),
+            (-60, -1, 0),
+            (240, 2, 0),
+            (-360, -3, 0),
+            (90, 0, 90),
+            (-30, 0, 60),
+            (-180, -1, 0),
+            (0, 0, 0),
+            (i16::MAX, 273, 7),
+            (i16::MIN, -273, -1),
+        ] {
+            assert_eq!(wheel_steps(&mut pending, delta), steps);
+            assert_eq!(pending, remainder);
+        }
+    }
+
+    #[test]
+    fn wheel_messages_decode_signed_steps_only_for_owner() {
+        for steps in [i32::MIN, -3, -1, 0, 1, 2, i32::MAX] {
+            let msg = message(WHEEL_EVENT, steps as usize, (-200, 300));
+            assert_eq!(event(&msg, msg.hwnd), Some(Event::Wheel(steps)));
+        }
+        // Real wheel input is handled by the hook, never again by normal window routing.
+        let msg = message(WM_MOUSEWHEEL, 120 << 16, (0, 0));
+        assert_eq!(event(&msg, msg.hwnd), None);
+    }
+
+    #[test]
+    fn wheel_hook_posts_without_focus_and_releases_state_on_drop() {
+        use crate::overlay::Overlay;
+        use windows::Win32::UI::{
+            Input::KeyboardAndMouse::GetFocus,
+            WindowsAndMessaging::{GetForegroundWindow, PM_REMOVE, PeekMessageW, WM_MOUSEHWHEEL},
+        };
+        assert!(MouseWheel::begin(HWND::default()).is_err());
+        let overlay = Overlay::new().unwrap(); // Hidden; no physical input is injected.
+        let foreground = unsafe { GetForegroundWindow() };
+        let focus = unsafe { GetFocus() };
+        let wheel = MouseWheel::begin(overlay.hwnd()).unwrap();
+        assert_eq!(WHEEL_STATE.get().owner, overlay.hwnd());
+        for (delta, expected) in [(60, None), (60, Some(1)), (-240, Some(-2))] {
+            let data = MSLLHOOKSTRUCT {
+                mouseData: (delta as i16 as u16 as u32) << 16,
+                ..Default::default()
+            };
+            assert_eq!(
+                unsafe {
+                    wheel_proc(
+                        HC_ACTION as i32,
+                        WPARAM(WM_MOUSEWHEEL as usize),
+                        LPARAM(&data as *const _ as isize),
+                    )
+                }
+                .0,
+                1
+            );
+            let mut msg = MSG::default();
+            let posted = unsafe {
+                PeekMessageW(
+                    &mut msg,
+                    Some(overlay.hwnd()),
+                    WHEEL_EVENT,
+                    WHEEL_EVENT,
+                    PM_REMOVE,
+                )
+            }
+            .as_bool();
+            assert_eq!(posted, expected.is_some());
+            if let Some(steps) = expected {
+                assert_eq!(event(&msg, overlay.hwnd()), Some(Event::Wheel(steps)));
+            }
+        }
+        let state = WHEEL_STATE.get();
+        for (code, kind) in [(-1, WM_MOUSEWHEEL), (0, WM_MOUSEHWHEEL), (0, WM_MOUSEMOVE)] {
+            // Irrelevant hook events must not dereference lParam or consume input.
+            unsafe { wheel_proc(code, WPARAM(kind as usize), LPARAM::default()) };
+            assert_eq!(WHEEL_STATE.get().pending, state.pending);
+        }
+        assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+        assert_eq!(unsafe { GetFocus() }, focus);
+        drop(wheel);
+        assert!(WHEEL_STATE.get().owner.is_invalid());
+        assert_eq!(WHEEL_STATE.get().pending, 0);
+        unsafe { wheel_proc(0, WPARAM(WM_MOUSEWHEEL as usize), LPARAM::default()) };
+    }
+
+    #[test]
     fn mouse_coordinates_are_independently_signed() {
         for point in [
             (-1, 2),
@@ -217,6 +394,7 @@ mod tests {
             WM_LBUTTONDOWN,
             WM_MOUSEMOVE,
             WM_LBUTTONUP,
+            WHEEL_EVENT,
             WM_CANCELMODE,
             WM_CAPTURECHANGED,
             WM_TIMER,

@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), windows_subsystem = "windows")]
+
 mod bezier;
 mod config;
 mod controls;
@@ -12,7 +14,7 @@ mod ui;
 
 use config::Favorites;
 use controls::{Action, Hotkeys};
-use input::{DragCapture, Event, ExpiryTimer};
+use input::{DragCapture, Event, ExpiryTimer, MouseWheel};
 use overlay::Overlay;
 use std::{
     io::{IsTerminal, Write},
@@ -63,6 +65,7 @@ Drawing shortcuts
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
+  Mouse wheel  Scroll up for thicker ink, down for thinner ink
   1 / 2 / 3    Blue / orange / red
   4 / 5        Green / white
 
@@ -217,7 +220,7 @@ fn main() -> Result<()> {
     let tray = Tray::new(overlay.hwnd())?;
     let mut panel_visible = true;
     tray.update(drawing, strokes.style().color)?;
-    let mut tool_keys: Option<Hotkeys> = None;
+    let mut tool_keys: Option<(Hotkeys, MouseWheel)> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
     print_startup_help();
@@ -396,6 +399,9 @@ fn main() -> Result<()> {
                     now,
                 )?;
             }
+            if matches!(event, Event::Wheel(_)) {
+                ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
+            }
             if !trail.is_empty() && expiry.is_none() {
                 expiry = Some(ExpiryTimer::begin(overlay.hwnd())?);
             }
@@ -413,7 +419,7 @@ fn main() -> Result<()> {
 // The visible input toggle, Ctrl+Alt+D and drawing-only Escape use this transaction.
 fn toggle_drawing(
     drawing: &mut bool,
-    keys: &mut Option<Hotkeys>,
+    keys: &mut Option<(Hotkeys, MouseWheel)>,
     overlay: &Overlay,
     surface: &mut Surface,
     scene: (&mut Strokes, &mut Trail, Duration),
@@ -422,7 +428,9 @@ fn toggle_drawing(
     let (strokes, trail, now) = scene;
     let entering = !*drawing;
     let pending = if entering {
-        match Hotkeys::drawing_keys(true) {
+        match Hotkeys::drawing_keys(true)
+            .and_then(|keys| MouseWheel::begin(overlay.hwnd()).map(|wheel| (keys, wheel)))
+        {
             Ok(keys) => Some(keys),
             Err(error) => {
                 eprintln!(
@@ -637,6 +645,14 @@ fn handle_canvas_input(
     if event == Event::Expire {
         return Ok(animate_trail(trail, now, true));
     }
+    if let Event::Wheel(steps) = event {
+        if !drawing {
+            return Ok(false);
+        }
+        let width =
+            (i64::from(strokes.style().thickness) + i64::from(steps) * 2).clamp(1, 31) as u32;
+        return Ok(apply_menu_width(width, strokes, trail, drag));
+    }
     if (drawing && strokes.tool() == Tool::Pen && strokes.temporary_pen()) || trail.is_active() {
         match event {
             Event::Down(point) if drawing => {
@@ -751,6 +767,7 @@ mod tests {
             "Ctrl+Z",
             "Ctrl+Y",
             "[ / ]",
+            "Mouse wheel",
             "1 / 2 / 3",
             "4 / 5",
             "Hover over the top-right tool icon",
@@ -1521,6 +1538,134 @@ mod tests {
         assert_eq!(trail.annotations().count(), 1);
         assert!(trail.expire(Duration::from_millis(1100)));
         assert!(trail.is_empty());
+    }
+
+    #[test]
+    fn mouse_wheel_changes_width_only_when_drawing_and_clamps() {
+        let mut strokes = Strokes::default();
+        let mut trail = Trail::default();
+        let mut drag = None;
+        for (drawing, steps, expected) in [
+            (false, 1, 5),
+            (false, -1, 5),
+            (true, 1, 7),
+            (true, -1, 5),
+            (true, 3, 11),
+            (true, i32::MAX, 31),
+            (true, 1, 31),
+            (true, i32::MIN, 1),
+            (true, -1, 1),
+            (true, 0, 1),
+            (true, 2, 5),
+        ] {
+            assert!(
+                !handle_canvas_input(
+                    Event::Wheel(steps),
+                    drawing,
+                    (&mut strokes, &mut trail),
+                    &mut drag,
+                    HWND::default(),
+                    Duration::ZERO,
+                )
+                .unwrap()
+            ); // Width alone changes the menu, not canvas pixels.
+            assert_eq!(strokes.style().thickness, expected);
+        }
+        // No-op scrolling must not settle a gesture, including at the width limits.
+        for (drawing, width, steps) in [(false, 5, 1), (true, 31, 1), (true, 1, -1), (true, 5, 0)] {
+            strokes.set_thickness(width);
+            strokes.begin((10, 10));
+            let before = strokes.annotations().to_vec();
+            trail.begin((20, 20), strokes.style(), Duration::ZERO);
+            assert!(
+                !handle_canvas_input(
+                    Event::Wheel(steps),
+                    drawing,
+                    (&mut strokes, &mut trail),
+                    &mut drag,
+                    HWND::default(),
+                    Duration::ZERO,
+                )
+                .unwrap()
+            );
+            assert!(strokes.is_active() && trail.is_active());
+            assert_eq!(strokes.annotations(), before);
+            strokes.finish();
+            trail.finish();
+        }
+    }
+
+    #[test]
+    fn mouse_wheel_settles_gestures_preserves_ink_and_temporary_births() {
+        for tool in [Tool::Pen, Tool::Line, Tool::Rectangle] {
+            let mut strokes = Strokes::default();
+            strokes.select(tool);
+            strokes.begin((10, 10));
+            strokes.append((30, 30));
+            let mut trail = Trail::default();
+            trail.begin((50, 50), strokes.style(), Duration::ZERO);
+            trail.append((60, 60), Duration::from_millis(100));
+            let parts = trail.annotations().cloned().collect::<Vec<_>>();
+            let mut drag = None;
+            assert_eq!(
+                handle_canvas_input(
+                    Event::Wheel(1),
+                    true,
+                    (&mut strokes, &mut trail),
+                    &mut drag,
+                    HWND::default(),
+                    Duration::from_millis(100),
+                )
+                .unwrap(),
+                tool != Tool::Pen
+            );
+            assert_eq!(strokes.style().thickness, 7);
+            assert!(!strokes.is_active() && !trail.is_active());
+            assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+            let settled = strokes.annotations().to_vec();
+            assert_eq!(settled.len(), usize::from(tool == Tool::Pen));
+            if tool == Tool::Pen {
+                assert_eq!(settled[0].style.thickness, 5);
+                assert!(strokes.undo());
+                assert!(
+                    !handle_canvas_input(
+                        Event::Wheel(-1),
+                        true,
+                        (&mut strokes, &mut trail),
+                        &mut drag,
+                        HWND::default(),
+                        Duration::from_millis(100),
+                    )
+                    .unwrap()
+                );
+                assert!(strokes.redo());
+                assert_eq!(strokes.annotations(), settled);
+            }
+            for event in [
+                Event::Move {
+                    point: (70, 70),
+                    left_down: true,
+                },
+                Event::Up((80, 80)),
+            ] {
+                assert!(
+                    !handle_canvas_input(
+                        event,
+                        true,
+                        (&mut strokes, &mut trail),
+                        &mut drag,
+                        HWND::default(),
+                        Duration::from_millis(100),
+                    )
+                    .unwrap()
+                );
+            }
+            assert_eq!(strokes.annotations(), settled);
+            assert!(trail.expire(Duration::from_millis(1000)));
+            assert_eq!(trail.annotations().count(), 1);
+            assert!(trail.expire(Duration::from_millis(1100)));
+            assert!(trail.is_empty());
+        }
     }
 
     #[test]

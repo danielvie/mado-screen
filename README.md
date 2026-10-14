@@ -26,7 +26,7 @@ For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy B
 
 ## Controls
 
-Startup prints a grouped guide to shortcuts and floating-menu controls. Supported terminals show bold titles and Pi-theme colors for shortcuts and command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
+The executable starts without opening a terminal, in both debug and release builds. Use the tray icon and floating menu to control Mado; drawing shortcuts are unchanged. Startup help and diagnostics still write to standard output/error when those streams are redirected, but are not visible during a normal desktop launch.
 
 Permanent global controls:
 - `F4` or `Ctrl+Alt+D`: drawing/click-through toggle. Bare `F4` is reserved system-wide while Mado runs (`Alt+F4` is unaffected); if another app owns it, startup warns and continues.
@@ -42,6 +42,7 @@ Drawing-mode-only controls:
 - `X` swaps the active and reserve favorite colors.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
 - `[` thinner, `]` thicker, odd widths 1 through 31 physical pixels.
+- Mouse wheel up increases thickness; down decreases it, in the same 2-pixel steps. High-resolution wheel input accumulates to a full notch. The menu updates immediately. Scrolling is consumed only in drawing mode, without changing keyboard focus; click-through restores normal app scrolling.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
 
 Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Repeating P or A settles the active gesture and toggles its variant; other same-tool or same-style choices do not interrupt it. Variant choices survive tool/mode changes and clear.
@@ -79,6 +80,8 @@ One overlay and CPU bitmap span the virtual desktop, including gaps between moni
 The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot history and many stroke points can use substantial memory and slow drawing; extra screens and gaps increase bitmap cost. No idle redraw loop or GPU rewrite is introduced. Layouts larger than 32767 pixels on either axis are rejected to prevent signed mouse-coordinate wrapping, and surface allocation remains bounded. Physical mixed-DPI input and long-session responsiveness need user testing. Sharing/recording is deferred. Elevated applications and other topmost windows remain unverified. Exclusive fullscreen coverage is not guaranteed; secure desktop and lock screen are excluded.
 
 ## Verification
+
+Mouse-wheel thickness control passed all 146 release-mode tests, debug/release builds and formatting. New checks cover signed/partial wheel deltas, drawing-only changes, width limits, preserved ink/history/temporary ages, hidden-window message routing and hook cleanup without focus changes. Physical wheel delivery still needs manual testing. The wheel hook runs on the main message-loop thread; very long rendering stalls can exceed Windows' hook timeout and disable it until drawing mode is re-entered. Clippy still reports the four existing warnings below.
 
 Removing the standalone picker passed all 133 release-mode tests, the release build, formatting, the smoke self-check and PowerShell parsing. Hidden menu tests cover repeated selected-color clicks, inert preview clicks and unchanged window/focus state. The main-menu preview was reviewed offscreen. Clippy reports four pre-existing warnings under the current toolchain, also reproduced on the unchanged `db791fd` baseline. No visible app launch or physical-input acceptance check was run.
 
