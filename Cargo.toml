@@ -3,6 +3,9 @@ name = "mado-screen-poc"
 version = "0.1.0"
 edition = "2024"
 
+[build-dependencies]
+embed-resource = "=3.0.12"
+
 [dependencies]
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",

@@ -42,6 +42,11 @@ tasks:
     cmds:
       - cargo test
 
+  icon:
+    desc: Regenerate the executable icon from the default tray artwork
+    cmds:
+      - cargo test generate_executable_icon -- --ignored --exact tray::tests::generate_executable_icon
+
   test-menu:
     desc: Run only new floating-menu feature tests
     cmds:

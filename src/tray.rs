@@ -289,6 +289,110 @@ unsafe extern "system" fn tray_proc(hwnd: HWND, message: u32, w: WPARAM, l: LPAR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::Win32::System::LibraryLoader::{
+        FindResourceW, LoadResource, LockResource, SizeofResource,
+    };
+
+    #[test]
+    #[ignore = "regenerates the checked-in executable icon"]
+    fn generate_executable_icon() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let sizes = [16_u32, 20, 24, 32, 48, 64, 128, 256];
+        let mut directory = vec![0, 0, 1, 0, sizes.len() as u8, 0];
+        let mut images = Vec::new();
+        for size in sizes {
+            let pixels = tray_icon_pixels(size as i32, false, 0)?;
+            let stride = size.div_ceil(32) * 4;
+            let length = 40 + size * size * 4 + stride * size;
+            let offset = 6 + sizes.len() as u32 * 16 + images.len() as u32;
+            directory.extend_from_slice(&[size as u8, size as u8, 0, 0, 1, 0, 32, 0]);
+            directory.extend_from_slice(&length.to_le_bytes());
+            directory.extend_from_slice(&offset.to_le_bytes());
+            // ICO DIBs store bottom-up BGRA rows, followed by a DWORD-aligned AND mask.
+            // https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader
+            for value in [
+                40,
+                size,
+                size * 2,
+                0x0020_0001,
+                0,
+                size * size * 4,
+                0,
+                0,
+                0,
+                0,
+            ] {
+                images.extend_from_slice(&value.to_le_bytes());
+            }
+            for y in (0..size).rev() {
+                for x in 0..size {
+                    images.extend_from_slice(&pixels[(y * size + x) as usize].to_le_bytes());
+                }
+            }
+            for y in (0..size).rev() {
+                let mut row = vec![0_u8; stride as usize];
+                for x in 0..size {
+                    if pixels[(y * size + x) as usize] >> 24 == 0 {
+                        row[(x / 8) as usize] |= 0x80 >> (x % 8);
+                    }
+                }
+                images.extend_from_slice(&row);
+            }
+        }
+        directory.extend_from_slice(&images);
+        std::fs::write("assets/mado-screen.ico", directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn executable_icon_matches_default_tray() -> Result<()> {
+        let icon = include_bytes!("../assets/mado-screen.ico");
+        let word = |at| u16::from_le_bytes(icon[at..at + 2].try_into().unwrap());
+        let dword = |at| u32::from_le_bytes(icon[at..at + 4].try_into().unwrap());
+        assert_eq!(&icon[..6], &[0, 0, 1, 0, 8, 0]);
+        let module = unsafe { GetModuleHandleW(None)? };
+        // Inspect the actual linked resources, not just the source ICO.
+        // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-findresourcew
+        let resource = |id, kind| -> Result<&[u8]> {
+            unsafe {
+                let info = FindResourceW(Some(module), PCWSTR(id as _), kind);
+                assert!(!info.is_invalid(), "missing executable icon resource {id}");
+                let size = SizeofResource(Some(module), info) as usize;
+                let data = LockResource(LoadResource(Some(module), info)?);
+                assert!(!data.is_null());
+                Ok(std::slice::from_raw_parts(data.cast(), size))
+            }
+        };
+        let group = resource(1_usize, RT_GROUP_ICON)?;
+        assert_eq!(&group[..6], &icon[..6]);
+        for entry in 0..word(4) as usize {
+            let at = 6 + entry * 16;
+            let size = if icon[at] == 0 { 256 } else { icon[at] as i32 };
+            let length = dword(at + 8) as usize;
+            let offset = dword(at + 12) as usize;
+            let image = &icon[offset..offset + length];
+            assert_eq!(dword(offset), 40);
+            assert_eq!(dword(offset + 4), size as u32);
+            assert_eq!(dword(offset + 8), size as u32 * 2);
+            assert_eq!(word(offset + 12), 1);
+            assert_eq!(word(offset + 14), 32);
+            let pixels = tray_icon_pixels(size, false, 0)?;
+            for y in 0..size {
+                for x in 0..size {
+                    let stored = dword(offset + 40 + ((size - 1 - y) * size + x) as usize * 4);
+                    assert_eq!(
+                        stored,
+                        pixels[(y * size + x) as usize],
+                        "{size}px at {x},{y}"
+                    );
+                }
+            }
+            let group_at = 6 + entry * 14;
+            assert_eq!(&group[group_at..group_at + 12], &icon[at..at + 12]);
+            let id = u16::from_le_bytes(group[group_at + 12..group_at + 14].try_into().unwrap());
+            assert_eq!(resource(id as usize, RT_ICON)?, image);
+        }
+        Ok(())
+    }
 
     #[test]
     fn tray_menu_ids_decode_only_for_owner() {

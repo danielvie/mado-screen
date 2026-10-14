@@ -26,6 +26,8 @@ For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy B
 
 ## Controls
 
+Both debug and release executables embed the default click-through tray badge at 16, 20, 24, 32, 48, 64, 128 and 256 pixels. The icon is fixed; the live tray still changes with drawing mode and ink color. Run `task icon` after changing the default tray artwork to regenerate `assets/mado-screen.ico`.
+
 The executable starts without opening a terminal, in both debug and release builds. Use the tray icon and floating menu to control Mado; drawing shortcuts are unchanged. Startup help and diagnostics still write to standard output/error when those streams are redirected, but are not visible during a normal desktop launch.
 
 Permanent global controls:
