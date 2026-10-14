@@ -27,7 +27,7 @@ Implemented directly on main at the user's request, without another worktree.
 
 - `X` clears permanent and temporary ink while drawing and the picker is closed. `Ctrl+Alt+C` keeps its existing global behavior. Both use the same clear handler, including capture/timer cleanup and undoable permanent ink. Tool and style remain unchanged.
 - `X` has its own hotkey ID 20, uses the existing drawing-only registration guard and suppresses key repeat. Stale queued X actions are ignored in click-through and while editing the picker.
-- Help titles use bold styling. Shortcut names use teal #7CC7B4 and command labels use yellow #FFDF32. Explanations remain normal text, with the original column spacing preserved.
+- Help titles use bold styling. The initial teal/yellow highlighting was replaced by the Pi dark palette below. Explanations remain normal text, with the original column spacing preserved.
 - Enable virtual-terminal output only for a supported terminal. Flush the guide and restore the previous console mode afterward. Redirected and unsupported output remains plain text. No new dependency was added; only the existing windows crate's console feature is enabled.
 
 Windows output-mode and styling references:
@@ -40,3 +40,15 @@ Verification:
 - `cargo clippy --bin mado-screen-poc -- -D warnings`: blocked by three pre-existing warnings. Two nested-if warnings are in unchanged src/ui.rs; the even-width expression in apply_menu_width is also unchanged from main. These unrelated lines were not modified.
 
 The styling test saves target/terminal-help/help-plain.txt and help-styled.ansi for inspection without starting the overlay. Full tests and desktop smoke were not run. Physical X delivery and the terminal's actual bold-font rendering remain manual checks. Local install edits and untracked design files are preserved; no application was launched, installed or pushed.
+
+## Pi palette correction
+
+The user rejected the bright teal/yellow pairing. User settings at C:/Users/ae904f/.pi/agent/settings.json select `dark`, with no project theme override. Colors come from C:/SANDBOX/APP/pi/theme/dark.json:
+
+- Shortcuts: mdCode/accent violet, `okhsl(295 50% 67%)`, resolved to #A798D7.
+- Command labels: mdLink blue, `okhsl(232 54% 67%)`, resolved to #69ADD0.
+- Bold titles: mdHeading gold, `okhsl(83 88% 67%)`, resolved to #CD9A22.
+
+This copies the active palette; Mado does not load Pi settings at runtime. Normal text keeps the terminal default. No shortcut behavior, spacing or plain-output behavior changed. Conversion used the OKHSL author's reference implementation: https://raw.githubusercontent.com/bottosson/bottosson.github.io/master/misc/colorpicker/colorconversion.js.
+
+Two focused startup-help tests passed, including exact palette assertions and removal of the old colors. The normal release path was locked and its build failed with access denied; no running application was stopped. `cargo build --release --target-dir target/pi-palette-check`, `cargo fmt --check` and `git diff --check` passed. The validated executable is target/pi-palette-check/release/mado-screen-poc.exe. No full suite, desktop trial, install or push ran.

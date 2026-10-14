@@ -25,7 +25,7 @@ For gesture checks after building: `powershell.exe -NoProfile -ExecutionPolicy B
 
 ## Controls
 
-Startup prints a grouped guide to shortcuts and color-panel controls. Supported terminals show bold titles, teal shortcuts and yellow command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
+Startup prints a grouped guide to shortcuts and color-panel controls. Supported terminals show bold titles and Pi-theme colors for shortcuts and command labels; redirected or unsupported output stays plain text. Routine mode, tool, clear and shutdown events are silent; actionable errors still appear in the terminal.
 
 Permanent global controls:
 - `Ctrl+Alt+D`: drawing/click-through toggle.

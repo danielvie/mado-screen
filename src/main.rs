@@ -76,8 +76,10 @@ fn startup_help(styled: bool) -> String {
         return STARTUP_HELP.to_owned();
     }
     const RESET: &str = "\x1b[0m";
-    const SHORTCUT: &str = "\x1b[38;2;124;199;180m";
-    const COMMAND: &str = "\x1b[38;2;255;223;50m";
+    // Pi dark palette: mdCode/accent, mdLink and mdHeading, resolved from OKHSL.
+    const SHORTCUT: &str = "\x1b[38;2;167;152;215m";
+    const COMMAND: &str = "\x1b[38;2;105;173;208m";
+    const TITLE: &str = "\x1b[1;38;2;205;154;34m";
     let mut help = String::new();
     for line in STARTUP_HELP.lines() {
         if matches!(
@@ -87,7 +89,7 @@ fn startup_help(styled: bool) -> String {
                 | "Drawing shortcuts (while the color picker is closed)"
                 | "Floating menu and picker"
         ) {
-            help.push_str(&format!("\x1b[1m{line}{RESET}"));
+            help.push_str(&format!("{TITLE}{line}{RESET}"));
         } else if let Some((key, description)) = line
             .strip_prefix("  ")
             .and_then(|row| row.split_once("   "))
@@ -795,7 +797,7 @@ mod tests {
             "Drawing shortcuts (while the color picker is closed)",
             "Floating menu and picker",
         ] {
-            assert!(styled.contains(&format!("\x1b[1m{heading}\x1b[0m")));
+            assert!(styled.contains(&format!("\x1b[1;38;2;205;154;34m{heading}\x1b[0m")));
         }
         for key in [
             "Ctrl+Alt+D",
@@ -818,11 +820,13 @@ mod tests {
             "Escape",
             "Drawing / Click-through",
         ] {
-            assert!(styled.contains(&format!("\x1b[38;2;124;199;180m{key}\x1b[0m")));
+            assert!(styled.contains(&format!("\x1b[38;2;167;152;215m{key}\x1b[0m")));
         }
         for command in ["Pen", "Arrow", "Apply", "Cancel", "Hover", "Click", "Drag"] {
-            assert!(styled.contains(&format!("\x1b[38;2;255;223;50m{command}\x1b[0m")));
+            assert!(styled.contains(&format!("\x1b[38;2;105;173;208m{command}\x1b[0m")));
         }
+        assert!(!styled.contains("\x1b[38;2;124;199;180m"));
+        assert!(!styled.contains("\x1b[38;2;255;223;50m"));
         // Save both output paths for inspecting styling without starting the overlay.
         let artifacts =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/terminal-help");
