@@ -48,6 +48,8 @@ const RING_EDGE: f64 = 113.0;
 const RING_CENTER: f64 = 34.0;
 const RING_TOOLS: (f64, f64) = (38.0, 76.0);
 const RING_COLORS: (f64, f64) = (80.0, 106.0);
+// Collapse button: center inset from the top-right corner, and radius.
+const RING_COLLAPSE: (i32, f64) = (16, 11.0);
 const PANEL_SAMPLES: i32 = 4;
 const PANEL_ANIMATION_TIMER: usize = 0x4d01;
 const PANEL_DRAG_TIMER: usize = 0x4d02;
@@ -518,6 +520,8 @@ enum PanelHit {
     Palette(usize),
     Width,
     Tool(MenuTool),
+    // Radial ring only: returns to the compact badge.
+    Collapse,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -711,6 +715,7 @@ impl PanelGeometry {
             PanelHit::Reserve => rect(40, 58 + body, 22, 22),
             PanelHit::Swap => rect(52, 46 + body, 12, 12),
             PanelHit::Current => rect(92, 48 + body, 324, 32),
+            PanelHit::Collapse => rect(0, 0, 0, 0),
             PanelHit::Width => rect(24, 88 + body, 348, 32),
             PanelHit::Palette(i) => rect(
                 37 + (i % 8) as i32 * 48,
@@ -740,6 +745,7 @@ impl PanelGeometry {
                     (RING_COLORS.0 + RING_COLORS.1) / 2.0,
                     ring_angle(i, PANEL_PALETTE.len()),
                 ),
+                PanelHit::Collapse => return self.collapse_center(),
                 _ => (0.0, 0.0),
             };
             let radius = radius * self.scale;
@@ -790,8 +796,19 @@ impl PanelGeometry {
             (self.body.top + self.body.bottom) / 2,
         )
     }
+    // Collapse button in the ring window's top-right corner, outside the disc.
+    fn collapse_center(&self) -> (i32, i32) {
+        (
+            self.width - scaled(RING_COLLAPSE.0, self.scale),
+            scaled(RING_COLLAPSE.0, self.scale),
+        )
+    }
     // Center swaps colors; the inner ring holds tools, the outer ring colors.
     fn ring_hit(&self, x: i32, y: i32) -> Option<PanelHit> {
+        let (bx, by) = self.collapse_center();
+        if f64::from(x - bx).hypot(f64::from(y - by)) <= (RING_COLLAPSE.1 + 1.0) * self.scale {
+            return Some(PanelHit::Collapse);
+        }
         let (cx, cy) = self.ring_center();
         let dx = f64::from(x - cx) / self.scale;
         let dy = f64::from(y - cy) / self.scale;
@@ -917,7 +934,9 @@ fn rail_bounds(hit: PanelHit, body: i32) -> RECT {
         ),
         PanelHit::Width => rect(12, 558 + body, 20, 90),
         // Not on the rail: clicking the reserve swaps, and the badge tip shows the stroke.
-        PanelHit::Grip | PanelHit::Swap | PanelHit::Current => rect(0, 0, 0, 0),
+        PanelHit::Grip | PanelHit::Swap | PanelHit::Current | PanelHit::Collapse => {
+            rect(0, 0, 0, 0)
+        }
     }
 }
 
@@ -1239,11 +1258,7 @@ impl State {
                 );
             }
         }
-        // The square window covers the pointer unless the pointer is outside the work area.
         self.refresh_panel_hover();
-        if !self.tracking.get() {
-            self.reveal_panel(false);
-        }
     }
 
     fn opening_hover_bridge(&self, screen: POINT) -> bool {
@@ -1324,14 +1339,13 @@ impl State {
         self.tracking.set(false);
         self.set_panel_hover(None);
         self.hide_tooltip();
-        if self.pinned.get() {
+        // Pinned menus and the ring stay open; the ring closes from its own button.
+        if self.pinned.get() || self.layout.get() == MenuLayout::Radial {
             self.stop_leave_timer();
             return;
         }
         let mut screen = POINT::default();
-        // The ring replaces the badge while open, so the badge-circle grace never applies.
-        if self.layout.get() != MenuLayout::Radial
-            && unsafe { GetCursorPos(&mut screen).is_ok() }
+        if unsafe { GetCursorPos(&mut screen).is_ok() }
             && (self.opening_hover_bridge(screen) || self.defer_circle_leave(screen))
         {
             return;
@@ -1472,6 +1486,9 @@ impl State {
                 self.width.get()
             ),
             PanelHit::Width => "Stroke width. Odd widths from 1 to 31 px.".into(),
+            PanelHit::Collapse => {
+                "Collapse to the compact badge. Click the badge to reopen the ring.".into()
+            }
             PanelHit::Palette(i) => format!(
                 "Color {}. Click to select, or drag onto a favorite square.",
                 hex(PANEL_PALETTE[i])
@@ -1690,14 +1707,19 @@ impl State {
                 PanelHit::Palette(i) => self.post(UiEvent::Color(PANEL_PALETTE[i])),
                 PanelHit::Width => {}
                 PanelHit::Tool(tool) => self.post(UiEvent::Tool(tool)),
+                PanelHit::Collapse => {
+                    self.reveal_panel(false);
+                    return;
+                }
             }
         }
         // Resample only after ending a held-size gesture, retaining feedback at release.
         self.refresh_panel_hover();
         self.set_panel_hover(if self.tracking.get() { hit } else { None });
-        // The ring closes after a pick or a click on its empty corners.
-        let dismissed = ring && (pressed.is_some_and(|p| Some(p) == hit) || pressed.is_none());
-        self.reveal_panel(self.tracking.get() && !dismissed);
+        // The open ring stays until its collapse button is clicked.
+        if !ring {
+            self.reveal_panel(self.tracking.get());
+        }
     }
 
     fn track_panel_leave(&self) {
@@ -1979,6 +2001,9 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
             let (x, y) = large.ring_center();
             let r = (RING_EDGE * large.scale).round() as i32;
             let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
+            let (x, y) = large.collapse_center();
+            let r = (RING_COLLAPSE.1 * large.scale).round() as i32;
+            let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
         } else {
             let _ = RoundRect(
                 sample.dc,
@@ -2037,11 +2062,6 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
             let mut pixel = ((sums[3] * 255 + count / 2) / count) << 24;
             for (channel, shift) in [0, 8, 16].into_iter().enumerate() {
                 pixel |= ((sums[channel] + count / 2) / count) << shift;
-            }
-            // The ring's corners are nearly invisible but still receive the pointer,
-            // so the whole square tracks hover and an outside click dismisses it.
-            if geometry.ring && pixel == 0 {
-                pixel = 0x01000000;
             }
             pixels.push(pixel);
         }
@@ -2969,6 +2989,42 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
             },
         );
     }
+    // Collapse button: a small graphite disc with a minimize bar.
+    let (bx, by) = geometry.collapse_center();
+    let hovered = hover == Some(PanelHit::Collapse);
+    let button = (RING_COLLAPSE.1 * s).round() as i32;
+    ellipse(
+        dc,
+        bx,
+        by,
+        button,
+        if pressed == Some(PanelHit::Collapse) {
+            0xff426c5f
+        } else if hovered {
+            0xff30363d
+        } else {
+            0xff23272c
+        },
+        1,
+        true,
+    );
+    ellipse(
+        dc,
+        bx,
+        by,
+        button - scaled(1, s),
+        if hovered { PANEL_TEXT } else { PANEL_SECONDARY },
+        scaled(1, s),
+        false,
+    );
+    panel_line(
+        dc,
+        &[(-5, 0), (5, 0)],
+        s,
+        (bx, by),
+        if hovered { PANEL_TEXT } else { PANEL_SECONDARY },
+        scaled(2, s),
+    );
     let middle = if pressed == Some(PanelHit::Swap) {
         0xff426c5f
     } else if hover == Some(PanelHit::Swap) {
@@ -5312,9 +5368,10 @@ mod tests {
                 // Pen and the first color sit at the top; order runs clockwise.
                 assert!(g.center(PanelHit::Tool(MenuTool::Pen)).1 < cy);
                 assert!(g.center(PanelHit::Palette(4)).0 > cx);
-                // Corners belong to the window (hover, dismiss) but are not targets.
-                assert!(g.contains(0, 0) && g.hit(0, 0).is_none());
-                assert!(g.hit(side - 1, side - 1).is_none());
+                // Only the top-right corner holds a target: the collapse button.
+                let (bx, by) = g.collapse_center();
+                assert_eq!(g.hit(bx, by), Some(PanelHit::Collapse));
+                assert!(g.hit(0, 0).is_none() && g.hit(side - 1, side - 1).is_none());
             }
         }
         Ok(())
@@ -5364,31 +5421,30 @@ mod tests {
         open(middle)?;
         let ring = panel_preview(&ui, "layout-ring-100")?;
         let g = PanelGeometry::new(&ui.state);
-        assert_eq!(ring[0], 0x01000000, "corners stay hittable");
+        assert_eq!(ring[0], 0, "corners pass clicks through");
         for (i, color) in PANEL_PALETTE.iter().enumerate() {
             let (x, y) = g.center(PanelHit::Palette(i));
             assert_eq!(ring[(y * g.width + x) as usize], *color);
         }
+        // Picks, swaps and pointer leave keep the ring open.
         panel_click(hwnd, g.center(PanelHit::Tool(MenuTool::Ellipse)));
         assert_eq!(decoded(root.0), [UiEvent::Tool(MenuTool::Ellipse)]);
-        assert!(!ui.state.expanded.get());
-        assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
-        open(middle)?;
         let (cx, cy) = g.ring_center();
         panel_click(hwnd, (cx, cy));
         assert_eq!(decoded(root.0), [UiEvent::Swap]);
-        assert!(!ui.state.expanded.get());
-        // A corner click dismisses without a request.
-        open(middle)?;
-        panel_click(hwnd, (1, 1));
+        ui.state.panel_leave();
+        assert!(ui.state.expanded.get());
+        // Only the collapse button returns to the badge; a hidden menu hides again.
+        panel_click(hwnd, g.collapse_center());
         assert!(decoded(root.0).is_empty());
         assert!(!ui.state.expanded.get());
-        // The real summon path follows the pointer: open while it is inside, else close.
+        assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+        // The real summon path opens regardless of where the pointer is.
         ui.set_visible(true)?;
         let mut cursor = POINT::default();
         unsafe { GetCursorPos(&mut cursor)? };
         ui.state.open_radial(cursor);
-        assert_eq!(ui.state.expanded.get(), ui.state.tracking.get());
+        assert!(ui.state.expanded.get());
         ui.state.reveal_panel(false);
         assert!(unsafe { IsWindowVisible(hwnd) }.as_bool());
         // Other layouts ignore summon requests.

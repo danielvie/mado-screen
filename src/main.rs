@@ -82,7 +82,7 @@ Floating menu
   Click the tray icon to switch modes; right-click it to hide the menu, clear or quit.
   Choose Reload config in the tray menu to apply edited settings without restarting.
   Choose Panel, Edge rail or Radial ring under the tray's Menu layout submenu.
-  Radial ring: right-click while drawing, or click the badge; click a slice to pick.
+  Radial ring: click the badge or right-click while drawing; its minimize button closes it.
 
 Default brush: orange, 5 pixels; reserve blue. Restart after changing the monitor layout.
 Settings and favorite colors are saved in ~/.mado/mado-screen/settings.toml.
@@ -1022,7 +1022,7 @@ mod tests {
             "4 / 5",
             "Hover over the top-right tool icon",
             "Menu layout submenu",
-            "Radial ring: right-click while drawing",
+            "Radial ring: click the badge",
             "Click tool icons, color slots or the width slider",
             "1 second",
         ] {
