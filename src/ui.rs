@@ -169,6 +169,8 @@ pub enum UiEvent {
     Tool(MenuTool),
     Width(u32),
     Toggle,
+    // The user pinned/unpinned a layout or opened/minimized the ring; worth saving.
+    Remember(MenuLayout, bool),
 }
 
 // Each instance owns its classes, so independent instances cannot unregister each other.
@@ -484,6 +486,28 @@ impl DesktopUi {
         state.place_panel(state.panel_anchor.get(), state.panel_dpi.get())?;
         state.restore_ring();
         Ok(())
+    }
+
+    // Startup or reloaded per-layout state (MenuLayout::ALL order): expanded or compact.
+    // Applies to the current layout at once; other layouts use it when selected.
+    pub fn set_remembered(&self, expanded: [bool; 3]) -> Result<()> {
+        let state = &self.state;
+        state.remembered.set(expanded);
+        let layout = state.layout.get();
+        if layout == MenuLayout::Radial {
+            state.restore_ring();
+            return Ok(());
+        }
+        let pinned = expanded[layout as usize];
+        if state.pinned.replace(pinned) == pinned {
+            return Ok(());
+        }
+        state.stop_leave_timer();
+        let open = pinned && state.visible.get();
+        state.expanded.set(open);
+        state.motion.set(PanelMotion::settled(open));
+        state.sync_animation_timer();
+        state.resize_panel()
     }
 
     // Opens the radial ring around a point in the owner's client coordinates.
@@ -1242,20 +1266,36 @@ impl State {
         }
     }
 
+    // Records a user choice and asks the owner to save it for the next launch.
     fn remember(&self, open: bool) {
+        let layout = self.layout.get();
         let mut remembered = self.remembered.get();
-        remembered[self.layout.get() as usize] = open;
-        self.remembered.set(remembered);
+        if remembered[layout as usize] != open {
+            remembered[layout as usize] = open;
+            self.remembered.set(remembered);
+            self.post(UiEvent::Remember(layout, open));
+        }
     }
 
-    // Reopens the ring where it was last placed, if the user left it open.
+    // Reopens the ring where it was last placed, or around the badge after a restart.
     fn restore_ring(&self) {
         if self.layout.get() == MenuLayout::Radial
             && self.visible.get()
             && !self.expanded.get()
             && self.remembered.get()[MenuLayout::Radial as usize]
         {
-            self.open_radial(self.radial_center.get());
+            let center = self.radial_center.get();
+            if center == POINT::default() {
+                let geometry = PanelGeometry::new(self);
+                let origin = geometry.destination(self.panel_anchor.get());
+                let badge = geometry.badge();
+                self.open_radial(POINT {
+                    x: origin.x + (badge.left + badge.right) / 2,
+                    y: origin.y + (badge.top + badge.bottom) / 2,
+                });
+            } else {
+                self.open_radial(center);
+            }
         }
     }
 
@@ -1854,6 +1894,7 @@ impl State {
             UiEvent::Tool(tool) => (tool as usize, 4),
             UiEvent::Width(width) => (width as usize, 5),
             UiEvent::Toggle => (0, 6),
+            UiEvent::Remember(layout, open) => (layout as usize * 2 + open as usize, 7),
         };
         // No pointers in queued messages: dispatch may outlive either native window.
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postmessagew
@@ -1887,6 +1928,9 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<UiEvent> {
             Some(UiEvent::Width(message.wParam.0 as u32))
         }
         6 if message.wParam.0 == 0 => Some(UiEvent::Toggle),
+        7 => MenuLayout::ALL
+            .get(message.wParam.0 / 2)
+            .map(|layout| UiEvent::Remember(*layout, message.wParam.0 % 2 == 1)),
         _ => None,
     }
 }
@@ -4841,13 +4885,26 @@ mod tests {
         assert_eq!(decode_event(&message, owner), Some(UiEvent::Swap));
         message.wParam = WPARAM(1);
         assert_eq!(decode_event(&message, owner), None);
-        for kind in [0, 7, -1] {
+        for kind in [0, 8, -1] {
             message.lParam = LPARAM(kind);
             for payload in [0, 1, u32::MAX as usize, usize::MAX] {
                 message.wParam = WPARAM(payload);
                 assert_eq!(decode_event(&message, owner), None);
             }
         }
+        // Remember round-trips every layout and state; other payloads are rejected.
+        message.lParam = LPARAM(7);
+        for layout in MenuLayout::ALL {
+            for open in [false, true] {
+                message.wParam = WPARAM(layout as usize * 2 + open as usize);
+                assert_eq!(
+                    decode_event(&message, owner),
+                    Some(UiEvent::Remember(layout, open))
+                );
+            }
+        }
+        message.wParam = WPARAM(6);
+        assert_eq!(decode_event(&message, owner), None);
         message.lParam = LPARAM(4);
         message.wParam = WPARAM(0);
         assert_eq!(decode_event(&message, HWND::default()), None);
@@ -5661,6 +5718,7 @@ mod tests {
         assert_eq!(ui.state.panel_anchor.get(), anchor, "the badge stays put");
         // Only the collapse button returns to the badge; a hidden menu hides again.
         panel_click(hwnd, g.collapse_center());
+        // The helper opened the ring without a user choice, so nothing new to save.
         assert!(decoded(root.0).is_empty());
         assert!(!ui.state.expanded.get());
         assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
@@ -5689,7 +5747,23 @@ mod tests {
         ui.set_layout(MenuLayout::Panel)?;
         ui.state.open_radial(cursor);
         assert!(!PanelGeometry::new(&ui.state).ring);
-        assert!(decoded(root.0).is_empty());
+        // Saves only on real changes: opened once, then minimized once.
+        assert_eq!(
+            decoded(root.0),
+            [
+                UiEvent::Remember(MenuLayout::Radial, true),
+                UiEvent::Remember(MenuLayout::Radial, false)
+            ]
+        );
+        // Startup state applies to the current layout immediately.
+        ui.set_remembered([true, false, false])?;
+        assert!(ui.state.pinned.get() && ui.state.expanded.get());
+        ui.set_remembered([false, false, false])?;
+        assert!(!ui.state.pinned.get() && !ui.state.expanded.get());
+        assert!(
+            decoded(root.0).is_empty(),
+            "applying saved state never re-saves"
+        );
         Ok(())
     }
 

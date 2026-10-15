@@ -272,6 +272,7 @@ fn main() -> Result<()> {
         startup.shortcuts,
     )?;
     ui.set_reserve(reserve)?;
+    ui.set_remembered(startup.menu_expanded)?;
     ui.set_layout(startup.layout)?;
     ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
     let tray = Tray::new(overlay.hwnd())?;
@@ -327,6 +328,14 @@ fn main() -> Result<()> {
                     false
                 }
                 UiEvent::Swap => swap_colors(&mut reserve, &mut strokes, &mut trail, &mut drag),
+                UiEvent::Remember(layout, expanded) => {
+                    if let Some(path) = settings_path.as_deref()
+                        && let Err(error) = settings::save_menu_state(path, layout, expanded)
+                    {
+                        eprintln!("Could not save {}: {error}", path.display());
+                    }
+                    false
+                }
             };
             if changed {
                 surface.present_scene(
@@ -409,6 +418,7 @@ fn main() -> Result<()> {
                             let updates = [
                                 ui.set_shortcuts(next.shortcuts),
                                 ui.set_layout(next.layout),
+                                ui.set_remembered(next.menu_expanded),
                                 ui.set_reserve(reserve),
                                 visibility,
                                 ui.update_label(drawing, strokes.tool_label(), strokes.style()),

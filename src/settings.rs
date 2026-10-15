@@ -30,9 +30,14 @@ pub struct Settings {
     pub tail_first: bool,
     pub visible_on_start: bool,
     pub layout: MenuLayout,
+    // Startup state per layout, in MenuLayout::ALL order: true = expanded.
+    pub menu_expanded: [bool; 3],
     pub shortcuts: Shortcuts,
     pub head_scale: f64,
 }
+
+// Settings keys for MenuLayout::ALL, in order.
+const MENU_STATE_KEYS: [&str; 3] = ["panel_state", "rail_state", "radial_state"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -43,6 +48,7 @@ impl Default for Settings {
             tail_first: false,
             visible_on_start: true,
             layout: MenuLayout::default(),
+            menu_expanded: [false; 3],
             shortcuts: Shortcuts::default(),
             head_scale: 1.0,
         }
@@ -71,6 +77,11 @@ head_scale = 1.0
 visible_on_start = true
 # panel, rail or radial. Also selectable from the tray icon's Menu layout submenu.
 layout = \"panel\"
+# Startup state of each layout: expanded or compact. Pinning or unpinning the panel
+# or rail, and opening or minimizing the radial ring, save the choice here.
+panel_state = \"compact\"
+rail_state = \"compact\"
+radial_state = \"compact\"
 
 [shortcuts]
 # One key with optional Ctrl+Alt+Shift+Win modifiers. F12 is reserved by Windows.
@@ -264,6 +275,15 @@ fn parse(document: &DocumentMut) -> Settings {
         layout: read_setting(document, "menu", "layout", defaults.layout, |item| {
             MenuLayout::parse(item.as_str()?)
         }),
+        menu_expanded: MENU_STATE_KEYS.map(|key| {
+            read_setting(document, "menu", key, false, |item| {
+                match item.as_str()?.trim().to_ascii_lowercase().as_str() {
+                    "expanded" => Some(true),
+                    "compact" => Some(false),
+                    _ => None,
+                }
+            })
+        }),
         head_scale: read_setting(
             document,
             "arrow",
@@ -414,8 +434,17 @@ pub fn save_brush(
     write_document(path, &document)
 }
 
-// Same fresh-read and decor-preserving rules as save_brush.
 pub fn save_layout(path: &Path, layout: MenuLayout) -> io::Result<()> {
+    save_menu_value(path, "layout", layout.name())
+}
+
+pub fn save_menu_state(path: &Path, layout: MenuLayout, expanded: bool) -> io::Result<()> {
+    let state = if expanded { "expanded" } else { "compact" };
+    save_menu_value(path, MENU_STATE_KEYS[layout as usize], state)
+}
+
+// Same fresh-read and decor-preserving rules as save_brush.
+fn save_menu_value(path: &Path, key: &str, text: &str) -> io::Result<()> {
     let mut document =
         read_document(path)?.unwrap_or(DEFAULT_DOCUMENT.parse::<DocumentMut>().map_err(invalid)?);
     if !document.contains_key("menu") {
@@ -424,16 +453,15 @@ pub fn save_layout(path: &Path, layout: MenuLayout) -> io::Result<()> {
     let table = document["menu"]
         .as_table_like_mut()
         .ok_or_else(|| invalid("menu must be a table; refusing to overwrite it"))?;
-    let key = "layout";
     if table.get(key).is_some_and(|item| !item.is_value()) {
-        return Err(invalid(
-            "menu.layout must be a value; refusing to overwrite it",
-        ));
+        return Err(invalid(format!(
+            "menu.{key} must be a value; refusing to overwrite it"
+        )));
     }
-    if table.get(key).and_then(Item::as_str) == Some(layout.name()) {
+    if table.get(key).and_then(Item::as_str) == Some(text) {
         return Ok(());
     }
-    let mut value = Value::from(layout.name());
+    let mut value = Value::from(text);
     if let Some(previous) = table.get(key).and_then(Item::as_value) {
         *value.decor_mut() = previous.decor().clone();
     }
@@ -520,6 +548,7 @@ mod tests {
                 tail_first: true,
                 visible_on_start: false,
                 layout: MenuLayout::Panel,
+                menu_expanded: [false; 3],
                 shortcuts: Shortcuts::default(),
                 head_scale: 1.0,
             }
@@ -595,6 +624,31 @@ mod tests {
             assert!(save_layout(&path, MenuLayout::Rail).is_err());
             assert_eq!(fs::read_to_string(&path).unwrap(), bad);
         }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn settings_menu_state_per_layout_parses_and_saves() {
+        let parsed = parse(&document(
+            "[menu]\npanel_state = 'Expanded'\nrail_state = 'compact'\nradial_state = 'open'",
+        ));
+        assert_eq!(parsed.menu_expanded, [true, false, false]);
+        let directory =
+            std::env::temp_dir().join(format!("mado-settings-menu-state-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.toml");
+        fs::write(&path, "[menu]\nradial_state = 'compact' # mine\n").unwrap();
+        save_menu_state(&path, MenuLayout::Radial, true).unwrap();
+        save_menu_state(&path, MenuLayout::Panel, true).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("radial_state = \"expanded\" # mine"),
+            "{text}"
+        );
+        assert_eq!(
+            initialize(&path).unwrap().menu_expanded,
+            [true, false, true]
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 
