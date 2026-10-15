@@ -747,6 +747,7 @@ impl PanelGeometry {
                 ),
                 PanelHit::Collapse => return self.collapse_center(),
                 PanelHit::Grip => return self.ring_grip_center(),
+                PanelHit::Toggle => return self.ring_toggle_center(),
                 _ => (0.0, 0.0),
             };
             let radius = radius * self.scale;
@@ -809,14 +810,23 @@ impl PanelGeometry {
             scaled(RING_COLLAPSE.0, self.scale),
         )
     }
+    // Drawing / click-through switch in the bottom-left corner.
+    fn ring_toggle_center(&self) -> (i32, i32) {
+        let inset = scaled(RING_COLLAPSE.0, self.scale);
+        (inset, self.height - inset)
+    }
+    fn ring_buttons(&self) -> [(PanelHit, (i32, i32)); 3] {
+        [
+            (PanelHit::Collapse, self.collapse_center()),
+            (PanelHit::Grip, self.ring_grip_center()),
+            (PanelHit::Toggle, self.ring_toggle_center()),
+        ]
+    }
     // Corner buttons first; the center swaps colors, the inner ring holds tools,
     // the outer ring colors.
     fn ring_hit(&self, x: i32, y: i32) -> Option<PanelHit> {
         let reach = (RING_COLLAPSE.1 + 1.0) * self.scale;
-        for (hit, (bx, by)) in [
-            (PanelHit::Collapse, self.collapse_center()),
-            (PanelHit::Grip, self.ring_grip_center()),
-        ] {
+        for (hit, (bx, by)) in self.ring_buttons() {
             if f64::from(x - bx).hypot(f64::from(y - by)) <= reach {
                 return Some(hit);
             }
@@ -2047,7 +2057,7 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
             let r = (RING_EDGE * large.scale).round() as i32;
             let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
             let r = (RING_COLLAPSE.1 * large.scale).round() as i32;
-            for (x, y) in [large.collapse_center(), large.ring_grip_center()] {
+            for (_, (x, y)) in large.ring_buttons() {
                 let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
             }
         } else {
@@ -2953,13 +2963,15 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
         rect(0, 0, geometry.width, geometry.height),
         PANEL_BACKGROUND,
     );
+    // The rim doubles as the drawing-mode indicator: accent while ON.
+    let drawing = state.drawing.get();
     ellipse(
         dc,
         cx,
         cy,
         (RING_EDGE * s).round() as i32 - scaled(1, s),
-        PANEL_BORDER,
-        scaled(1, s),
+        if drawing { PANEL_ACCENT } else { PANEL_BORDER },
+        scaled(if drawing { 2 } else { 1 }, s),
         false,
     );
     let sector = |index: usize, count: usize, inner: f64| {
@@ -2999,6 +3011,7 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
         }
     }
     let tools = (RING_TOOLS.0 * s, RING_TOOLS.1 * s);
+    let key_font = panel_font(s * 0.65);
     for (i, (tool, ..)) in PANEL_TOOLS.into_iter().enumerate() {
         let hit = PanelHit::Tool(tool);
         let selected = state.tool.get() == tool;
@@ -3021,12 +3034,13 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 scaled(2, s),
             );
         }
+        // Icon nudged down-left so the key badge fits at its top-right, like the panel.
         let (x, y) = geometry.center(hit);
         panel_icon(
             dc,
             tool,
             *state.tool_label.borrow() == "Arrow tail-first",
-            (x - scaled(14, s), y - scaled(16, s)),
+            (x - scaled(18, s), y - scaled(13, s)),
             s,
             if selected {
                 PANEL_TEXT
@@ -3034,16 +3048,50 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 PANEL_SECONDARY
             },
         );
+        let key = shortcut_badge(state.shortcuts.get().binding(tool_shortcut(tool)));
+        let width = if key.len() > 2 { 20 } else { 12 };
+        let badge = rect(
+            x + scaled(7, s),
+            y - scaled(17, s),
+            scaled(width, s),
+            scaled(14, s),
+        );
+        rounded_pen(
+            dc,
+            badge,
+            scaled(2, s),
+            PANEL_BACKGROUND,
+            PANEL_BORDER,
+            scaled(1, s),
+        );
+        if let Ok(ref font) = key_font {
+            let saved = unsafe { SaveDC(dc) };
+            unsafe { SelectObject(dc, font.0) };
+            label(
+                dc,
+                &key,
+                badge,
+                if selected {
+                    PANEL_TEXT
+                } else {
+                    PANEL_SECONDARY
+                },
+                DT_SINGLELINE | DT_CENTER | DT_VCENTER,
+            );
+            let _ = unsafe { RestoreDC(dc, saved) };
+        }
     }
-    // Collapse button: a small graphite disc with a minimize bar.
-    // Corner buttons: minimize bar top-left, drag grip dots top-right.
+    // Corner buttons: minimize top-left, drag grip top-right, drawing switch
+    // bottom-left. The switch is accent-filled while drawing is ON.
     let button = (RING_COLLAPSE.1 * s).round() as i32;
-    for (hit, (bx, by)) in [
-        (PanelHit::Collapse, geometry.collapse_center()),
-        (PanelHit::Grip, geometry.ring_grip_center()),
-    ] {
+    for (hit, (bx, by)) in geometry.ring_buttons() {
         let hovered = hover == Some(hit);
-        let ink = if hovered { PANEL_TEXT } else { PANEL_SECONDARY };
+        let on = hit == PanelHit::Toggle && drawing;
+        let ink = if hovered || on {
+            PANEL_TEXT
+        } else {
+            PANEL_SECONDARY
+        };
         ellipse(
             dc,
             bx,
@@ -3053,20 +3101,39 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 0xff426c5f
             } else if hovered {
                 0xff30363d
+            } else if on {
+                0xff263b36
             } else {
                 0xff23272c
             },
             1,
             true,
         );
-        ellipse(dc, bx, by, button - scaled(1, s), ink, scaled(1, s), false);
-        if hit == PanelHit::Collapse {
-            panel_line(dc, &[(-5, 0), (5, 0)], s, (bx, by), ink, scaled(2, s));
-        } else {
-            for dx in [-2, 2] {
-                for dy in [-4, 0, 4] {
-                    let (x, y) = (bx + scaled(dx, s), by + scaled(dy, s));
-                    ellipse(dc, x, y, scaled(1, s).max(1), ink, 1, true);
+        let edge = if on { PANEL_ACCENT } else { ink };
+        ellipse(dc, bx, by, button - scaled(1, s), edge, scaled(1, s), false);
+        match hit {
+            PanelHit::Collapse => {
+                panel_line(dc, &[(-5, 0), (5, 0)], s, (bx, by), ink, scaled(2, s))
+            }
+            PanelHit::Toggle => {
+                // Pill switch: knob right and accent while ON, left and gray while OFF.
+                let pill = rect(
+                    bx - scaled(7, s),
+                    by - scaled(4, s),
+                    scaled(14, s),
+                    scaled(8, s),
+                );
+                rounded_pen(dc, pill, scaled(4, s), 0xff23272c, edge, scaled(1, s));
+                let knob = bx + scaled(if on { 3 } else { -3 }, s);
+                let color = if on { PANEL_ACCENT } else { PANEL_SECONDARY };
+                ellipse(dc, knob, by, scaled(3, s), color, 1, true);
+            }
+            _ => {
+                for dx in [-2, 2] {
+                    for dy in [-4, 0, 4] {
+                        let (x, y) = (bx + scaled(dx, s), by + scaled(dy, s));
+                        ellipse(dc, x, y, scaled(1, s).max(1), ink, 1, true);
+                    }
                 }
             }
         }
@@ -5466,8 +5533,14 @@ mod tests {
             y: (work.top + work.bottom) / 2,
         };
         open(middle)?;
+        ui.update(true, Tool::Rectangle, Style::default())?;
+        let on = panel_preview(&ui, "layout-ring-on-100")?;
+        ui.update(false, Tool::Pen, Style::default())?;
         let ring = panel_preview(&ui, "layout-ring-100")?;
         let g = PanelGeometry::new(&ui.state);
+        let (tx, ty) = g.ring_toggle_center();
+        assert_eq!(g.hit(tx, ty), Some(PanelHit::Toggle));
+        assert_ne!(on, ring, "drawing ON changes the ring");
         assert_eq!(ring[0], 0, "corners pass clicks through");
         for (i, color) in PANEL_PALETTE.iter().enumerate() {
             let (x, y) = g.center(PanelHit::Palette(i));
