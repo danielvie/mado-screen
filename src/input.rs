@@ -12,7 +12,7 @@ use windows::{
                 CallNextHookEx, GetSystemMetrics, HC_ACTION, HHOOK, KillTimer, MSG, MSLLHOOKSTRUCT,
                 PostMessageW, SM_SWAPBUTTON, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx,
                 WH_MOUSE_LL, WHEEL_DELTA, WM_APP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_LBUTTONDOWN,
-                WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_TIMER,
+                WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONUP, WM_TIMER,
             },
         },
     },
@@ -28,6 +28,8 @@ pub enum Event {
     Down((i32, i32)),
     Move { point: (i32, i32), left_down: bool },
     Up((i32, i32)),
+    // Secondary-button release on the canvas; summons the radial menu.
+    Context((i32, i32)),
     Wheel(i32),
     Cancel,
     CheckRelease,
@@ -50,6 +52,7 @@ pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
             left_down: message.wParam.0 & MK_LBUTTON != 0,
         }),
         WM_LBUTTONUP => Some(Event::Up(point)),
+        WM_RBUTTONUP => Some(Event::Context(point)),
         WHEEL_EVENT => Some(Event::Wheel(message.wParam.0 as i32)),
         WM_CANCELMODE | WM_CAPTURECHANGED => Some(Event::Cancel),
         WM_TIMER if message.wParam.0 == DRAG_TIMER_ID => Some(Event::CheckRelease),
@@ -267,6 +270,13 @@ mod tests {
         // Real wheel input is handled by the hook, never again by normal window routing.
         let msg = message(WM_MOUSEWHEEL, 120 << 16, (0, 0));
         assert_eq!(event(&msg, msg.hwnd), None);
+    }
+
+    #[test]
+    fn right_button_release_decodes_signed_context_point_only_for_owner() {
+        let msg = message(WM_RBUTTONUP, 0, (-20, 300));
+        assert_eq!(event(&msg, msg.hwnd), Some(Event::Context((-20, 300))));
+        assert_eq!(event(&msg, HWND::default()), None);
     }
 
     #[test]

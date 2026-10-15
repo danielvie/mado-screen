@@ -81,6 +81,8 @@ Floating menu
   Drag the tool icon or its grip to move the menu.
   Click the tray icon to switch modes; right-click it to hide the menu, clear or quit.
   Choose Reload config in the tray menu to apply edited settings without restarting.
+  Choose Panel, Edge rail or Radial ring under the tray's Menu layout submenu.
+  Radial ring: right-click while drawing, or click the badge; click a slice to pick.
 
 Default brush: orange, 5 pixels; reserve blue. Restart after changing the monitor layout.
 Settings and favorite colors are saved in ~/.mado/mado-screen/settings.toml.
@@ -270,11 +272,13 @@ fn main() -> Result<()> {
         startup.shortcuts,
     )?;
     ui.set_reserve(reserve)?;
+    ui.set_layout(startup.layout)?;
     ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
     let tray = Tray::new(overlay.hwnd())?;
     let mut panel_visible = startup.visible_on_start;
     tray.set_panel_visible(panel_visible);
     tray.set_shortcuts(startup.shortcuts);
+    tray.set_layout(startup.layout);
     tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
     let mut tool_keys: Option<MouseWheel> = None;
     let mut drag: Option<DragCapture> = None;
@@ -391,6 +395,7 @@ fn main() -> Result<()> {
                             }
                             // Config is committed. Attempt every display update even if one fails.
                             tray.set_shortcuts(next.shortcuts);
+                            tray.set_layout(next.layout);
                             let visibility = if panel_visible != next.visible_on_start {
                                 let result = ui.set_visible(next.visible_on_start);
                                 if result.is_ok() {
@@ -403,6 +408,7 @@ fn main() -> Result<()> {
                             };
                             let updates = [
                                 ui.set_shortcuts(next.shortcuts),
+                                ui.set_layout(next.layout),
                                 ui.set_reserve(reserve),
                                 visibility,
                                 ui.update_label(drawing, strokes.tool_label(), strokes.style()),
@@ -433,6 +439,15 @@ fn main() -> Result<()> {
                         }
                     }
                     continue;
+                }
+                TrayEvent::Layout(layout) => {
+                    ui.set_layout(layout)?;
+                    tray.set_layout(layout);
+                    if let Some(path) = settings_path.as_deref()
+                        && let Err(error) = settings::save_layout(path, layout)
+                    {
+                        eprintln!("Could not save {}: {error}", path.display());
+                    }
                 }
             }
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
@@ -507,6 +522,14 @@ fn main() -> Result<()> {
                 settings_path.as_deref(),
             );
         } else if let Some(event) = input::event(&message, overlay.hwnd()) {
+            // The canvas only receives clicks while drawing; other layouts ignore it.
+            // A stroke in progress keeps the capture, so the ring waits for its end.
+            if let Event::Context(point) = event {
+                if drag.is_none() {
+                    ui.summon(point);
+                }
+                continue;
+            }
             if handle_canvas_input(
                 event,
                 drawing,
@@ -998,6 +1021,8 @@ mod tests {
             "1 / 2 / 3",
             "4 / 5",
             "Hover over the top-right tool icon",
+            "Menu layout submenu",
+            "Radial ring: right-click while drawing",
             "Click tool icons, color slots or the width slider",
             "1 second",
         ] {

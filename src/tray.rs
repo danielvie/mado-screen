@@ -1,5 +1,5 @@
 use crate::controls::Shortcuts;
-use crate::ui::{MenuTool, WindowClass, tool_icon, tray_icon_pixels};
+use crate::ui::{MenuLayout, MenuTool, WindowClass, tool_icon, tray_icon_pixels};
 use std::cell::Cell;
 use windows::{
     Win32::{
@@ -18,6 +18,8 @@ const MENU_CLEAR: usize = 2;
 const MENU_QUIT: usize = 3;
 const MENU_PANEL: usize = 4;
 const MENU_RELOAD: usize = 5;
+// One id per MenuLayout, in MenuLayout::ALL order.
+const MENU_LAYOUT: usize = 6;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TrayEvent {
@@ -26,6 +28,7 @@ pub enum TrayEvent {
     Quit,
     Panel,
     Reload,
+    Layout(MenuLayout),
 }
 
 struct State {
@@ -36,6 +39,7 @@ struct State {
     key: Cell<(bool, u32, MenuTool, bool)>,
     panel: Cell<bool>,
     shortcuts: Cell<Shortcuts>,
+    layout: Cell<MenuLayout>,
     taskbar_created: u32,
 }
 
@@ -127,6 +131,26 @@ impl State {
                     .as_ptr(),
                 ),
             );
+            // DestroyMenu below also destroys this attached submenu.
+            if let Ok(layouts) = CreatePopupMenu() {
+                for (layout, name) in MenuLayout::ALL.into_iter().zip([
+                    w!("&Panel"),
+                    w!("Edge &rail"),
+                    w!("Radial &ring\tRight-click (drawing)"),
+                ]) {
+                    let _ = AppendMenuW(layouts, MF_STRING, MENU_LAYOUT + layout as usize, name);
+                }
+                let _ = CheckMenuRadioItem(
+                    layouts,
+                    MENU_LAYOUT as u32,
+                    (MENU_LAYOUT + MenuLayout::ALL.len() - 1) as u32,
+                    (MENU_LAYOUT + self.layout.get() as usize) as u32,
+                    MF_BYCOMMAND.0,
+                );
+                if AppendMenuW(menu, MF_POPUP, layouts.0 as usize, w!("Menu &layout")).is_err() {
+                    let _ = DestroyMenu(layouts);
+                }
+            }
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(
                 menu,
@@ -190,6 +214,7 @@ impl Tray {
                 key: Cell::new((false, 0, MenuTool::Pen, false)),
                 panel: Cell::new(true),
                 shortcuts: Cell::new(Shortcuts::default()),
+                layout: Cell::new(MenuLayout::default()),
                 taskbar_created: unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) },
             }),
             class: WindowClass::new(instance, "Tray", Some(tray_proc))?,
@@ -273,6 +298,11 @@ impl Tray {
         }
     }
 
+    // Only drives the radio mark; the owner applies and saves the layout.
+    pub fn set_layout(&self, layout: MenuLayout) {
+        self.state.layout.set(layout);
+    }
+
     pub fn event(&self, message: &MSG) -> Option<TrayEvent> {
         decode_event(message, self.state.owner)
     }
@@ -309,7 +339,9 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<TrayEvent> {
         MENU_QUIT => Some(TrayEvent::Quit),
         MENU_PANEL => Some(TrayEvent::Panel),
         MENU_RELOAD => Some(TrayEvent::Reload),
-        _ => None,
+        id => MenuLayout::ALL
+            .get(id.wrapping_sub(MENU_LAYOUT))
+            .map(|layout| TrayEvent::Layout(*layout)),
     }
 }
 
@@ -505,12 +537,17 @@ mod tests {
             (MENU_QUIT, TrayEvent::Quit),
             (MENU_PANEL, TrayEvent::Panel),
             (MENU_RELOAD, TrayEvent::Reload),
+            (MENU_LAYOUT, TrayEvent::Layout(MenuLayout::Panel)),
+            (MENU_LAYOUT + 1, TrayEvent::Layout(MenuLayout::Rail)),
+            (MENU_LAYOUT + 2, TrayEvent::Layout(MenuLayout::Radial)),
         ] {
             message.wParam = WPARAM(id);
             assert_eq!(decode_event(&message, owner), Some(event));
         }
-        message.wParam = WPARAM(0);
-        assert_eq!(decode_event(&message, owner), None);
+        for id in [0, MENU_LAYOUT + 3, usize::MAX] {
+            message.wParam = WPARAM(id);
+            assert_eq!(decode_event(&message, owner), None);
+        }
         message.wParam = WPARAM(MENU_QUIT);
         assert_eq!(decode_event(&message, HWND::default()), None);
         message.message = TRAY_CALLBACK;
@@ -585,6 +622,7 @@ mod tests {
             key: Cell::new((false, 0, MenuTool::Pen, false)),
             panel: Cell::new(true),
             shortcuts: Cell::new(Shortcuts::default()),
+            layout: Cell::new(MenuLayout::default()),
             taskbar_created: 0,
         };
         for (label, tool, name) in [

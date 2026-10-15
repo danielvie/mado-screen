@@ -72,6 +72,11 @@ The fixed colors cover warm hues, cool hues and white/gray/black. Slots are popu
 
 The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it unless pinned. Click the pin icon in the expanded header to keep the menu open, then click it again to restore hover-driven collapse. The active pin is upright with a highlighted border; the inactive pin is tilted. Pinning lasts for the current session, survives input-mode changes and restores the expanded menu after hiding and showing it. It is off at startup and is not saved to settings. Windows disabled-animation preferences are respected. If the Windows client-area-animation setting is off, this transition is intentionally instant. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus.
 
+Menu layouts: right-click the tray icon and pick Panel, Edge rail or Radial ring under Menu layout. The choice applies immediately and is saved as `menu.layout` (`panel`, `rail` or `radial`). All three keep the same compact badge.
+
+- Edge rail: a 44 px column that opens down from the badge (up near the bottom of the screen), with input toggle, pin, tools, favorites, two palette columns and a vertical width slider. Hover, pin and grip dragging work like the panel; hotkey letters are in the tooltips.
+- Radial ring: hovering the badge does nothing. Click the badge, or right-click the canvas while drawing, to open a ring around that point: tools on the inner ring, the 16 colors outside, and the brush at its real width in the center. Click a slice to pick it, or the center to swap with the reserve; the ring then closes. Moving the pointer off the ring or clicking its corners also closes it. Use the mouse wheel to change width (it also works over the ring in click-through), and F4 / Ctrl+Alt+D to toggle input. The ring has no pin. When the menu is hidden, right-click still opens the ring, and the menu hides again when the ring closes.
+
 ## Settings
 
 Mado uses `~/.mado/mado-screen/settings.toml`, under your Windows user profile. It creates a commented file on first launch. If `config.ini` exists and `settings.toml` does not, Mado migrates its favorite colors and retains the old file as a backup. Once created, `settings.toml` takes precedence. At startup, Mado adds missing sections and keys from its default settings, including every shortcut binding and `arrow.head_scale`. Existing values, comments and unknown entries are preserved. A complete file is not rewritten. If the update cannot be saved, Mado still uses your loaded values and defaults for missing settings.
@@ -91,6 +96,7 @@ head_scale = 1.0
 
 [menu]
 visible_on_start = true
+layout = "panel"
 
 [shortcuts]
 activation_key = "F4"
@@ -128,7 +134,7 @@ Reload validates the complete file and checks every shortcut before applying cha
 
 At startup, invalid existing values or incompatible sections use defaults without overwriting those values. Duplicate combinations restore the default shortcut set. Invalid TOML syntax uses all defaults and leaves the file untouched. Diagnostics also write to standard error, normally hidden during desktop launches.
 
-Favorite colors, brush thickness and arrow direction save automatically. Thickness changes from the mouse wheel, slider and `[` / `]` are remembered. Arrow-direction changes from `A`, the menu and `T` are remembered even when you switch to another tool. The next launch restores the last saved thickness and arrow direction. Fade duration, menu visibility, arrowhead scale and shortcut mappings are file preferences; using tools or the menu does not overwrite them. Reload applies their current file values. Brush saves reread the TOML document and preserve other settings and comments using [toml_edit](https://docs.rs/toml_edit/0.22.27/toml_edit/). Writes use a temporary file followed by same-directory replacement rather than truncating the existing settings. There is no cross-process edit lock; simultaneous file edits are not supported.
+`layout` accepts `"panel"`, `"rail"` or `"radial"`; it is also saved when chosen from the tray, and Reload applies it. Favorite colors, brush thickness and arrow direction save automatically. Thickness changes from the mouse wheel, slider and `[` / `]` are remembered. Arrow-direction changes from `A`, the menu and `T` are remembered even when you switch to another tool. The next launch restores the last saved thickness and arrow direction. Fade duration, menu visibility, arrowhead scale and shortcut mappings are file preferences; using tools or the menu does not overwrite them. Reload applies their current file values. Brush saves reread the TOML document and preserve other settings and comments using [toml_edit](https://docs.rs/toml_edit/0.22.27/toml_edit/). Writes use a temporary file followed by same-directory replacement rather than truncating the existing settings. There is no cross-process edit lock; simultaneous file edits are not supported.
 
 ## Temporary ink
 

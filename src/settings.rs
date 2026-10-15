@@ -1,4 +1,5 @@
 use crate::controls::{SHORTCUT_NAMES, Shortcut, Shortcuts};
+use crate::ui::MenuLayout;
 use std::{
     fs,
     io::{self, Write},
@@ -28,6 +29,7 @@ pub struct Settings {
     pub duration_ms: u64,
     pub tail_first: bool,
     pub visible_on_start: bool,
+    pub layout: MenuLayout,
     pub shortcuts: Shortcuts,
     pub head_scale: f64,
 }
@@ -40,6 +42,7 @@ impl Default for Settings {
             duration_ms: 1000,
             tail_first: false,
             visible_on_start: true,
+            layout: MenuLayout::default(),
             shortcuts: Shortcuts::default(),
             head_scale: 1.0,
         }
@@ -48,7 +51,7 @@ impl Default for Settings {
 
 const DEFAULT_DOCUMENT: &str = "\
 # Edit startup settings while Mado is closed, then restart it.
-# Colors, thickness and arrow direction save automatically when changed in Mado.
+# Colors, thickness, arrow direction and menu layout save automatically when changed in Mado.
 [brush]
 active_color = \"#F97316\"
 reserve_color = \"#0085DC\"
@@ -66,6 +69,8 @@ head_scale = 1.0
 
 [menu]
 visible_on_start = true
+# panel, rail or radial. Also selectable from the tray icon's Menu layout submenu.
+layout = \"panel\"
 
 [shortcuts]
 # One key with optional Ctrl+Alt+Shift+Win modifiers. F12 is reserved by Windows.
@@ -256,6 +261,9 @@ fn parse(document: &DocumentMut) -> Settings {
             defaults.visible_on_start,
             Item::as_bool,
         ),
+        layout: read_setting(document, "menu", "layout", defaults.layout, |item| {
+            MenuLayout::parse(item.as_str()?)
+        }),
         head_scale: read_setting(
             document,
             "arrow",
@@ -406,6 +414,33 @@ pub fn save_brush(
     write_document(path, &document)
 }
 
+// Same fresh-read and decor-preserving rules as save_brush.
+pub fn save_layout(path: &Path, layout: MenuLayout) -> io::Result<()> {
+    let mut document =
+        read_document(path)?.unwrap_or(DEFAULT_DOCUMENT.parse::<DocumentMut>().map_err(invalid)?);
+    if !document.contains_key("menu") {
+        document["menu"] = Item::Table(toml_edit::Table::new());
+    }
+    let table = document["menu"]
+        .as_table_like_mut()
+        .ok_or_else(|| invalid("menu must be a table; refusing to overwrite it"))?;
+    let key = "layout";
+    if table.get(key).is_some_and(|item| !item.is_value()) {
+        return Err(invalid(
+            "menu.layout must be a value; refusing to overwrite it",
+        ));
+    }
+    if table.get(key).and_then(Item::as_str) == Some(layout.name()) {
+        return Ok(());
+    }
+    let mut value = Value::from(layout.name());
+    if let Some(previous) = table.get(key).and_then(Item::as_value) {
+        *value.decor_mut() = previous.decor().clone();
+    }
+    table.insert(key, Item::Value(value));
+    write_document(path, &document)
+}
+
 fn update_colors(document: &mut DocumentMut, favorites: Favorites) -> io::Result<()> {
     if !document.contains_key("brush") {
         document["brush"] = Item::Table(toml_edit::Table::new());
@@ -484,6 +519,7 @@ mod tests {
                 duration_ms: 2500,
                 tail_first: true,
                 visible_on_start: false,
+                layout: MenuLayout::Panel,
                 shortcuts: Shortcuts::default(),
                 head_scale: 1.0,
             }
@@ -518,6 +554,48 @@ mod tests {
             )),
             Settings::default()
         );
+    }
+
+    #[test]
+    fn settings_menu_layout_parses_saves_and_preserves_other_entries() {
+        for (text, layout) in [
+            ("'panel'", MenuLayout::Panel),
+            ("'rail'", MenuLayout::Rail),
+            ("' Radial '", MenuLayout::Radial),
+            ("'ring'", MenuLayout::Panel),
+            ("true", MenuLayout::Panel),
+        ] {
+            let settings = parse(&document(&format!(
+                "[menu]\nlayout = {text}\nvisible_on_start = false"
+            )));
+            assert_eq!(settings.layout, layout, "{text}");
+            assert!(!settings.visible_on_start);
+        }
+        let directory =
+            std::env::temp_dir().join(format!("mado-settings-layout-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.toml");
+        let manual = "[menu]\nvisible_on_start = false # mine\nlayout = 'panel' # my layout\n[brush]\nthickness_px = 9\n";
+        fs::write(&path, manual).unwrap();
+        save_layout(&path, MenuLayout::Radial).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("layout = \"radial\" # my layout"), "{text}");
+        assert!(text.contains("visible_on_start = false # mine"));
+        let loaded = initialize(&path).unwrap();
+        assert_eq!(
+            (loaded.layout, loaded.thickness_px),
+            (MenuLayout::Radial, 9)
+        );
+        // An unchanged layout never rewrites the file.
+        let before = fs::read_to_string(&path).unwrap();
+        save_layout(&path, MenuLayout::Radial).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        for bad in ["[menu", "menu = 1", "[menu.layout]\ncustom = 1"] {
+            fs::write(&path, bad).unwrap();
+            assert!(save_layout(&path, MenuLayout::Rail).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), bad);
+        }
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -665,7 +743,7 @@ mod tests {
         ));
         fs::create_dir_all(&directory).unwrap();
         let path = directory.join("settings.toml");
-        let old = "# my settings\n[brush]\nactive_color = '#0085DC'\nreserve_color = '#F97316'\nthickness_px = 21\n[temporary_pen]\nduration_ms = 2500 # my fade\n[arrow]\ntail_first = true\n[menu]\nvisible_on_start = false\n";
+        let old = "# my settings\n[brush]\nactive_color = '#0085DC'\nreserve_color = '#F97316'\nthickness_px = 21\n[temporary_pen]\nduration_ms = 2500 # my fade\n[arrow]\ntail_first = true\n[menu]\nvisible_on_start = false\nlayout = 'rail'\n";
         for extra in ["", "[shortcuts]\ncustom = 'keep me'\n"] {
             let original = format!("{old}{extra}");
             fs::write(&path, &original).unwrap();
@@ -677,6 +755,7 @@ mod tests {
             assert_eq!(loaded.duration_ms, 2500);
             assert!(loaded.tail_first);
             assert!(!loaded.visible_on_start);
+            assert_eq!(loaded.layout, MenuLayout::Rail);
             let completed = fs::read_to_string(&path).unwrap();
             assert!(completed.contains("# my settings") && completed.contains("# my fade"));
             let before = document(&original);
