@@ -34,13 +34,13 @@ pub struct Annotation {
     pub style: Style,
 }
 
-#[derive(Default)]
 pub struct Strokes {
     annotations: Vec<Annotation>,
     tool: Tool,
     previous_tool: Option<(Tool, bool)>,
     temporary_pen: bool,
     arrow_tail_first: bool,
+    arrow_head_scale: f64,
     style: Style,
     before: Option<Vec<Annotation>>,
     anchor: Point,
@@ -51,6 +51,27 @@ pub struct Strokes {
     // replace with insertion/removal deltas if long sessions exceed the PoC memory budget.
     undo: Vec<Vec<Annotation>>,
     redo: Vec<Vec<Annotation>>,
+}
+
+impl Default for Strokes {
+    fn default() -> Self {
+        Self {
+            annotations: Vec::new(),
+            tool: Tool::default(),
+            previous_tool: None,
+            temporary_pen: false,
+            arrow_tail_first: false,
+            arrow_head_scale: 1.0,
+            style: Style::default(),
+            before: None,
+            anchor: (0, 0),
+            last: (0, 0),
+            pen_tail: 0,
+            pen_start: (0.0, 0.0),
+            undo: Vec::new(),
+            redo: Vec::new(),
+        }
+    }
 }
 
 impl Strokes {
@@ -66,13 +87,18 @@ impl Strokes {
         self.arrow_tail_first
     }
 
-    pub fn toggle_temporary_pen(&mut self) -> bool {
-        if self.tool == Tool::Pen {
-            return self.select_pen(!self.temporary_pen);
+    #[cfg(test)]
+    pub fn arrow_head_scale(&self) -> f64 {
+        self.arrow_head_scale
+    }
+
+    pub fn set_arrow_head_scale(&mut self, scale: f64) -> bool {
+        if !scale.is_finite() || !(0.1..=4.0).contains(&scale) || scale == self.arrow_head_scale {
+            return false;
         }
-        let changed = self.cancel();
-        self.temporary_pen = !self.temporary_pen;
-        changed
+        self.cancel();
+        self.arrow_head_scale = scale;
+        true
     }
 
     pub fn toggle_arrow_direction(&mut self) -> bool {
@@ -184,7 +210,13 @@ impl Strokes {
                 (self.anchor, point)
             };
             self.annotations.push(Annotation {
-                paths: shape(self.tool, start, end, self.style.thickness),
+                paths: shape_with_head_scale(
+                    self.tool,
+                    start,
+                    end,
+                    self.style.thickness,
+                    self.arrow_head_scale,
+                ),
                 style: self.style,
             });
         }
@@ -226,7 +258,13 @@ impl Strokes {
         } else {
             (self.anchor, point)
         };
-        let paths = shape(self.tool, start, end, annotation.style.thickness);
+        let paths = shape_with_head_scale(
+            self.tool,
+            start,
+            end,
+            annotation.style.thickness,
+            self.arrow_head_scale,
+        );
         if paths == annotation.paths {
             return false;
         }
@@ -320,7 +358,18 @@ impl Strokes {
     }
 }
 
+#[cfg(test)]
 fn shape(tool: Tool, start: Point, end: Point, thickness: u32) -> Vec<Vec<Point>> {
+    shape_with_head_scale(tool, start, end, thickness, 1.0)
+}
+
+fn shape_with_head_scale(
+    tool: Tool,
+    start: Point,
+    end: Point,
+    thickness: u32,
+    head_scale: f64,
+) -> Vec<Vec<Point>> {
     match tool {
         Tool::Pen => vec![vec![start]],
         Tool::Line => vec![vec![start, end]],
@@ -336,7 +385,8 @@ fn shape(tool: Tool, start: Point, end: Point, thickness: u32) -> Vec<Vec<Point>
             // Larger/thicker heads keep the V visible beyond the shaft's brush width.
             // ponytail: cap at 75% of the arrow length; extremely short thick gestures
             // can still look like a dot. A filled/tapered renderer is the upgrade path.
-            let head = (48.0 + 6.0 * f64::from(thickness.clamp(1, 31) | 1)).min(length * 0.75);
+            let head = ((48.0 + 6.0 * f64::from(thickness.clamp(1, 31) | 1)) * head_scale)
+                .min(length * 0.75);
             let (ux, uy) = (dx / length, dy / length);
             let branch = |side: f64| {
                 (
@@ -419,6 +469,19 @@ fn segment_distance_squared(a: Point, b: Point, c: Point, d: Point) -> f64 {
         .min(point_distance_squared(b, c, d))
         .min(point_distance_squared(c, a, b))
         .min(point_distance_squared(d, a, b))
+}
+
+// Test setup for variant/history regressions. Runtime pen selection is exact.
+#[cfg(test)]
+impl Strokes {
+    pub fn toggle_temporary_pen(&mut self) -> bool {
+        if self.tool == Tool::Pen {
+            return self.select_pen(!self.temporary_pen);
+        }
+        let changed = self.cancel();
+        self.temporary_pen = !self.temporary_pen;
+        changed
+    }
 }
 
 #[cfg(test)]
@@ -942,6 +1005,226 @@ mod tests {
         assert_eq!(strokes.annotations(), both);
         assert!(!strokes.arrow_tail_first());
         assert!(strokes.temporary_pen());
+    }
+
+    #[test]
+    fn arrow_head_scale_defaults_and_half_double_geometry() {
+        let anchor = (23, -41);
+        assert_eq!(Strokes::default().arrow_head_scale(), 1.0);
+        for scale in [0.5, 1.0, 2.0] {
+            for width in (1..=31).step_by(2) {
+                for tail_first in [false, true] {
+                    for (dx, dy) in [
+                        (1, 0),
+                        (1, 1),
+                        (0, 1),
+                        (-1, 1),
+                        (-1, 0),
+                        (-1, -1),
+                        (0, -1),
+                        (1, -1),
+                    ] {
+                        let mut strokes = Strokes::default();
+                        assert_eq!(strokes.set_arrow_head_scale(scale), scale != 1.0);
+                        strokes.set_thickness(width);
+                        if tail_first {
+                            strokes.toggle_arrow_direction();
+                        }
+                        let end = (anchor.0 + dx * 1000, anchor.1 + dy * 1000);
+                        draw(&mut strokes, Tool::Arrow, anchor, end);
+                        let (head, tail) = if tail_first {
+                            (end, anchor)
+                        } else {
+                            (anchor, end)
+                        };
+                        let paths = &strokes.annotations()[0].paths;
+                        if scale == 1.0 {
+                            assert_eq!(*paths, shape(Tool::Arrow, head, tail, width));
+                        }
+                        assert_eq!(paths[0], [head, tail]);
+                        let (vx, vy) = ((tail.0 - head.0) as f64, (tail.1 - head.1) as f64);
+                        let length = vx.hypot(vy);
+                        let reach = (48.0 + 6.0 * width as f64) * scale;
+                        for (wing, side) in paths[1..].iter().zip([1.0, -1.0]) {
+                            assert_eq!(wing[0], head);
+                            let (x, y) = ((wing[1].0 - head.0) as f64, (wing[1].1 - head.1) as f64);
+                            assert!(((x * vx + y * vy) / length - reach).abs() <= 0.71);
+                            assert!(
+                                ((y * vx - x * vy) / length - side * reach / 2.0).abs() <= 0.71
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn arrow_head_scale_caps_after_scaling_and_handles_zero_length() {
+        for width in [1, 5, 31] {
+            for scale in [0.1, 0.5, 1.0, 2.0, 4.0] {
+                let reach = ((48.0 + 6.0 * width as f64) * scale).min(60.0);
+                assert_eq!(
+                    shape_with_head_scale(Tool::Arrow, (0, 0), (80, 0), width, scale),
+                    [
+                        vec![(0, 0), (80, 0)],
+                        vec![(0, 0), (reach.round() as i32, (reach / 2.0).round() as i32)],
+                        vec![
+                            (0, 0),
+                            (reach.round() as i32, (-reach / 2.0).round() as i32)
+                        ],
+                    ]
+                );
+                for end in [(1, 0), (0, 1), (-1, -1)] {
+                    let paths = shape_with_head_scale(Tool::Arrow, (0, 0), end, width, scale);
+                    assert_eq!(paths[0], [(0, 0), end]);
+                    assert!(
+                        paths
+                            .iter()
+                            .flatten()
+                            .all(|&(x, y)| x.abs() <= 2 && y.abs() <= 2)
+                    );
+                }
+                assert_eq!(
+                    shape_with_head_scale(Tool::Arrow, (2, -3), (2, -3), width, scale),
+                    vec![vec![(2, -3), (2, -3)]; 3]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn arrow_head_scale_invalid_and_unchanged_values_preserve_gestures() {
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Rectangle,
+            Tool::Arrow,
+            Tool::Ellipse,
+            Tool::Eraser,
+        ] {
+            let mut strokes = Strokes::default();
+            draw(&mut strokes, Tool::Pen, (0, 0), (30, 30));
+            draw(&mut strokes, Tool::Line, (100, 0), (130, 30));
+            assert!(strokes.undo());
+            strokes.select(tool);
+            strokes.begin((0, 0));
+            strokes.append((30, 30));
+            let preview = strokes.annotations().to_vec();
+            let before = strokes.before.clone();
+            let undo = strokes.undo.clone();
+            let redo = strokes.redo.clone();
+            for scale in [
+                f64::NAN,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                -1.0,
+                -0.0,
+                0.0,
+                0.099,
+                4.001,
+                1.0,
+            ] {
+                assert!(!strokes.set_arrow_head_scale(scale));
+                assert_eq!(strokes.arrow_head_scale(), 1.0);
+                assert!(strokes.is_active());
+                assert_eq!(strokes.annotations(), preview);
+                assert_eq!(strokes.before, before);
+                assert_eq!(strokes.undo, undo);
+                assert_eq!(strokes.redo, redo);
+            }
+            assert!(strokes.set_arrow_head_scale(0.1));
+            assert!(!strokes.is_active());
+            assert_eq!(strokes.arrow_head_scale(), 0.1);
+            assert!(!strokes.set_arrow_head_scale(0.1));
+            assert!(strokes.set_arrow_head_scale(4.0));
+            assert_eq!(strokes.arrow_head_scale(), 4.0);
+            assert!(!strokes.set_arrow_head_scale(4.0));
+        }
+    }
+
+    #[test]
+    fn arrow_head_scale_preserves_completed_geometry_and_undo_redo() {
+        let mut strokes = Strokes::default();
+        draw(&mut strokes, Tool::Arrow, (0, 0), (1000, 0));
+        let first = strokes.annotations().to_vec();
+        strokes.set_thickness(31);
+        strokes.toggle_arrow_direction();
+        assert!(strokes.set_arrow_head_scale(2.0));
+        draw(&mut strokes, Tool::Arrow, (0, 0), (1000, 0));
+        let both = strokes.annotations().to_vec();
+        assert_eq!(both[0], first[0]);
+        assert_eq!(both[1].paths[1], [(1000, 0), (532, -234)]);
+        assert!(strokes.undo());
+        let undo = strokes.undo.clone();
+        let redo = strokes.redo.clone();
+        assert!(strokes.set_arrow_head_scale(0.5));
+        assert_eq!(strokes.annotations(), first);
+        assert_eq!(strokes.undo, undo);
+        assert_eq!(strokes.redo, redo);
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), both);
+        assert!(strokes.undo());
+        assert_eq!(strokes.annotations(), first);
+        assert!(strokes.undo());
+        assert!(strokes.annotations().is_empty());
+        assert!(strokes.redo());
+        assert!(strokes.redo());
+        assert_eq!(strokes.annotations(), both);
+        assert_eq!(strokes.arrow_head_scale(), 0.5);
+    }
+
+    #[test]
+    fn arrow_head_scale_settles_active_previews_and_pen_eraser_edits() {
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Rectangle,
+            Tool::Arrow,
+            Tool::Ellipse,
+            Tool::Eraser,
+        ] {
+            for tail_first in [false, true] {
+                let mut strokes = Strokes::default();
+                draw(&mut strokes, Tool::Pen, (0, 0), (30, 30));
+                draw(&mut strokes, Tool::Arrow, (100, 0), (1000, 0));
+                assert!(strokes.undo());
+                let scene = strokes.annotations().to_vec();
+                let undo = strokes.undo.clone();
+                let redo = strokes.redo.clone();
+                if tail_first {
+                    strokes.toggle_arrow_direction();
+                }
+                strokes.select(tool);
+                let selection = strokes.selection();
+                let previous_tool = strokes.previous_tool;
+                let style = strokes.style();
+                strokes.begin((0, 0));
+                strokes.append((30, 30));
+                let preview = strokes.annotations().to_vec();
+                assert!(strokes.set_arrow_head_scale(2.0));
+                assert!(!strokes.is_active());
+                assert!(!strokes.append((200, 200)));
+                assert_eq!(strokes.selection(), selection);
+                assert_eq!(strokes.previous_tool, previous_tool);
+                assert_eq!(strokes.style(), style);
+                if matches!(tool, Tool::Pen | Tool::Eraser) {
+                    assert_eq!(strokes.annotations(), preview);
+                    assert_eq!(strokes.undo.len(), undo.len() + 1);
+                    assert!(strokes.redo.is_empty());
+                    assert!(strokes.undo());
+                    assert_eq!(strokes.annotations(), scene);
+                    assert!(strokes.redo());
+                    assert_eq!(strokes.annotations(), preview);
+                } else {
+                    assert_eq!(strokes.annotations(), scene);
+                    assert_eq!(strokes.undo, undo);
+                    assert_eq!(strokes.redo, redo);
+                    assert!(strokes.redo());
+                    assert_eq!(strokes.annotations().len(), 2);
+                }
+            }
+        }
     }
 
     #[test]

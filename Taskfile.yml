@@ -48,9 +48,18 @@ tasks:
       - cargo test generate_executable_icon -- --ignored --exact tray::tests::generate_executable_icon
 
   test-settings:
-    desc: Check settings completion, validation, activation key, preservation and temporary-pen duration
+    desc: Check settings completion, remapping, reload, arrow size and preference preservation
     cmds:
       - cargo test --release settings_ -- --test-threads=1
+
+  test-config:
+    desc: Check shortcut parsing, native remapping rollback, config reload and arrow size
+    cmds:
+      - cargo test --release settings_ -- --test-threads=1
+      - cargo test --release remapped_ -- --test-threads=1
+      - cargo test --release arrow_head_scale_ -- --test-threads=1
+      - cargo test --release lifetime_update_ -- --test-threads=1
+      - cargo test --release tray_menu_ -- --test-threads=1
 
   test-menu:
     desc: Run only new floating-menu feature tests

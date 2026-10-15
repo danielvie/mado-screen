@@ -12,7 +12,7 @@ mod trail;
 mod tray;
 mod ui;
 
-use controls::{Action, ActivationKey, Hotkeys};
+use controls::{Action, Hotkeys, Shortcuts};
 use input::{DragCapture, Event, ExpiryTimer, MouseWheel};
 use overlay::Overlay;
 use settings::Favorites;
@@ -54,7 +54,8 @@ Global shortcuts
 
 Drawing shortcuts
   Escape       Return to click-through so underlying apps receive input
-  P            Pen; press again to toggle temporary ink (default fade: 1 second)
+  P            Pen, permanent ink
+  S            Smoke pen, temporary ink (default fade: 1 second)
   L            Straight line
   R            Rectangle outline
   A            Arrow; press again to switch head-first / tail-first
@@ -73,24 +74,56 @@ Drawing shortcuts
 
 Floating menu
   Hover over the top-right tool icon to open the dark menu.
+  Click the pin to keep the menu expanded; click again to unpin.
   Click tool icons, color slots or the width slider; letters show shortcuts.
   Click Drawing / Click-through to switch canvas input without a shortcut.
   Drag a palette color onto the active or reserve square; click the reserve to swap.
   Drag the tool icon or its grip to move the menu.
   Click the tray icon to switch modes; right-click it to hide the menu, clear or quit.
+  Choose Reload config in the tray menu to apply edited settings without restarting.
 
 Default brush: orange, 5 pixels; reserve blue. Restart after changing the monitor layout.
 Settings and favorite colors are saved in ~/.mado/mado-screen/settings.toml.
 ";
 
-fn startup_help(styled: bool, activation_key: ActivationKey) -> String {
-    let activation = activation_key.label();
-    let guide = STARTUP_HELP
-        .replace("Press F4 ", &format!("Press {activation} "))
-        .replace(
-            "  F4           Switch",
-            &format!("  {activation:<13}Switch"),
-        );
+fn startup_help(styled: bool, shortcuts: impl Into<Shortcuts>) -> String {
+    let shortcuts = shortcuts.into();
+    let activation = shortcuts.binding("activation_key").label();
+    let toggle = shortcuts.binding("toggle").label();
+    let defaults = Shortcuts::default();
+    let mut guide = String::new();
+    for line in STARTUP_HELP.lines() {
+        let line = if line.starts_with("Starts in") {
+            format!("Starts in click-through mode. Press {activation} or {toggle} to draw.")
+        } else if let Some((key, description)) = line
+            .strip_prefix("  ")
+            .and_then(|row| row.split_once("   "))
+        {
+            let name = controls::SHORTCUT_NAMES
+                .iter()
+                .find(|name| defaults.binding(name).label() == key);
+            let key = if key == "F4" {
+                activation.clone()
+            } else if let Some(name) = name {
+                shortcuts.binding(name).label()
+            } else {
+                key.split(" / ")
+                    .map(|part| {
+                        controls::SHORTCUT_NAMES
+                            .iter()
+                            .find(|name| defaults.binding(name).label() == part)
+                            .map_or_else(|| part.to_owned(), |name| shortcuts.binding(name).label())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" / ")
+            };
+            format!("  {key:<10}   {}", description.trim_start())
+        } else {
+            line.to_owned()
+        };
+        guide.push_str(&line);
+        guide.push('\n');
+    }
     if !styled {
         return guide;
     }
@@ -125,7 +158,11 @@ fn startup_help(styled: bool, activation_key: ActivationKey) -> String {
             ));
         } else {
             let mut text = line.to_owned();
-            for shortcut in [activation, "Ctrl+Alt+D", "Drawing / Click-through"] {
+            for shortcut in [
+                activation.as_str(),
+                toggle.as_str(),
+                "Drawing / Click-through",
+            ] {
                 text = text.replace(shortcut, &format!("{SHORTCUT}{shortcut}{RESET}"));
             }
             for command in ["Hover", "Click", "Drag"] {
@@ -141,7 +178,7 @@ fn startup_help(styled: bool, activation_key: ActivationKey) -> String {
     help
 }
 
-fn print_startup_help(activation_key: ActivationKey) {
+fn print_startup_help(shortcuts: Shortcuts) {
     // VT styling requires console output mode; redirected/unsupported output stays plain.
     // https://learn.microsoft.com/en-us/windows/console/setconsolemode
     let console = if std::io::stdout().is_terminal() {
@@ -161,7 +198,7 @@ fn print_startup_help(activation_key: ActivationKey) {
     } else {
         None
     };
-    println!("{}", startup_help(console.is_some(), activation_key));
+    println!("{}", startup_help(console.is_some(), shortcuts));
     if let Some((handle, mode)) = console {
         let _ = std::io::stdout().flush();
         unsafe {
@@ -194,19 +231,11 @@ fn clear_ink(
 fn main() -> Result<()> {
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
     let settings_path = settings::path();
-    let startup = settings_path
+    let mut startup = settings_path
         .as_deref()
         .map(settings::load)
         .unwrap_or_default();
-    let _hotkeys = Hotkeys::register()?;
-    let _function_key = Hotkeys::function_toggle(startup.activation_key)
-        .map_err(|error| {
-            eprintln!(
-                "{error} {} is unavailable; use Ctrl+Alt+D.",
-                startup.activation_key.label()
-            )
-        })
-        .ok();
+    let mut hotkeys = Hotkeys::register(startup.shortcuts)?;
     // Reverse drop order: drag, drawing keys, tray, UI, window, surface, permanent keys.
     let mut surface;
     let overlay = Overlay::new()?;
@@ -217,6 +246,7 @@ fn main() -> Result<()> {
     let mut saved = (startup.favorites, startup.thickness_px, startup.tail_first);
     strokes.set_color(saved.0.active);
     strokes.set_thickness(startup.thickness_px);
+    strokes.set_arrow_head_scale(startup.head_scale);
     if startup.tail_first {
         strokes.toggle_arrow_direction();
     }
@@ -237,18 +267,19 @@ fn main() -> Result<()> {
         unsafe { GetSystemMetrics(SM_CXSCREEN) },
         unsafe { GetSystemMetrics(SM_CYSCREEN) },
         startup.visible_on_start,
-        startup.activation_key,
+        startup.shortcuts,
     )?;
     ui.set_reserve(reserve)?;
     ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
     let tray = Tray::new(overlay.hwnd())?;
     let mut panel_visible = startup.visible_on_start;
     tray.set_panel_visible(panel_visible);
+    tray.set_shortcuts(startup.shortcuts);
     tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
-    let mut tool_keys: Option<(Hotkeys, MouseWheel)> = None;
+    let mut tool_keys: Option<MouseWheel> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
-    print_startup_help(startup.activation_key);
+    print_startup_help(startup.shortcuts);
     let mut message = MSG::default();
     loop {
         match unsafe { GetMessageW(&mut message, None, 0, 0) }.0 {
@@ -279,6 +310,7 @@ fn main() -> Result<()> {
                     toggle_drawing(
                         &mut drawing,
                         &mut tool_keys,
+                        (&mut hotkeys, startup.shortcuts),
                         &overlay,
                         &mut surface,
                         (&mut strokes, &mut trail, now),
@@ -319,6 +351,7 @@ fn main() -> Result<()> {
                 TrayEvent::Toggle => toggle_drawing(
                     &mut drawing,
                     &mut tool_keys,
+                    (&mut hotkeys, startup.shortcuts),
                     &overlay,
                     &mut surface,
                     (&mut strokes, &mut trail, now),
@@ -336,13 +369,79 @@ fn main() -> Result<()> {
                 }
                 TrayEvent::Quit => break,
                 TrayEvent::Panel => toggle_panel(&mut panel_visible, &ui, &tray)?,
+                TrayEvent::Reload => {
+                    match load_replacement(settings_path.as_deref(), &mut hotkeys, drawing) {
+                        Err(error) => {
+                            eprintln!("Config reload failed: {error}");
+                            tray.notify_reload(Err(&error));
+                        }
+                        Ok(next) => {
+                            apply_reloaded_settings(
+                                next,
+                                &mut strokes,
+                                &mut trail,
+                                &mut drag,
+                                &mut reserve,
+                            );
+                            startup = next;
+                            saved = (next.favorites, next.thickness_px, next.tail_first);
+                            trail.expire(now);
+                            if trail.is_empty() {
+                                drop(expiry.take());
+                            }
+                            // Config is committed. Attempt every display update even if one fails.
+                            tray.set_shortcuts(next.shortcuts);
+                            let visibility = if panel_visible != next.visible_on_start {
+                                let result = ui.set_visible(next.visible_on_start);
+                                if result.is_ok() {
+                                    panel_visible = next.visible_on_start;
+                                }
+                                tray.set_panel_visible(panel_visible);
+                                result
+                            } else {
+                                Ok(())
+                            };
+                            let updates = [
+                                ui.set_shortcuts(next.shortcuts),
+                                ui.set_reserve(reserve),
+                                visibility,
+                                ui.update_label(drawing, strokes.tool_label(), strokes.style()),
+                                tray.update(drawing, strokes.tool_label(), strokes.style().color),
+                                surface.present_scene(
+                                    overlay.hwnd(),
+                                    drawing,
+                                    strokes.annotations(),
+                                    &trail,
+                                    now,
+                                ),
+                            ];
+                            let errors = updates
+                                .into_iter()
+                                .filter_map(|result| result.err())
+                                .map(|error| error.to_string())
+                                .collect::<Vec<_>>();
+                            if errors.is_empty() {
+                                tray.notify_reload(Ok("Settings and shortcuts are now active."));
+                            } else {
+                                let warning = format!(
+                                    "Config applied, but display refresh failed: {}",
+                                    errors.join("; ")
+                                );
+                                eprintln!("{warning}");
+                                tray.notify_reload(Ok(&warning));
+                            }
+                        }
+                    }
+                    continue;
+                }
             }
             ui.update_label(drawing, strokes.tool_label(), strokes.style())?;
             tray.update(drawing, strokes.tool_label(), strokes.style().color)?;
             continue;
         }
         if message.message == WM_HOTKEY {
-            let Some(action) = controls::action(message.wParam.0) else {
+            let action = hotkey_action(&message, &hotkeys);
+            let Some(action) = action else {
                 continue;
             };
             match action {
@@ -350,6 +449,7 @@ fn main() -> Result<()> {
                     toggle_drawing(
                         &mut drawing,
                         &mut tool_keys,
+                        (&mut hotkeys, startup.shortcuts),
                         &overlay,
                         &mut surface,
                         (&mut strokes, &mut trail, now),
@@ -447,6 +547,55 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn hotkey_action(message: &MSG, hotkeys: &Hotkeys) -> Option<Action> {
+    if message.message != WM_HOTKEY {
+        return None;
+    }
+    if message.lParam.0 == 0 {
+        // App-local posted actions retain the stable IDs for smoke checks.
+        controls::action(message.wParam.0)
+    } else {
+        hotkeys.action(message.wParam.0)
+    }
+}
+
+fn load_replacement(
+    path: Option<&Path>,
+    hotkeys: &mut Hotkeys,
+    drawing: bool,
+) -> std::result::Result<settings::Settings, String> {
+    let path = path.ok_or_else(|| "Cannot locate the settings file.".to_owned())?;
+    let next = settings::reload(path).map_err(|error| error.to_string())?;
+    hotkeys
+        .replace(next.shortcuts, true)
+        .map_err(|error| error.to_string())?;
+    if !drawing {
+        hotkeys
+            .replace(next.shortcuts, false)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(next)
+}
+
+fn apply_reloaded_settings(
+    next: settings::Settings,
+    strokes: &mut Strokes,
+    trail: &mut Trail,
+    drag: &mut Option<DragCapture>,
+    reserve: &mut u32,
+) {
+    strokes.cancel();
+    drop(drag.take());
+    trail.set_lifetime(Duration::from_millis(next.duration_ms));
+    strokes.set_color(next.favorites.active);
+    strokes.set_thickness(next.thickness_px);
+    strokes.set_arrow_head_scale(next.head_scale);
+    if strokes.arrow_tail_first() != next.tail_first {
+        strokes.toggle_arrow_direction();
+    }
+    *reserve = next.favorites.reserve;
+}
+
 // Tray and keyboard share one visibility state; hiding the UI never alters the canvas.
 fn toggle_panel(visible: &mut bool, ui: &DesktopUi, tray: &Tray) -> Result<()> {
     let next = !*visible;
@@ -459,17 +608,19 @@ fn toggle_panel(visible: &mut bool, ui: &DesktopUi, tray: &Tray) -> Result<()> {
 // The visible input toggle, Ctrl+Alt+D and drawing-only Escape use this transaction.
 fn toggle_drawing(
     drawing: &mut bool,
-    keys: &mut Option<(Hotkeys, MouseWheel)>,
+    keys: &mut Option<MouseWheel>,
+    bindings: (&mut Hotkeys, Shortcuts),
     overlay: &Overlay,
     surface: &mut Surface,
     scene: (&mut Strokes, &mut Trail, Duration),
     drag: &mut Option<DragCapture>,
 ) -> Result<()> {
     let (strokes, trail, now) = scene;
+    let (hotkeys, shortcuts) = bindings;
     let entering = !*drawing;
     let pending = if entering {
-        match Hotkeys::drawing_keys(true)
-            .and_then(|keys| MouseWheel::begin(overlay.hwnd()).map(|wheel| (keys, wheel)))
+        match MouseWheel::begin(overlay.hwnd())
+            .and_then(|wheel| hotkeys.set_drawing(shortcuts, true).map(|_| wheel))
         {
             Ok(keys) => Some(keys),
             Err(error) => {
@@ -486,6 +637,9 @@ fn toggle_drawing(
     trail.finish();
     drop(drag.take());
     overlay.set_capture(entering)?;
+    if !entering {
+        hotkeys.set_drawing(shortcuts, false)?;
+    }
     *keys = pending;
     *drawing = entering;
     surface.present_scene(overlay.hwnd(), entering, strokes.annotations(), trail, now)
@@ -549,7 +703,7 @@ fn persist(
     *saved = current;
 }
 
-// Menu choices are exact selections, unlike repeated P/A hotkey actions.
+// Pen shortcuts and menu choices select exact variants; repeated A flips direction.
 fn apply_menu_tool(
     choice: MenuTool,
     strokes: &mut Strokes,
@@ -612,8 +766,15 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
         drop(drag.take());
         return strokes.swap_previous_tool();
     }
+    if matches!(action, Action::Pen | Action::TemporaryPen) {
+        let temporary = action == Action::TemporaryPen;
+        if strokes.tool() == Tool::Pen && strokes.temporary_pen() == temporary {
+            return false;
+        }
+        drop(drag.take());
+        return strokes.select_pen(temporary);
+    }
     let tool = match action {
-        Action::Pen => Some(Tool::Pen),
         Action::Line => Some(Tool::Line),
         Action::Rectangle => Some(Tool::Rectangle),
         Action::Arrow if STAGE >= 2 => Some(Tool::Arrow),
@@ -624,10 +785,6 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
     if let Some(tool) = tool {
         if strokes.tool() == tool {
             match tool {
-                Tool::Pen => {
-                    drop(drag.take());
-                    return strokes.toggle_temporary_pen();
-                }
                 Tool::Arrow => {
                     drop(drag.take());
                     return strokes.toggle_arrow_direction();
@@ -684,6 +841,8 @@ fn apply_edit(action: Action, strokes: &mut Strokes, drag: &mut Option<DragCaptu
 
 fn interrupts_trail(action: &Action, strokes: &Strokes) -> bool {
     match action {
+        Action::Pen => strokes.tool() != Tool::Pen || strokes.temporary_pen(),
+        Action::TemporaryPen => strokes.tool() != Tool::Pen || !strokes.temporary_pen(),
         Action::PreviousTool => strokes.has_previous_tool(),
         Action::Blue => strokes.style().color != 0xff3b82f6,
         Action::Orange => strokes.style().color != 0xfff97316,
@@ -807,6 +966,7 @@ fn handle_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use controls::Shortcut as ActivationKey;
     use std::cell::RefCell;
 
     #[test]
@@ -818,6 +978,8 @@ mod tests {
             "Ctrl+Alt+Q",
             "Escape       Return to click-through",
             "P            Pen",
+            "S            Smoke pen",
+            "Click the pin to keep the menu expanded",
             "L            Straight line",
             "R            Rectangle",
             "A            Arrow",
@@ -932,6 +1094,220 @@ mod tests {
         std::fs::create_dir_all(&artifacts).unwrap();
         std::fs::write(artifacts.join("help-plain.txt"), plain).unwrap();
         std::fs::write(artifacts.join("help-styled.ansi"), styled).unwrap();
+    }
+
+    #[test]
+    fn settings_remapped_shortcuts_update_every_help_row() {
+        let defaults = Shortcuts::default();
+        for name in controls::SHORTCUT_NAMES {
+            let mut shortcuts = defaults;
+            shortcuts.set(
+                name,
+                controls::Shortcut::parse("Ctrl+Alt+Shift+F11").unwrap(),
+            );
+            let help = startup_help(false, shortcuts);
+            assert!(help.contains("Ctrl+Alt+Shift+F11"), "{name}");
+            let styled = startup_help(true, shortcuts);
+            assert!(
+                styled
+                    .lines()
+                    .any(|line| line.contains("Ctrl+Alt+Shift+F11")
+                        && line.contains("\x1b[38;2;167;152;215m")),
+                "{name}"
+            );
+        }
+        let mut shortcuts = defaults;
+        shortcuts.set("pen", controls::Shortcut::parse("Shift+P").unwrap());
+        shortcuts.set("smoke_pen", controls::Shortcut::parse("Alt+S").unwrap());
+        assert!(startup_help(false, shortcuts).contains("Shift+P      Pen"));
+        assert!(startup_help(false, shortcuts).contains("Alt+S        Smoke pen"));
+    }
+
+    #[test]
+    fn settings_reload_rejects_bad_file_or_conflicting_hotkey_before_gesture_changes() {
+        let directory =
+            std::env::temp_dir().join(format!("mado-live-reload-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.toml");
+        let mut shortcuts = Shortcuts::default();
+        for (name, key) in controls::SHORTCUT_NAMES.iter().zip(b'A'..=b'Y') {
+            shortcuts.set(
+                name,
+                controls::Shortcut::parse(&format!("Ctrl+Alt+Shift+{}", key as char)).unwrap(),
+            );
+        }
+        let config = controls::SHORTCUT_NAMES
+            .iter()
+            .map(|name| format!("{name} = '{}'", shortcuts.binding(name).label()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(
+            &path,
+            format!("[shortcuts]\n{config}\n[arrow]\nhead_scale=2.0"),
+        )
+        .unwrap();
+        let mut hotkeys = Hotkeys::empty();
+        let loaded = load_replacement(Some(&path), &mut hotkeys, false).unwrap();
+        assert_eq!(loaded.shortcuts, shortcuts);
+        assert_eq!(loaded.head_scale, 2.0);
+        let mut strokes = Strokes::default();
+        strokes.begin((1, 1));
+        strokes.append((10, 10));
+        let ink = strokes.annotations().to_vec();
+        let mut trail = Trail::default();
+        trail.begin((20, 20), strokes.style(), Duration::from_millis(100));
+        let temporary = trail.annotations().cloned().collect::<Vec<_>>();
+        std::fs::write(&path, "[arrow]\nhead_scale=nan").unwrap();
+        assert!(load_replacement(Some(&path), &mut hotkeys, false).is_err());
+        assert!(strokes.is_active() && trail.is_active());
+        assert_eq!(strokes.annotations(), ink);
+        assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), temporary);
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, RegisterHotKey, UnregisterHotKey,
+        };
+        let modifiers = MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT;
+        unsafe { RegisterHotKey(None, 900, modifiers, b'Z' as u32) }.unwrap();
+        let conflicted = config.replace("pen = 'Ctrl+Alt+Shift+D'", "pen = 'Ctrl+Alt+Shift+Z'");
+        std::fs::write(&path, format!("[shortcuts]\n{conflicted}")).unwrap();
+        let result = load_replacement(Some(&path), &mut hotkeys, false);
+        unsafe { UnregisterHotKey(None, 900) }.unwrap();
+        assert!(result.is_err());
+        assert!(strokes.is_active() && trail.is_active());
+        assert_eq!(strokes.annotations(), ink);
+        // A rejected reload retains global keys but must not reserve drawing-only keys.
+        unsafe { RegisterHotKey(None, 901, modifiers, b'D' as u32) }.unwrap();
+        unsafe { UnregisterHotKey(None, 901) }.unwrap();
+        assert!(unsafe { RegisterHotKey(None, 902, modifiers, b'A' as u32) }.is_err());
+        std::fs::write(&path, format!("[shortcuts]\n{config}")).unwrap();
+        assert!(load_replacement(Some(&path), &mut hotkeys, true).is_ok());
+        assert!(unsafe { RegisterHotKey(None, 903, modifiers, b'D' as u32) }.is_err());
+        assert!(load_replacement(None, &mut hotkeys, true).is_err());
+        drop(hotkeys);
+        unsafe { RegisterHotKey(None, 904, modifiers, b'A' as u32) }.unwrap();
+        unsafe { UnregisterHotKey(None, 904) }.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn settings_reload_routes_native_messages_across_global_drawing_swaps() {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        let directory =
+            std::env::temp_dir().join(format!("mado-routing-reload-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.toml");
+        let mut shortcuts = Shortcuts::default();
+        for (name, key) in controls::SHORTCUT_NAMES.iter().zip(b'A'..=b'Y') {
+            shortcuts.set(
+                name,
+                controls::Shortcut::parse(&format!("Ctrl+Alt+Shift+{}", key as char)).unwrap(),
+            );
+        }
+        let mut hotkeys = Hotkeys::empty();
+        for _ in 0..3 {
+            let config = controls::SHORTCUT_NAMES
+                .iter()
+                .map(|name| format!("{name} = '{}'", shortcuts.binding(name).label()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(&path, format!("[shortcuts]\n{config}")).unwrap();
+            load_replacement(Some(&path), &mut hotkeys, true).unwrap();
+            let pen_id = (1..2000)
+                .find(|id| hotkeys.action(*id) == Some(Action::Pen))
+                .unwrap();
+            let toggle_id = (1..2000)
+                .find(|id| hotkeys.action(*id) == Some(Action::Toggle))
+                .unwrap();
+            let mut native = MSG {
+                message: WM_HOTKEY,
+                wParam: WPARAM(pen_id),
+                lParam: LPARAM(1),
+                ..Default::default()
+            };
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Pen));
+            let pen = shortcuts.binding("pen");
+            shortcuts.set("pen", shortcuts.binding("toggle"));
+            shortcuts.set("toggle", pen);
+            let config = controls::SHORTCUT_NAMES
+                .iter()
+                .map(|name| format!("{name} = '{}'", shortcuts.binding(name).label()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(&path, format!("[shortcuts]\n{config}")).unwrap();
+            load_replacement(Some(&path), &mut hotkeys, true).unwrap();
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Toggle));
+            native.wParam = WPARAM(toggle_id);
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Pen));
+            hotkeys.set_drawing(shortcuts, false).unwrap();
+            assert_eq!(hotkey_action(&native, &hotkeys), None);
+            native.wParam = WPARAM(pen_id);
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Toggle));
+            hotkeys.set_drawing(shortcuts, true).unwrap();
+            let current_pen_id = (1..2000)
+                .find(|id| hotkeys.action(*id) == Some(Action::Pen))
+                .unwrap();
+            native.wParam = WPARAM(current_pen_id);
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Pen));
+            native.lParam = LPARAM(0);
+            native.wParam = WPARAM(4);
+            assert_eq!(hotkey_action(&native, &hotkeys), Some(Action::Pen));
+            native.message = WM_MOUSEMOVE;
+            assert_eq!(hotkey_action(&native, &hotkeys), None);
+        }
+        drop(hotkeys);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn settings_reload_applies_preferences_without_replacing_ink_history_or_selection() {
+        for tool in [Tool::Pen, Tool::Arrow, Tool::Rectangle] {
+            let mut strokes = Strokes::default();
+            strokes.select(Tool::Arrow);
+            strokes.begin((0, 0));
+            strokes.append((1000, 0));
+            strokes.finish();
+            let permanent = strokes.annotations().to_vec();
+            strokes.select(Tool::Line);
+            strokes.begin((10, 50));
+            strokes.append((100, 50));
+            strokes.finish();
+            assert!(strokes.undo());
+            let mut trail = Trail::default();
+            trail.begin((20, 20), strokes.style(), Duration::from_millis(100));
+            trail.append((30, 30), Duration::from_millis(200));
+            let temporary = trail.annotations().cloned().collect::<Vec<_>>();
+            strokes.select(tool);
+            strokes.begin((200, 200));
+            strokes.append((300, 300));
+            let mut next = settings::Settings::default();
+            next.favorites.active = 0xff123456;
+            next.favorites.reserve = 0xffabcdef;
+            next.thickness_px = 11;
+            next.duration_ms = 2000;
+            next.head_scale = 2.0;
+            next.tail_first = true;
+            let mut reserve = 0;
+            apply_reloaded_settings(next, &mut strokes, &mut trail, &mut None, &mut reserve);
+            assert_eq!(strokes.tool(), tool);
+            assert_eq!(strokes.annotations()[0], permanent[0]);
+            assert_eq!(strokes.style().color, next.favorites.active);
+            assert_eq!(strokes.style().thickness, 11);
+            assert_eq!(strokes.arrow_head_scale(), 2.0);
+            assert!(strokes.arrow_tail_first());
+            assert_eq!(reserve, next.favorites.reserve);
+            assert!(!strokes.is_active() && !trail.is_active());
+            assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), temporary);
+            assert!(!trail.expire(Duration::from_millis(2099)));
+            assert!(trail.expire(Duration::from_millis(2100)));
+            if tool != Tool::Pen {
+                assert_eq!(strokes.annotations(), permanent);
+                assert!(strokes.redo());
+                assert_eq!(strokes.annotations().len(), 2);
+            } else {
+                assert_eq!(strokes.annotations().len(), 2);
+                assert!(strokes.undo());
+                assert_eq!(strokes.annotations(), permanent);
+            }
+        }
     }
 
     #[test]
@@ -1315,15 +1691,22 @@ mod tests {
     }
 
     #[test]
-    fn panel_menu_shortcuts_and_clicks_keep_distinct_pen_behavior() {
+    fn panel_menu_shortcuts_and_clicks_select_exact_pen_variants() {
         let mut strokes = Strokes::default();
         let mut trail = Trail::default();
-        apply_menu_tool(MenuTool::TemporaryPen, &mut strokes, &mut trail, &mut None);
-        assert!(strokes.temporary_pen());
-        apply_edit(Action::Pen, &mut strokes, &mut None);
-        assert!(!strokes.temporary_pen());
-        apply_edit(Action::Pen, &mut strokes, &mut None);
-        assert!(strokes.temporary_pen());
+        for choice in [MenuTool::Pen, MenuTool::TemporaryPen] {
+            apply_menu_tool(choice, &mut strokes, &mut trail, &mut None);
+            for (action, temporary) in [
+                (Action::Pen, false),
+                (Action::Pen, false),
+                (Action::TemporaryPen, true),
+                (Action::TemporaryPen, true),
+            ] {
+                apply_edit(action, &mut strokes, &mut None);
+                assert_eq!(strokes.tool(), Tool::Pen);
+                assert_eq!(strokes.temporary_pen(), temporary);
+            }
+        }
         apply_menu_tool(MenuTool::Pen, &mut strokes, &mut trail, &mut None);
         assert!(!strokes.temporary_pen());
     }
@@ -1347,9 +1730,12 @@ mod tests {
         let temporary = trail.annotations().cloned().collect::<Vec<_>>();
         let mut drawing = false;
         let mut keys = None;
+        let shortcuts = Shortcuts::default();
+        let mut hotkeys = Hotkeys::empty();
         let result = toggle_drawing(
             &mut drawing,
             &mut keys,
+            (&mut hotkeys, shortcuts),
             &overlay,
             &mut surface,
             (&mut strokes, &mut trail, Duration::ZERO),
@@ -1466,12 +1852,52 @@ mod tests {
     }
 
     #[test]
-    fn repeated_tool_keys_toggle_only_the_selected_variant() {
+    fn pen_shortcuts_preserve_same_variant_gestures_and_settle_switches() {
+        let mut strokes = Strokes::default();
+        strokes.begin((1, 1));
+        strokes.append((10, 10));
+        assert!(!interrupts_trail(&Action::Pen, &strokes));
+        assert!(!apply_edit(Action::Pen, &mut strokes, &mut None));
+        assert!(strokes.is_active());
+        assert!(interrupts_trail(&Action::TemporaryPen, &strokes));
+        apply_edit(Action::TemporaryPen, &mut strokes, &mut None);
+        assert!(!strokes.is_active());
+        assert_eq!(strokes.annotations().len(), 1);
+        let permanent = strokes.annotations().to_vec();
+        let mut trail = Trail::default();
+        trail.begin((20, 20), strokes.style(), Duration::ZERO);
+        trail.append((30, 30), Duration::from_millis(100));
+        let parts = trail.annotations().cloned().collect::<Vec<_>>();
+        assert!(!interrupts_trail(&Action::TemporaryPen, &strokes));
+        apply_edit(Action::TemporaryPen, &mut strokes, &mut None);
+        assert!(trail.is_active());
+        assert!(interrupts_trail(&Action::Pen, &strokes));
+        trail.finish();
+        apply_edit(Action::Pen, &mut strokes, &mut None);
+        assert_eq!(trail.annotations().cloned().collect::<Vec<_>>(), parts);
+        assert_eq!(strokes.annotations(), permanent);
+        assert!(!trail.is_active());
+        apply_edit(Action::PreviousTool, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
+        apply_edit(Action::Line, &mut strokes, &mut None);
+        apply_edit(Action::TemporaryPen, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
+        apply_edit(Action::Line, &mut strokes, &mut None);
+        apply_edit(Action::Pen, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Pen");
+    }
+
+    #[test]
+    fn repeated_tool_keys_only_toggle_arrow_direction() {
         let mut strokes = Strokes::default();
         apply_edit(Action::Line, &mut strokes, &mut None);
         apply_edit(Action::Pen, &mut strokes, &mut None);
         assert_eq!(strokes.tool_label(), "Pen");
         apply_edit(Action::Pen, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Pen");
+        apply_edit(Action::TemporaryPen, &mut strokes, &mut None);
+        assert_eq!(strokes.tool_label(), "Temporary pen");
+        apply_edit(Action::TemporaryPen, &mut strokes, &mut None);
         assert_eq!(strokes.tool_label(), "Temporary pen");
         apply_edit(Action::Pen, &mut strokes, &mut None);
         assert_eq!(strokes.tool_label(), "Pen");

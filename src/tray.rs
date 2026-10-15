@@ -1,3 +1,4 @@
+use crate::controls::Shortcuts;
 use crate::ui::{MenuTool, WindowClass, tool_icon, tray_icon_pixels};
 use std::cell::Cell;
 use windows::{
@@ -16,6 +17,7 @@ const MENU_TOGGLE: usize = 1;
 const MENU_CLEAR: usize = 2;
 const MENU_QUIT: usize = 3;
 const MENU_PANEL: usize = 4;
+const MENU_RELOAD: usize = 5;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TrayEvent {
@@ -23,6 +25,7 @@ pub enum TrayEvent {
     Clear,
     Quit,
     Panel,
+    Reload,
 }
 
 struct State {
@@ -32,6 +35,7 @@ struct State {
     // Color is 0 in click-through; tool changes still update the dimmed icon.
     key: Cell<(bool, u32, MenuTool, bool)>,
     panel: Cell<bool>,
+    shortcuts: Cell<Shortcuts>,
     taskbar_created: u32,
 }
 
@@ -98,7 +102,13 @@ impl State {
                 menu,
                 MF_STRING | check,
                 MENU_TOGGLE,
-                w!("&Drawing mode\tCtrl+Alt+D"),
+                PCWSTR(
+                    menu_label(
+                        "&Drawing mode",
+                        &self.shortcuts.get().binding("toggle").label(),
+                    )
+                    .as_ptr(),
+                ),
             );
             let panel = if self.panel.get() {
                 MF_CHECKED
@@ -109,17 +119,35 @@ impl State {
                 menu,
                 MF_STRING | panel,
                 MENU_PANEL,
-                w!("Show floating &menu\tH (drawing)"),
+                PCWSTR(
+                    menu_label(
+                        "Show floating &menu",
+                        &format!("{} (drawing)", self.shortcuts.get().binding("menu").label()),
+                    )
+                    .as_ptr(),
+                ),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(
                 menu,
                 MF_STRING,
                 MENU_CLEAR,
-                w!("&Clear all ink\tCtrl+Alt+C"),
+                PCWSTR(
+                    menu_label(
+                        "&Clear all ink",
+                        &self.shortcuts.get().binding("clear").label(),
+                    )
+                    .as_ptr(),
+                ),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, MENU_QUIT, w!("&Quit\tCtrl+Alt+Q"));
+            let _ = AppendMenuW(menu, MF_STRING, MENU_RELOAD, w!("&Reload config"));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                MENU_QUIT,
+                PCWSTR(menu_label("&Quit", &self.shortcuts.get().binding("quit").label()).as_ptr()),
+            );
             let align = if GetSystemMetrics(SM_MENUDROPALIGNMENT) != 0 {
                 TPM_RIGHTALIGN
             } else {
@@ -161,6 +189,7 @@ impl Tray {
                 icon: Cell::new(create_icon(false, MenuTool::Pen, false, 0)?),
                 key: Cell::new((false, 0, MenuTool::Pen, false)),
                 panel: Cell::new(true),
+                shortcuts: Cell::new(Shortcuts::default()),
                 taskbar_created: unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) },
             }),
             class: WindowClass::new(instance, "Tray", Some(tray_proc))?,
@@ -215,6 +244,35 @@ impl Tray {
         self.state.panel.set(visible);
     }
 
+    pub fn set_shortcuts(&self, shortcuts: Shortcuts) {
+        self.state.shortcuts.set(shortcuts);
+    }
+
+    pub fn notify_reload(&self, result: std::result::Result<&str, &str>) {
+        let mut data = self.state.data();
+        data.uFlags = NIF_INFO;
+        let (title, message, flags) = match result {
+            Ok(message) => ("Config reloaded", message, NIIF_INFO),
+            Err(message) => ("Config reload failed", message, NIIF_ERROR),
+        };
+        for (slot, unit) in data
+            .szInfoTitle
+            .iter_mut()
+            .take(63)
+            .zip(title.encode_utf16())
+        {
+            *slot = unit;
+        }
+        for (slot, unit) in data.szInfo.iter_mut().take(255).zip(message.encode_utf16()) {
+            *slot = unit;
+        }
+        data.dwInfoFlags = flags;
+        // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataw
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &data);
+        }
+    }
+
     pub fn event(&self, message: &MSG) -> Option<TrayEvent> {
         decode_event(message, self.state.owner)
     }
@@ -234,6 +292,13 @@ impl Drop for Tray {
     }
 }
 
+fn menu_label(name: &str, shortcut: &str) -> Vec<u16> {
+    format!("{name}\t{shortcut}")
+        .encode_utf16()
+        .chain([0])
+        .collect()
+}
+
 fn decode_event(message: &MSG, owner: HWND) -> Option<TrayEvent> {
     if message.hwnd != owner || message.message != TRAY_EVENT {
         return None;
@@ -243,6 +308,7 @@ fn decode_event(message: &MSG, owner: HWND) -> Option<TrayEvent> {
         MENU_CLEAR => Some(TrayEvent::Clear),
         MENU_QUIT => Some(TrayEvent::Quit),
         MENU_PANEL => Some(TrayEvent::Panel),
+        MENU_RELOAD => Some(TrayEvent::Reload),
         _ => None,
     }
 }
@@ -411,6 +477,21 @@ mod tests {
     }
 
     #[test]
+    fn tray_menu_labels_follow_remapped_shortcuts() {
+        let mut shortcuts = Shortcuts::default();
+        shortcuts.set(
+            "toggle",
+            crate::controls::Shortcut::parse("Alt+F10").unwrap(),
+        );
+        let label = menu_label("&Drawing mode", &shortcuts.binding("toggle").label());
+        assert_eq!(String::from_utf16_lossy(&label), "&Drawing mode\tAlt+F10\0");
+        assert_eq!(
+            String::from_utf16_lossy(&menu_label("&Quit", "Shift+Q")),
+            "&Quit\tShift+Q\0"
+        );
+    }
+
+    #[test]
     fn tray_menu_ids_decode_only_for_owner() {
         let owner = HWND(1 as _);
         let mut message = MSG {
@@ -423,6 +504,7 @@ mod tests {
             (MENU_CLEAR, TrayEvent::Clear),
             (MENU_QUIT, TrayEvent::Quit),
             (MENU_PANEL, TrayEvent::Panel),
+            (MENU_RELOAD, TrayEvent::Reload),
         ] {
             message.wParam = WPARAM(id);
             assert_eq!(decode_event(&message, owner), Some(event));
@@ -502,6 +584,7 @@ mod tests {
             icon: Cell::new(HICON::default()),
             key: Cell::new((false, 0, MenuTool::Pen, false)),
             panel: Cell::new(true),
+            shortcuts: Cell::new(Shortcuts::default()),
             taskbar_created: 0,
         };
         for (label, tool, name) in [

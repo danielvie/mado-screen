@@ -14,7 +14,8 @@ Windows 10 version 1703 or newer or Windows 11; stable Rust Windows MSVC toolcha
 | `task build` / `cargo build` | Build |
 | `task install` | Build a release and copy `mado-screen-poc.exe` to `~/.local/bin` |
 | `task test` / `cargo test` | Pure model/render/input/control and native resource checks |
-| `task test-settings` | Settings validation, migration, preservation and temporary-pen duration |
+| `task test-settings` | Settings completion, remapping, reload, arrow size and preference preservation |
+| `task test-config` | Focused parser, native remapping rollback, reload, arrow-size and tray checks |
 | `task test-menu` | Only new floating-menu feature tests |
 | `task test-menu-followup` | Only reference-layout and compact brush-tip feature tests, optimized |
 | `task test-menu-live` | Targeted release-app menu checks, without physical input injection |
@@ -31,14 +32,17 @@ Both debug and release executables embed the default click-through tray badge at
 
 The executable starts without opening a terminal, in both debug and release builds. Use the tray icon and floating menu to control Mado; drawing shortcuts are unchanged. Startup help and diagnostics still write to standard output/error when those streams are redirected, but are not visible during a normal desktop launch.
 
+These are the default bindings. Every keyboard shortcut can be remapped in `[shortcuts]`.
+
 Permanent global controls:
-- `F4` by default, or `Ctrl+Alt+D`: drawing/click-through toggle. Set `shortcuts.activation_key` to change the bare function key. Mado reserves the selected key system-wide while running; modified combinations such as `Alt+F4` are unaffected. If another app owns the selected key, startup warns and continues with `Ctrl+Alt+D`.
+- `F4` or `Ctrl+Alt+D`: drawing/click-through toggle. Configure `shortcuts.activation_key` and `shortcuts.toggle` independently. Mado reserves each configured combination system-wide while running. If the activation binding is unavailable at startup, it warns and continues with the configured toggle binding and tray controls.
 - `Ctrl+Alt+C`: clear, undoable.
 - `Ctrl+Alt+Q`: quit.
 
 Drawing-mode-only controls:
 - `Escape` returns to click-through so underlying applications receive input again. It does not enable drawing from click-through.
-- `P` selects Pen; press `P` while Pen is selected to toggle permanent/temporary ink.
+- `P` selects permanent Pen. Repeating `P` keeps permanent ink selected.
+- `S` selects Smoke pen, the temporary fading pen. Repeating `S` keeps temporary ink selected.
 - `A` selects Arrow; press `A` while Arrow is selected to toggle head-first/tail-first drawing.
 - `L` straight line, `R` outline rectangle, `O` ellipse, `E` eraser.
 - `C` clears all permanent and temporary ink, like `Ctrl+Alt+C`. Permanent ink can be restored with undo. `C` is inactive in click-through.
@@ -50,27 +54,27 @@ Drawing-mode-only controls:
 - Mouse wheel up increases thickness; down decreases it, in the same 2-pixel steps. High-resolution wheel input accumulates to a full notch. The menu updates immediately. Scrolling is consumed only in drawing mode, without changing keyboard focus; click-through restores normal app scrolling.
 - `1` blue, `2` orange, `3` red, `4` green, `5` white.
 
-Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Repeating P or A settles the active gesture and toggles its variant; other same-tool or same-style choices do not interrupt it. Variant choices survive tool/mode changes and clear.
+Defaults are orange and 5 pixels. Each annotation retains the color and width chosen when it began. Style changes affect new work only. Tool/color/width survive clear and mode changes. Draw by dragging the logical primary mouse button; release commits. A line/rectangle preview is cancelled on mode/tool/style changes, while partial pen ink is retained. Repeating A settles the active gesture and toggles arrow direction. P and S select exact pen variants; repeating the selected pen shortcut does not interrupt its gesture. Other same-tool or same-style choices do not interrupt it. Variant choices survive tool/mode changes and clear.
 
 Undo/redo first settles any active gesture. Pen ink is committed, unfinished shapes are discarded, then history is applied. Clear is undoable; a new edit after undo discards the redo branch. Style/tool choices themselves are not history entries. All drawing-only registrations are released in click-through and on exit so underlying-app editing shortcuts work normally. Conflicts report the actual key and roll back partial registrations, preserving ink in click-through.
 
 Arrows and ellipses use the same preview/commit/cancel behavior as rectangles. Arrows default to head-first: press at the head and drag toward the tail. Toggle A for tail-first: press at the tail and drag toward the head. The tray and floating-menu arrow icons point down-left for head-first and up-right for tail-first, showing which end of a down-left-to-up-right drag gets the arrowhead. The tray tooltip names the direction. Completed arrows never change direction. The larger arrowhead scales with the annotation's frozen stroke thickness; short arrows cap the head to fit the gesture. The eraser removes complete touched annotations, not filled interiors or parts of a stroke. A click erases the topmost hit; a moving sweep removes intersected annotations topmost-first, potentially multiple overlapping layers. One erase drag is one undoable action.
 
-The floating menu uses a dark graphite theme. Its compact badge shows the selected tool and a separate far-right drag grip, with one overlapping brush-tip circle showing the current ink color and relative width. The circle is visible only when fully compact, is part of the hover area and is not a separate control. Hover opens the full menu directly: canvas-input toggle, stroke preview, width slider, two rows of eight fixed colors and clickable tool icons. Shortcut letters remain visible on the buttons; full names are in tooltips. Bottom buttons give visible hover feedback. The expanded header keeps the tool name on the left and the input toggle alongside it, without a separate compact-badge frame. Pen and Temporary pen clicks choose their exact variant; clicking an already-selected Arrow switches its drawing direction. The Drawing/Click-through button uses the same transition as Ctrl+Alt+D. Tool, color and width selection can prepare the next annotation in click-through without enabling canvas input.
+The floating menu uses a dark graphite theme. Its compact badge shows the selected tool and a separate far-right drag grip, with one overlapping brush-tip circle showing the current ink color and relative width. The circle is visible only when fully compact, is part of the hover area and is not a separate control. Hover opens the full menu directly: canvas-input toggle, stroke preview, width slider, two rows of eight fixed colors and clickable tool icons. Shortcut letters remain visible on the buttons; full names are in tooltips. Bottom buttons give visible hover feedback. The expanded header keeps the tool name on the left and the input toggle alongside it, without a separate compact-badge frame. Pen and Smoke pen clicks choose their exact variant, matching P and S; clicking an already-selected Arrow switches its drawing direction. The Drawing/Click-through button uses the same transition as Ctrl+Alt+D. Tool, color and width selection can prepare the next annotation in click-through without enabling canvas input.
 
 The compact badge shows ON/OFF the same way: while drawing, the pencil is bright and the brush-tip circle is filled with the ink; in click-through, the pencil is dimmed and the circle is a hollow gray ring that still shows the width.
 
 Favorite colors: the expanded menu shows the active color (brush color, front square) overlapping the reserve color (back square). Drag a palette color onto either square to set it; click the reserve square or the swap arrow, or press `X`, to swap. The compact badge shows the reserve as a small square below the grip dots, filled while drawing and hollow in click-through. Both favorites start orange / blue and are saved to `~/.mado/mado-screen/settings.toml` on change.
 
-The tray icon is a miniature of the compact badge: graphite tile, selected tool and brush-tip dot. It updates when you select Pen, Temporary pen, Line, Arrow, Rectangle, Ellipse or Eraser through shortcuts or the floating menu. Its tooltip names the tool and input mode. While drawing, the dot shows the current ink color; in click-through it is a hollow gray ring and the tool is dimmed, but still follows tool selection. Left-click the icon to switch modes. Right-click (or Shift+F10 / the Menu key after Win+B) for Drawing mode, Show floating menu, Clear all ink and Quit. Unchecking Show floating menu hides the panel (for presenting or recording) until you check it again; drawing and shortcuts keep working. Its startup visibility follows `menu.visible_on_start`, which defaults to true. The icon returns automatically if Explorer restarts. Its size follows the startup display scale.
+The tray icon is a miniature of the compact badge: graphite tile, selected tool and brush-tip dot. It updates when you select Pen, Temporary pen, Line, Arrow, Rectangle, Ellipse or Eraser through shortcuts or the floating menu. Its tooltip names the tool and input mode. While drawing, the dot shows the current ink color; in click-through it is a hollow gray ring and the tool is dimmed, but still follows tool selection. Left-click the icon to switch modes. Right-click (or Shift+F10 / the Menu key after Win+B) for Drawing mode, Show floating menu, Clear all ink, Reload config and Quit. Unchecking Show floating menu hides the panel (for presenting or recording) until you check it again; drawing and shortcuts keep working. Its startup visibility follows `menu.visible_on_start`, which defaults to true. The icon returns automatically if Explorer restarts. Its size follows the startup display scale.
 
 The fixed colors cover warm hues, cool hues and white/gray/black. Slots are populated at startup and never reorder. Click a slot to select its exact color; clicking the selected color has no effect. The stroke preview is informational. Colors with no exact slot match do not highlight an unrelated preset. Existing numeric color shortcuts remain unchanged. The separate color picker and its `C` shortcut have been removed because colors are available in the main menu.
 
-The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it. Windows disabled-animation preferences are respected. If the Windows client-area-animation setting is off, this transition is intentionally instant. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus.
+The menu grows left from its fixed right badge over a short 150 ms transition; leaving reverses it unless pinned. Click the pin icon in the expanded header to keep the menu open, then click it again to restore hover-driven collapse. The active pin is upright with a highlighted border; the inactive pin is tilted. Pinning lasts for the current session, survives input-mode changes and restores the expanded menu after hiding and showing it. It is off at startup and is not saved to settings. Windows disabled-animation preferences are respected. If the Windows client-area-animation setting is off, this transition is intentionally instant. Drag only the grip, not tool/color controls; the panel keeps its current size while dragging. Placement is session-only and constrained to the destination monitor's usable area. Near the bottom it opens upward. The panel does not activate itself or take keyboard focus.
 
 ## Settings
 
-Mado uses `~/.mado/mado-screen/settings.toml`, under your Windows user profile. It creates a commented file on first launch. If `config.ini` exists and `settings.toml` does not, Mado migrates its favorite colors and retains the old file as a backup. Once created, `settings.toml` takes precedence. On each load, Mado adds missing sections and keys from its default settings, including `shortcuts.activation_key`. Existing values, comments and unknown entries are preserved. A complete file is not rewritten. If the update cannot be saved, Mado still uses your loaded values and defaults for missing settings.
+Mado uses `~/.mado/mado-screen/settings.toml`, under your Windows user profile. It creates a commented file on first launch. If `config.ini` exists and `settings.toml` does not, Mado migrates its favorite colors and retains the old file as a backup. Once created, `settings.toml` takes precedence. At startup, Mado adds missing sections and keys from its default settings, including every shortcut binding and `arrow.head_scale`. Existing values, comments and unknown entries are preserved. A complete file is not rewritten. If the update cannot be saved, Mado still uses your loaded values and defaults for missing settings.
 
 ```toml
 [brush]
@@ -83,17 +87,48 @@ duration_ms = 1000
 
 [arrow]
 tail_first = false
+head_scale = 1.0
 
 [menu]
 visible_on_start = true
 
 [shortcuts]
 activation_key = "F4"
+toggle = "Ctrl+Alt+D"
+clear = "Ctrl+Alt+C"
+quit = "Ctrl+Alt+Q"
+pen = "P"
+smoke_pen = "S"
+line = "L"
+rectangle = "R"
+arrow = "A"
+ellipse = "O"
+eraser = "E"
+undo = "Ctrl+Z"
+redo = "Ctrl+Y"
+thinner = "["
+thicker = "]"
+blue = "1"
+orange = "2"
+red = "3"
+green = "4"
+white = "5"
+swap_colors = "X"
+quick_clear = "C"
+deactivate = "Escape"
+previous_tool = "T"
+menu = "H"
 ```
 
-Close Mado before editing this file, then restart to apply changes. Colors must be quoted `#RRGGBB` strings. Thickness must be an odd integer from 1 to 31 physical pixels. Duration must be an integer from 1 to 60000 milliseconds; `2500` gives a 2.5-second fade. `tail_first` and `visible_on_start` accept `true` or `false`. `activation_key` accepts a quoted function key from `"F1"` to `"F11"`, case-insensitively. For example, `"F9"` replaces F4 in both modes, the menu and startup help. F12 is reserved for the Windows debugger; letters and modifier combinations are not supported. `Ctrl+Alt+D` remains available. Missing settings are filled with defaults. Invalid existing values or incompatible sections use runtime defaults without being overwritten; invalid TOML syntax uses all defaults and leaves the file untouched. Diagnostics write to standard error, which is normally hidden during desktop launches.
+Edit this file, save it, then choose **Reload config** from the tray menu, or restart Mado. Colors must be quoted `#RRGGBB` strings. Thickness must be an odd integer from 1 to 31 physical pixels. Duration must be an integer from 1 to 60000 milliseconds; `2500` gives a 2.5-second fade. `tail_first` and `visible_on_start` accept `true` or `false`. Arrow `head_scale` accepts a finite number from 0.1 to 4.0. `1.0` preserves today's size, `0.5` halves it and `2.0` doubles it. Heads still scale with brush thickness and are capped for short arrows. Completed arrows keep their original geometry.
 
-Favorite colors, brush thickness and arrow direction save automatically. Thickness changes from the mouse wheel, slider and `[` / `]` are remembered. Arrow-direction changes from `A`, the menu and `T` are remembered even when you switch to another tool. The next launch restores the last saved thickness and arrow direction. Fade duration, menu visibility and the activation key remain startup preferences; using shortcuts or the menu does not overwrite them. Brush saves reread the TOML document and preserve other settings and comments using [toml_edit](https://docs.rs/toml_edit/0.22.27/toml_edit/). Writes use a temporary file followed by same-directory replacement rather than truncating the existing settings. There is no cross-process edit lock; simultaneous file edits are not supported.
+Shortcut values are case-insensitive strings with one letter, digit, F1 through F11, a named key or punctuation key. Optional modifiers are `Ctrl`, `Alt`, `Shift` and `Win`, joined with `+`. Examples: `pen = "Shift+P"`, `smoke_pen = "F9"`, `toggle = "Ctrl+Alt+Space"`. Named keys are Escape, Space, Tab, Enter, Backspace, Delete, Insert, Home, End, PageUp, PageDown, Left, Right, Up and Down. Supported punctuation is `[`, `]`, `;`, `/`, backtick, backslash, apostrophe, comma, period, minus and equals. Use `Shift+=` for the plus key. Punctuation uses Windows virtual keys, so its physical position follows the keyboard layout. F12 is reserved by Windows. Repeated modifiers, unsupported keys and duplicate combinations are rejected. Bare and modified versions of the same key are distinct. Remapping does not change whether a command is global or drawing-only; the mouse wheel is unchanged.
+
+Reload validates the complete file and checks every shortcut before applying changes. Invalid values, duplicate bindings or keys owned by another app reject the reload and preserve the active configuration. A tray notification reports success or failure. If settings apply but a display refresh fails, it reports that warning separately and attempts the remaining display updates. Reload does not rewrite the file. Missing settings use defaults; unknown entries are preserved. A successful reload settles active drawing, applies brush colors/width, arrow direction/size, fade duration, menu visibility and shortcut bindings, and preserves drawing mode, selected tool, menu pin/position, completed ink and undo/redo history. Existing temporary segments keep their birth times and use the new fade duration, so a shorter duration can expire them immediately.
+
+At startup, invalid existing values or incompatible sections use defaults without overwriting those values. Duplicate combinations restore the default shortcut set. Invalid TOML syntax uses all defaults and leaves the file untouched. Diagnostics also write to standard error, normally hidden during desktop launches.
+
+Favorite colors, brush thickness and arrow direction save automatically. Thickness changes from the mouse wheel, slider and `[` / `]` are remembered. Arrow-direction changes from `A`, the menu and `T` are remembered even when you switch to another tool. The next launch restores the last saved thickness and arrow direction. Fade duration, menu visibility, arrowhead scale and shortcut mappings are file preferences; using tools or the menu does not overwrite them. Reload applies their current file values. Brush saves reread the TOML document and preserve other settings and comments using [toml_edit](https://docs.rs/toml_edit/0.22.27/toml_edit/). Writes use a temporary file followed by same-directory replacement rather than truncating the existing settings. There is no cross-process edit lock; simultaneous file edits are not supported.
 
 ## Temporary ink
 
@@ -112,6 +147,10 @@ One overlay and CPU bitmap span the virtual desktop, including gaps between moni
 The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot history and many stroke points can use substantial memory and slow drawing; extra screens and gaps increase bitmap cost. No idle redraw loop or GPU rewrite is introduced. Layouts larger than 32767 pixels on either axis are rejected to prevent signed mouse-coordinate wrapping, and surface allocation remains bounded. Physical mixed-DPI input and long-session responsiveness need user testing. Sharing/recording is deferred. Elevated applications and other topmost windows remain unverified. Exclusive fullscreen coverage is not guaranteed; secure desktop and lock screen are excluded.
 
 ## Verification
+
+Remappable shortcuts, arrowhead scaling and config reload passed 190 release-mode tests, with the icon-generation test intentionally ignored, plus debug/release builds, formatting, Clippy and the smoke self-check. Checks cover every configurable binding, duplicate/type/range rejection, settings completion and file preservation, native registration swaps and rollback, native message routing, queued-hotkey cleanup with quit preservation, click-through release, active-gesture/history preservation, existing temporary ages, both arrow directions and short-arrow caps, updated help/tooltips/badges and tray command decoding. Offscreen remapped-menu previews were reviewed. Physical key delivery, tray selection and notification display, assistive technology and full desktop smoke remain untested. The full debug test run exceeded its 120-second limit during a native menu check; debug tests are not claimed passed.
+
+Menu pinning and dedicated P/S pen shortcuts passed all 171 release-mode tests, with the icon-generation test intentionally ignored, plus debug/release builds, formatting, Clippy and the smoke self-check. Pin tests cover expanded-only hit targets at 100/125/200 percent scale in both opening directions, distinct pin artwork, cancelled clicks, pointer-leave and delayed-collapse suppression, unchanged focus/drawing commands, held sliders and hide/show restoration. Shortcut checks cover drawing-only P/S registration, repeat suppression, exact variant selection, uninterrupted same-variant gestures, preserved ink/temporary ages and previous-tool swaps. Offscreen menu previews were reviewed. Physical clicks, key delivery, assistive technology and desktop smoke remain manual or unrun checks.
 
 Load-time settings completion passed all 167 release-mode tests, with the icon-generation test intentionally ignored, plus the release build, formatting and Clippy. Checks remove every known section and key in turn, confirm default insertion and repeat-load stability, preserve custom values/comments/unknown entries and invalid structures, and force a write failure to verify the original file and loaded preferences survive.
 

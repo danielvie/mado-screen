@@ -709,7 +709,7 @@ try {
         CheckEmptyCanvas 'PoC 6 sample locations initially empty' ([int[]]($permanent + $redo + $tempOnly + $tempClickThrough))
         try {
             SetPostedDrawingMode $true
-            PostAction 5 'Select Line before selecting permanent Pen, without toggling P'
+            PostAction 5 'Select Line before selecting permanent Pen'
             PostAction 4 'Select permanent Pen from Line'
             CheckToolLabel 'Pen'
             Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, $y, ($x + 40), $y, ($x + 80), $y))) 'PoC 6 first permanent pen queued'
@@ -721,7 +721,7 @@ try {
             PostAction 7 'Undo second permanent annotation to establish a redo branch'
             CheckEmptyCanvas 'Second permanent annotation is absent before temporary drawing' $redo
             CheckInk $permanent 'Undo second annotation preserves the first permanent annotation'
-            PostAction 4 'Repeat P on Pen to toggle temporary ink'
+            PostAction 25 'Select smoke pen with S'
             CheckToolLabel 'Temporary pen'
             PostAction 11 'Choose blue to distinguish temporary ink from permanent orange'
             Check ([PocSmoke]::PostDrag($window, $thread, 0, 0, [int[]]@($x, $y, ($x + 80), $y, ($x + 160), $y))) 'Temporary pen queued over permanent ink and empty desktop'
@@ -749,9 +749,9 @@ try {
             Check (([PocSmoke]::GetWindowLongPtrW($window, -20).ToInt64() -band 0x20) -ne 0) 'Temporary expiry leaves the canvas click-through'
             SetPostedDrawingMode $true
             PostAction 5 'Select Line after click-through expiry'
-            PostAction 4 'Reselect Pen from Line without toggling the saved variant'
+            PostAction 25 'Reselect smoke pen from Line with S'
             CheckToolLabel 'Temporary pen'
-            PostAction 4 'Repeat P to toggle back to permanent Pen'
+            PostAction 4 'Select permanent Pen with P'
             CheckToolLabel 'Pen'
             PostAction 12 'Restore orange for focused arrow raster checks'
             PostAction 16 'Select Arrow from Pen with its default head-first direction'
@@ -827,7 +827,7 @@ try {
         logicalProcessors = [Environment]::ProcessorCount
         idleCpuSeconds = $cpuSeconds; idleCpuPercent = $idlePercent
         postedStroke = [bool]$PostedStroke
-        postedPoc6 = if ($poc6PostedRan) { 'Posted P/A variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
+        postedPoc6 = if ($poc6PostedRan) { 'Posted P/S pen selection and A direction variants, temporary overlap/release/click-through expiry, permanent undo/redo branch and both arrow directions executed; see checks/skipped for stable sample outcomes' } else { 'SKIPPED/UNTESTED' }
         variantLabelEvidence = 'Current owned status HWND accessible native title read through GetWindowTextW, with process ID and canvas ownership verified. Painted hover labels and compact icons remain manual/untested; this is not physical painted-label acceptance.'
         evidence = 'App-local posted-message routing and sampled rendering only; no physical-input claim.'
         manualBehavior = 'UNTESTED: real strokes on each monitor/across seams, boundary capture/outside release, click-through typing, global shortcuts, menu placement/scaling and hardware latency.'

@@ -1,4 +1,4 @@
-use crate::controls::ActivationKey;
+use crate::controls::{SHORTCUT_NAMES, Shortcut, Shortcuts};
 use std::{
     fs,
     io::{self, Write},
@@ -21,14 +21,15 @@ impl Default for Favorites {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
     pub favorites: Favorites,
     pub thickness_px: u32,
     pub duration_ms: u64,
     pub tail_first: bool,
     pub visible_on_start: bool,
-    pub activation_key: ActivationKey,
+    pub shortcuts: Shortcuts,
+    pub head_scale: f64,
 }
 
 impl Default for Settings {
@@ -39,7 +40,8 @@ impl Default for Settings {
             duration_ms: 1000,
             tail_first: false,
             visible_on_start: true,
-            activation_key: ActivationKey::default(),
+            shortcuts: Shortcuts::default(),
+            head_scale: 1.0,
         }
     }
 }
@@ -59,13 +61,39 @@ duration_ms = 1000
 
 [arrow]
 tail_first = false
+# Multiply arrowhead size by 0.1 to 4.0, before the short-arrow cap.
+head_scale = 1.0
 
 [menu]
 visible_on_start = true
 
 [shortcuts]
-# Bare function key F1 to F11. F12 is reserved by Windows. Ctrl+Alt+D stays available.
+# One key with optional Ctrl+Alt+Shift+Win modifiers. F12 is reserved by Windows.
 activation_key = \"F4\"
+toggle = \"Ctrl+Alt+D\"
+clear = \"Ctrl+Alt+C\"
+quit = \"Ctrl+Alt+Q\"
+pen = \"P\"
+smoke_pen = \"S\"
+line = \"L\"
+rectangle = \"R\"
+arrow = \"A\"
+ellipse = \"O\"
+eraser = \"E\"
+undo = \"Ctrl+Z\"
+redo = \"Ctrl+Y\"
+thinner = \"[\"
+thicker = \"]\"
+blue = \"1\"
+orange = \"2\"
+red = \"3\"
+green = \"4\"
+white = \"5\"
+swap_colors = \"X\"
+quick_clear = \"C\"
+deactivate = \"Escape\"
+previous_tool = \"T\"
+menu = \"H\"
 ";
 
 pub fn path() -> Option<PathBuf> {
@@ -228,14 +256,87 @@ fn parse(document: &DocumentMut) -> Settings {
             defaults.visible_on_start,
             Item::as_bool,
         ),
-        activation_key: read_setting(
+        head_scale: read_setting(
             document,
-            "shortcuts",
-            "activation_key",
-            defaults.activation_key,
-            |item| ActivationKey::parse(item.as_str()?),
+            "arrow",
+            "head_scale",
+            defaults.head_scale,
+            head_scale,
         ),
+        shortcuts: {
+            let mut shortcuts = defaults.shortcuts;
+            for name in SHORTCUT_NAMES {
+                shortcuts.set(
+                    name,
+                    read_setting(
+                        document,
+                        "shortcuts",
+                        name,
+                        defaults.shortcuts.binding(name),
+                        |item| Shortcut::parse(item.as_str()?),
+                    ),
+                );
+            }
+            if let Err(error) = shortcuts.validate() {
+                eprintln!("{error} Using default shortcuts.");
+                shortcuts = defaults.shortcuts;
+            }
+            shortcuts
+        },
     }
+}
+
+fn head_scale(item: &Item) -> Option<f64> {
+    let n = item
+        .as_float()
+        .or_else(|| item.as_integer().map(|n| n as f64))?;
+    (n.is_finite() && (0.1..=4.0).contains(&n)).then_some(n)
+}
+
+// Reload never repairs or rewrites the file, and rejects any invalid known setting.
+pub fn reload(path: &Path) -> io::Result<Settings> {
+    let document = read_document(path)?.ok_or_else(|| invalid("Settings file not found"))?;
+    for section in ["brush", "temporary_pen", "arrow", "menu", "shortcuts"] {
+        if let Some(item) = document.get(section) {
+            let table = item
+                .as_table_like()
+                .ok_or_else(|| invalid(format!("{section} must be a table")))?;
+            for (name, item) in table.iter() {
+                let valid = match (section, name) {
+                    ("brush", "active_color" | "reserve_color") => {
+                        item.as_str().and_then(color).is_some()
+                    }
+                    ("brush", "thickness_px") => item
+                        .as_integer()
+                        .is_some_and(|n| (1..=31).contains(&n) && n % 2 != 0),
+                    ("temporary_pen", "duration_ms") => {
+                        item.as_integer().is_some_and(|n| (1..=60000).contains(&n))
+                    }
+                    ("arrow", "head_scale") => head_scale(item).is_some(),
+                    ("arrow", "tail_first") | ("menu", "visible_on_start") => {
+                        item.as_bool().is_some()
+                    }
+                    ("shortcuts", name) if SHORTCUT_NAMES.contains(&name) => {
+                        item.as_str().and_then(Shortcut::parse).is_some()
+                    }
+                    _ => true,
+                };
+                if !valid {
+                    return Err(invalid(format!("Invalid setting {section}.{name}")));
+                }
+            }
+        }
+    }
+    let mut shortcuts = Shortcuts::default();
+    if let Some(table) = document.get("shortcuts").and_then(Item::as_table_like) {
+        for name in SHORTCUT_NAMES {
+            if let Some(item) = table.get(name) {
+                shortcuts.set(name, Shortcut::parse(item.as_str().unwrap()).unwrap());
+            }
+        }
+    }
+    shortcuts.validate().map_err(invalid)?;
+    Ok(parse(&document))
 }
 
 fn legacy_colors(text: &str) -> Favorites {
@@ -383,7 +484,8 @@ mod tests {
                 duration_ms: 2500,
                 tail_first: true,
                 visible_on_start: false,
-                activation_key: ActivationKey::default(),
+                shortcuts: Shortcuts::default(),
+                head_scale: 1.0,
             }
         );
         for n in [-1, 0, 2, 32, i64::MAX] {
@@ -420,25 +522,98 @@ mod tests {
 
     #[test]
     fn settings_activation_key_defaults_and_validation() {
-        assert_eq!(parse(&document("")).activation_key.label(), "F4");
+        assert_eq!(
+            parse(&document(""))
+                .shortcuts
+                .binding("activation_key")
+                .label(),
+            "F4"
+        );
         for number in 1..=11 {
             let settings = parse(&document(&format!(
                 "[shortcuts]\nactivation_key = 'f{number}'\n[temporary_pen]\nduration_ms = 2500"
             )));
-            assert_eq!(settings.activation_key.label(), format!("F{number}"));
+            assert_eq!(
+                settings.shortcuts.binding("activation_key").label(),
+                format!("F{number}")
+            );
             assert_eq!(settings.duration_ms, 2500);
         }
         for invalid in ["12", "true", "[]", "'F12'", "'P'", "''", "'Ctrl+Alt+D'"] {
             let settings = parse(&document(&format!(
                 "[shortcuts]\nactivation_key = {invalid}\n[temporary_pen]\nduration_ms = 2500"
             )));
-            assert_eq!(settings.activation_key.label(), "F4");
+            assert_eq!(settings.shortcuts.binding("activation_key").label(), "F4");
             assert_eq!(settings.duration_ms, 2500);
         }
         assert_eq!(
-            parse(&document("shortcuts = false")).activation_key.label(),
+            parse(&document("shortcuts = false"))
+                .shortcuts
+                .binding("activation_key")
+                .label(),
             "F4"
         );
+    }
+
+    #[test]
+    fn settings_reload_validates_every_known_value_without_rewriting() {
+        let directory =
+            std::env::temp_dir().join(format!("mado-settings-reload-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.toml");
+        assert!(reload(&path).is_err());
+        fs::write(&path, DEFAULT_DOCUMENT).unwrap();
+        assert_eq!(reload(&path).unwrap(), Settings::default());
+        for name in SHORTCUT_NAMES {
+            let mut custom = document(DEFAULT_DOCUMENT);
+            custom["shortcuts"][name] = Item::Value(Value::from("Ctrl+Alt+Shift+F11"));
+            fs::write(&path, custom.to_string()).unwrap();
+            let loaded = reload(&path).unwrap();
+            assert_eq!(loaded.shortcuts.binding(name).label(), "Ctrl+Alt+Shift+F11");
+            assert_eq!(fs::read_to_string(&path).unwrap(), custom.to_string());
+            custom["shortcuts"][name] = Item::Value(Value::from("Ctrl+Ctrl+P"));
+            fs::write(&path, custom.to_string()).unwrap();
+            assert!(reload(&path).is_err(), "{name}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), custom.to_string());
+        }
+        for scale in ["0.1", "0.5", "1", "2.0", "4.0"] {
+            fs::write(&path, format!("[arrow]\nhead_scale={scale}")).unwrap();
+            assert_eq!(
+                reload(&path).unwrap().head_scale,
+                scale.parse::<f64>().unwrap()
+            );
+        }
+        for invalid in [
+            "[brush",
+            "brush=1",
+            "[brush]\nactive_color='bad'",
+            "[brush]\nreserve_color='bad'",
+            "[brush]\nthickness_px=2",
+            "[temporary_pen]\nduration_ms=0",
+            "[arrow]\nhead_scale=nan",
+            "[arrow]\nhead_scale=inf",
+            "[arrow]\nhead_scale=0.09",
+            "[arrow]\nhead_scale=4.01",
+            "[arrow]\nhead_scale='2'",
+            "[arrow]\ntail_first=0",
+            "[menu]\nvisible_on_start='false'",
+            "[shortcuts]\npen='S'",
+            "[shortcuts]\npen='F4'",
+            "[shortcuts]\nactivation_key='Ctrl+Alt+D'",
+        ] {
+            fs::write(&path, invalid).unwrap();
+            assert!(reload(&path).is_err(), "{invalid}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), invalid);
+        }
+        let text = "# hand edited\n[shortcuts]\npen='Shift+P' # preserve\n[arrow]\nhead_scale=2.0\n[custom]\nvalue='keep'";
+        fs::write(&path, text).unwrap();
+        let loaded = reload(&path).unwrap();
+        save_brush(&path, loaded.favorites, 11, true).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("pen='Shift+P' # preserve"));
+        assert_eq!(reload(&path).unwrap().head_scale, 2.0);
+        assert_eq!(document(&saved)["custom"]["value"].as_str(), Some("keep"));
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -495,14 +670,22 @@ mod tests {
             let original = format!("{old}{extra}");
             fs::write(&path, &original).unwrap();
             let loaded = initialize(&path).unwrap();
-            assert_eq!(loaded.activation_key.label(), "F4");
+            assert_eq!(loaded.shortcuts.binding("activation_key").label(), "F4");
             assert_eq!(loaded.thickness_px, 21);
             assert_eq!(loaded.favorites.active, 0xff0085dc);
             assert_eq!(loaded.favorites.reserve, 0xfff97316);
             assert_eq!(loaded.duration_ms, 2500);
             assert!(loaded.tail_first);
             assert!(!loaded.visible_on_start);
-            assert!(fs::read_to_string(&path).unwrap().starts_with(&original));
+            let completed = fs::read_to_string(&path).unwrap();
+            assert!(completed.contains("# my settings") && completed.contains("# my fade"));
+            let before = document(&original);
+            let after = document(&completed);
+            for (section, item) in before.iter() {
+                for (key, value) in item.as_table_like().unwrap().iter() {
+                    assert_eq!(after[section][key].to_string(), value.to_string());
+                }
+            }
         }
         for existing in [
             "[shortcuts]\nactivation_key = 'F9' # chosen key\n",
@@ -551,7 +734,7 @@ mod tests {
         fs::write(&temporary, "occupied").unwrap();
         let loaded = initialize(&path).unwrap();
         assert_eq!(loaded.thickness_px, 21);
-        assert_eq!(loaded.activation_key.label(), "F4");
+        assert_eq!(loaded.shortcuts.binding("activation_key").label(), "F4");
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
         fs::write(&path, DEFAULT_DOCUMENT).unwrap();
         assert_eq!(initialize(&path).unwrap(), Settings::default());
@@ -613,7 +796,7 @@ mod tests {
         save_brush(&path, loaded.favorites, 15, true).unwrap();
         let restored = initialize(&path).unwrap();
         assert_eq!(restored.thickness_px, 15);
-        assert_eq!(restored.activation_key.label(), "F9");
+        assert_eq!(restored.shortcuts.binding("activation_key").label(), "F9");
         assert_eq!(
             (
                 restored.duration_ms,

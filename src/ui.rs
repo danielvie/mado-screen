@@ -1,4 +1,6 @@
-use crate::controls::ActivationKey;
+#[cfg(test)]
+use crate::controls::Shortcut as ActivationKey;
+use crate::controls::{Shortcut, Shortcuts};
 use crate::settings::Favorites;
 use crate::strokes::{Style, Tool};
 use std::{
@@ -64,13 +66,13 @@ const PANEL_TOOLS: [(MenuTool, &str, &str, &str); 7] = [
         MenuTool::Pen,
         "Pen",
         "P",
-        "Pen. P selects pen, then P again toggles temporary ink. Click selects permanent pen.",
+        "Pen. P or click selects permanent pen.",
     ),
     (
         MenuTool::TemporaryPen,
-        "Temp",
-        "P",
-        "Temporary pen. P selects pen, then P again toggles temporary ink. Click selects temporary pen.",
+        "Smoke",
+        "S",
+        "Smoke pen. S or click selects temporary fading ink.",
     ),
     (
         MenuTool::Line,
@@ -168,9 +170,10 @@ struct State {
     tool: Cell<MenuTool>,
     tool_label: RefCell<String>,
     drawing: Cell<bool>,
-    activation_key: Cell<ActivationKey>,
+    shortcuts: Cell<Shortcuts>,
     width: Cell<u32>,
     expanded: Cell<bool>,
+    pinned: Cell<bool>,
     motion: Cell<PanelMotion>,
     animation_timer: Cell<bool>,
     leave_timer: Cell<bool>,
@@ -205,9 +208,10 @@ impl State {
             tool: Cell::new(MenuTool::Pen),
             tool_label: RefCell::new("Pen".into()),
             drawing: Cell::new(false),
-            activation_key: Cell::new(ActivationKey::default()),
+            shortcuts: Cell::new(Shortcuts::default()),
             width: Cell::new(Style::default().thickness),
             expanded: Cell::new(false),
+            pinned: Cell::new(false),
             motion: Cell::new(PanelMotion::settled(false)),
             animation_timer: Cell::new(false),
             leave_timer: Cell::new(false),
@@ -247,7 +251,7 @@ impl DesktopUi {
         width: i32,
         height: i32,
         visible: bool,
-        activation_key: ActivationKey,
+        shortcuts: impl Into<Shortcuts>,
     ) -> Result<Self> {
         if width <= 0 || height <= 0 {
             return Err(Error::new(E_INVALIDARG, "Invalid desktop dimensions"));
@@ -258,7 +262,7 @@ impl DesktopUi {
             status_class: WindowClass::new(instance, "Status", Some(status_proc))?,
             _thread: PhantomData,
         };
-        ui.state.activation_key.set(activation_key);
+        ui.state.shortcuts.set(shortcuts.into());
         unsafe {
             // Only the occupied rounded region receives mouse input. Do not use
             // WS_EX_TRANSPARENT: it bypasses layered-window hit testing entirely.
@@ -326,6 +330,13 @@ impl DesktopUi {
         self.state.resize_panel()
     }
 
+    pub fn set_shortcuts(&self, shortcuts: Shortcuts) -> Result<()> {
+        self.state.cancel_panel_gesture();
+        self.state.hide_tooltip();
+        self.state.shortcuts.set(shortcuts);
+        self.state.resize_panel()
+    }
+
     pub fn set_reserve(&self, color: u32) -> Result<()> {
         if self.state.reserve.replace(color) == color {
             return Ok(());
@@ -337,7 +348,7 @@ impl DesktopUi {
         decode_event(message, self.state.owner)
     }
 
-    // Hiding ends any gesture and collapses, so showing again starts compact.
+    // Hiding ends gestures; showing restores expansion only when pinned.
     pub fn set_visible(&self, visible: bool) -> Result<()> {
         let state = &self.state;
         let hwnd = state.status.get();
@@ -349,6 +360,10 @@ impl DesktopUi {
             state.expanded.set(false);
             state.motion.set(PanelMotion::settled(false));
             state.sync_animation_timer();
+            state.resize_panel()?;
+        } else if state.pinned.get() {
+            state.expanded.set(true);
+            state.motion.set(PanelMotion::settled(true));
             state.resize_panel()?;
         }
         unsafe {
@@ -387,6 +402,7 @@ impl Drop for DesktopUi {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PanelHit {
     Grip,
+    Pin,
     Toggle,
     Active,
     Reserve,
@@ -528,7 +544,8 @@ impl PanelGeometry {
         let local = match hit {
             // The whole 44 x 44 badge (tool icon + grip) is the drag handle.
             PanelHit::Grip => return self.badge(),
-            PanelHit::Toggle => rect(112, if self.upward { 267 } else { 7 }, 266, 31),
+            PanelHit::Pin => rect(358, if self.upward { 267 } else { 7 }, 31, 31),
+            PanelHit::Toggle => rect(112, if self.upward { 267 } else { 7 }, 234, 31),
             // Favorites: the active square overlaps the reserve, like a paint program.
             PanelHit::Active => rect(26, 48 + body, 22, 22),
             PanelHit::Reserve => rect(40, 58 + body, 22, 22),
@@ -616,6 +633,7 @@ impl PanelGeometry {
         // Active precedes Reserve: the front square owns their overlap.
         let targets = [
             PanelHit::Grip,
+            PanelHit::Pin,
             PanelHit::Toggle,
             PanelHit::Active,
             PanelHit::Reserve,
@@ -667,6 +685,32 @@ pub(crate) fn tool_icon(label: &str) -> MenuTool {
         "Eraser" => MenuTool::Eraser,
         label if label.starts_with("Arrow") => MenuTool::Arrow,
         _ => MenuTool::Pen,
+    }
+}
+
+fn tool_shortcut(tool: MenuTool) -> &'static str {
+    match tool {
+        MenuTool::Pen => "pen",
+        MenuTool::TemporaryPen => "smoke_pen",
+        MenuTool::Line => "line",
+        MenuTool::Arrow => "arrow",
+        MenuTool::Rectangle => "rectangle",
+        MenuTool::Ellipse => "ellipse",
+        MenuTool::Eraser => "eraser",
+    }
+}
+
+fn shortcut_badge(shortcut: Shortcut) -> String {
+    let label = shortcut.label();
+    if label.len() <= 2 {
+        label
+    } else {
+        let key = shortcut.key_label();
+        if key.len() <= 3 {
+            key
+        } else {
+            key.chars().take(2).collect()
+        }
     }
 }
 
@@ -826,7 +870,7 @@ impl State {
     }
 
     fn start_panel_reveal(&self, open: bool, animated: bool) {
-        if self.holding() {
+        if self.holding() || (!open && self.pinned.get()) {
             return;
         }
         if self.expanded.replace(open) == open
@@ -952,6 +996,10 @@ impl State {
         self.tracking.set(false);
         self.set_panel_hover(None);
         self.hide_tooltip();
+        if self.pinned.get() {
+            self.stop_leave_timer();
+            return;
+        }
         let mut screen = POINT::default();
         if unsafe { GetCursorPos(&mut screen).is_ok() }
             && (self.opening_hover_bridge(screen) || self.defer_circle_leave(screen))
@@ -1064,19 +1112,30 @@ impl State {
         };
         let description = match hit {
             PanelHit::Grip => "Drag the tool icon to move the menu.".to_string(),
+            PanelHit::Pin => if self.pinned.get() {
+                "Unpin menu. The menu is pinned open."
+            } else {
+                "Pin menu. Keep the menu expanded when the pointer leaves."
+            }
+            .into(),
             PanelHit::Toggle => format!(
-                "Drawing / Click-through. {} or Ctrl+Alt+D toggles canvas input.",
-                self.activation_key.get().label()
+                "Drawing / Click-through. {} or {} toggles canvas input.",
+                self.shortcuts.get().binding("activation_key").label(),
+                self.shortcuts.get().binding("toggle").label()
             ),
             PanelHit::Active => format!(
                 "Active color {}. Drop a palette color here to draw with it.",
                 hex(self.color.get())
             ),
             PanelHit::Reserve => format!(
-                "Reserve color {}. Click or press X to swap. Drop a palette color here to keep it.",
-                hex(self.reserve.get())
+                "Reserve color {}. Click or press {} to swap. Drop a palette color here to keep it.",
+                hex(self.reserve.get()),
+                self.shortcuts.get().binding("swap_colors").label()
             ),
-            PanelHit::Swap => "Swap active and reserve colors. X while drawing.".into(),
+            PanelHit::Swap => format!(
+                "Swap active and reserve colors. {} while drawing.",
+                self.shortcuts.get().binding("swap_colors").label()
+            ),
             PanelHit::Current => format!(
                 "Selected stroke: {} at {} px.",
                 hex(self.color.get()),
@@ -1088,11 +1147,24 @@ impl State {
                 hex(PANEL_PALETTE[i])
             ),
             PanelHit::Tool(tool) => {
-                let text = PANEL_TOOLS.iter().find(|entry| entry.0 == tool).unwrap().3;
+                let entry = PANEL_TOOLS.iter().find(|entry| entry.0 == tool).unwrap();
+                let shortcut = self.shortcuts.get().binding(tool_shortcut(tool)).label();
+                let text = entry
+                    .3
+                    .split_whitespace()
+                    .map(|word| {
+                        if word == entry.2 {
+                            shortcut.as_str()
+                        } else {
+                            word
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 if tool == MenuTool::Arrow {
                     format!("{text} Current tool: {}.", self.tool_label.borrow())
                 } else {
-                    text.into()
+                    text
                 }
             }
         };
@@ -1123,7 +1195,7 @@ impl State {
         self.hide_tooltip();
         self.pressed.set(hit);
         self.hover.set(hit);
-        if matches!(hit, Some(PanelHit::Tool(_))) {
+        if matches!(hit, Some(PanelHit::Tool(_) | PanelHit::Pin)) {
             let _ = self.resize_panel();
         }
         let hwnd = self.status.get();
@@ -1224,7 +1296,7 @@ impl State {
         let pressed = self.pressed.replace(None);
         let hover = self.hover.replace(None);
         let swatch = self.swatch.replace(None);
-        if matches!(pressed.or(hover), Some(PanelHit::Tool(_)))
+        if matches!(pressed.or(hover), Some(PanelHit::Tool(_) | PanelHit::Pin))
             || swatch.is_some_and(|drag| drag.moving)
         {
             let _ = self.resize_panel();
@@ -1262,6 +1334,12 @@ impl State {
         } else if let Some(target) = pressed.filter(|pressed| Some(*pressed) == hit) {
             match target {
                 PanelHit::Grip => {}
+                PanelHit::Pin => {
+                    self.pinned.set(!self.pinned.get());
+                    self.stop_leave_timer();
+                    self.hide_tooltip();
+                    let _ = self.resize_panel();
+                }
                 PanelHit::Toggle => self.post(UiEvent::Toggle),
                 PanelHit::Active => {}
                 PanelHit::Reserve | PanelHit::Swap => self.post(UiEvent::Swap),
@@ -1792,6 +1870,65 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
         unsafe {
             let saved = SaveDC(dc);
             SelectObject(dc, font.0);
+            let pin = geometry.bounds(PanelHit::Pin);
+            let pinned = state.pinned.get();
+            let hovered = state.hover.get() == Some(PanelHit::Pin);
+            let pressed = state.pressed.get() == Some(PanelHit::Pin);
+            rounded_pen(
+                dc,
+                pin,
+                scaled(4, s),
+                if pressed {
+                    0xff426c5f
+                } else if pinned {
+                    0xff263b36
+                } else if hovered {
+                    0xff30363d
+                } else {
+                    PANEL_BACKGROUND
+                },
+                if pinned {
+                    PANEL_ACCENT
+                } else if hovered {
+                    PANEL_SECONDARY
+                } else {
+                    PANEL_BORDER
+                },
+                scaled(1, s),
+            );
+            let points = [
+                (15, 27),
+                (15, 21),
+                (8, 21),
+                (12, 17),
+                (12, 11),
+                (10, 6),
+                (21, 6),
+                (19, 11),
+                (19, 17),
+                (23, 21),
+                (15, 21),
+            ];
+            let points = points.map(|(x, y)| {
+                if pinned {
+                    (x, y)
+                } else {
+                    let dx = f64::from(x - 15);
+                    let dy = f64::from(y - 15);
+                    (
+                        (15.0 + (dx + dy) * std::f64::consts::FRAC_1_SQRT_2).round() as i32,
+                        (15.0 + (dy - dx) * std::f64::consts::FRAC_1_SQRT_2).round() as i32,
+                    )
+                }
+            });
+            panel_line(
+                dc,
+                &points,
+                s,
+                (pin.left, pin.top),
+                if pinned { PANEL_TEXT } else { PANEL_SECONDARY },
+                scaled(2, s),
+            );
             let toggle = geometry.bounds(PanelHit::Toggle);
             rounded_pen(
                 dc,
@@ -1868,15 +2005,15 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
             let preview = geometry.bounds(PanelHit::Current);
             label(
                 dc,
-                state.activation_key.get().label(),
+                &state.shortcuts.get().binding("activation_key").label(),
                 rect(
-                    toggle.right - scaled(104, s),
+                    toggle.right - scaled(72, s),
                     toggle.top,
-                    scaled(96, s),
+                    scaled(64, s),
                     scaled(31, s),
                 ),
                 PANEL_SECONDARY,
-                DT_SINGLELINE | DT_VCENTER | DT_RIGHT,
+                DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_END_ELLIPSIS,
             );
             let y = (preview.top + preview.bottom) / 2;
             let width = scaled(state.width.get() as i32, s).max(1);
@@ -1961,7 +2098,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
             }
             label(
                 dc,
-                "X",
+                &shortcut_badge(state.shortcuts.get().binding("swap_colors")),
                 key,
                 PANEL_TEXT,
                 DT_SINGLELINE | DT_CENTER | DT_VCENTER,
@@ -2034,7 +2171,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 ),
                 PANEL_BORDER,
             );
-            for (tool, _, key, _) in PANEL_TOOLS {
+            for (tool, _, _, _) in PANEL_TOOLS {
                 let hit = PanelHit::Tool(tool);
                 let r = geometry.bounds(hit);
                 let selected = state.tool.get() == tool;
@@ -2076,10 +2213,12 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                         PANEL_SECONDARY
                     },
                 );
+                let key = shortcut_badge(state.shortcuts.get().binding(tool_shortcut(tool)));
+                let badge_width = if key.len() > 2 { 22 } else { 13 };
                 let badge = rect(
-                    r.right - scaled(15, s),
+                    r.right - scaled(badge_width + 2, s),
                     r.top + scaled(4, s),
-                    scaled(13, s),
+                    scaled(badge_width, s),
                     scaled(17, s),
                 );
                 rounded_pen(
@@ -2095,7 +2234,7 @@ fn paint_status(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 }
                 label(
                     dc,
-                    key,
+                    &key,
                     badge,
                     PANEL_TEXT,
                     DT_SINGLELINE | DT_CENTER | DT_VCENTER,
@@ -2554,7 +2693,7 @@ mod tests {
             let offset = if upward { -44 } else { 0 };
             assert_eq!(
                 g.bounds(PanelHit::Toggle),
-                rect(112, if upward { 267 } else { 7 }, 266, 31)
+                rect(112, if upward { 267 } else { 7 }, 234, 31)
             );
             assert_eq!(g.bounds(PanelHit::Current), rect(92, 48 + offset, 324, 32));
             assert_eq!(g.bounds(PanelHit::Active), rect(26, 48 + offset, 22, 22));
@@ -2768,6 +2907,50 @@ mod tests {
     }
 
     #[test]
+    fn settings_reload_shortcuts_refreshes_badges_tooltips_without_focus_or_collapse() -> Result<()>
+    {
+        let ui = DesktopUi::new(HWND::default(), 1920, 1080, false, Shortcuts::default())?;
+        menu_open(&ui)?;
+        ui.state.pinned.set(true);
+        let anchor = ui.state.panel_anchor.get();
+        let focus = unsafe { GetFocus() };
+        let (before, _) = followup_preview(&ui.state, "shortcuts-default")?;
+        let mut shortcuts = Shortcuts::default();
+        shortcuts.set("activation_key", Shortcut::parse("Ctrl+Alt+F10").unwrap());
+        shortcuts.set("toggle", Shortcut::parse("Alt+D").unwrap());
+        shortcuts.set("pen", Shortcut::parse("Shift+B").unwrap());
+        shortcuts.set("smoke_pen", Shortcut::parse("F11").unwrap());
+        shortcuts.set("swap_colors", Shortcut::parse("Alt+V").unwrap());
+        ui.set_shortcuts(shortcuts)?;
+        for tool in [MenuTool::Pen, MenuTool::TemporaryPen, MenuTool::Arrow] {
+            ui.state.panel_tooltip(Some(PanelHit::Tool(tool)));
+            let text = String::from_utf16_lossy(&ui.state.tooltip_text.borrow());
+            assert!(text.contains(&shortcuts.binding(tool_shortcut(tool)).label()));
+            assert!(text.starts_with(match tool {
+                MenuTool::Pen => "Pen.",
+                MenuTool::TemporaryPen => "Smoke pen.",
+                _ => "Arrow.",
+            }));
+        }
+        ui.state.panel_tooltip(Some(PanelHit::Toggle));
+        assert!(
+            String::from_utf16_lossy(&ui.state.tooltip_text.borrow())
+                .contains("Ctrl+Alt+F10 or Alt+D")
+        );
+        ui.state.panel_tooltip(Some(PanelHit::Reserve));
+        assert!(String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("Alt+V"));
+        assert_eq!(shortcut_badge(shortcuts.binding("pen")), "B");
+        assert_eq!(shortcut_badge(shortcuts.binding("smoke_pen")), "F11");
+        let (after, _) = followup_preview(&ui.state, "shortcuts-remapped")?;
+        assert_ne!(before, after);
+        assert!(ui.state.pinned.get() && ui.state.expanded.get());
+        assert_eq!(ui.state.panel_anchor.get(), anchor);
+        assert_eq!(unsafe { GetFocus() }, focus);
+        assert!(!unsafe { IsWindowVisible(ui.state.status.get()) }.as_bool());
+        Ok(())
+    }
+
+    #[test]
     fn settings_activation_key_updates_menu_label_and_tooltip() -> Result<()> {
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
         let class = WindowClass::new(instance, "ActivationKeyRoot", Some(root_proc))?;
@@ -2787,7 +2970,7 @@ mod tests {
         );
         menu_open(&ui)?;
         let (custom, _) = followup_preview(&ui.state, "activation-f10")?;
-        ui.state.activation_key.set(ActivationKey::default());
+        ui.state.shortcuts.set(Shortcuts::default());
         let (default, _) = followup_preview(&ui.state, "activation-f4")?;
         assert_ne!(custom, default);
         Ok(())
@@ -2852,7 +3035,7 @@ mod tests {
             ui.state.panel_tooltip(Some(PanelHit::Tool(tool)));
             let tooltip = String::from_utf16_lossy(&ui.state.tooltip_text.borrow());
             let name = if tool == MenuTool::TemporaryPen {
-                "Temporary pen"
+                "Smoke pen"
             } else {
                 PANEL_TOOLS[tool as usize].1
             };
@@ -3554,12 +3737,20 @@ mod tests {
         );
         assert_eq!(
             PANEL_TOOLS.map(|entry| entry.2),
-            ["P", "P", "L", "A", "R", "O", "E"]
+            ["P", "S", "L", "A", "R", "O", "E"]
         );
         assert_eq!(tool_icon("Temporary pen"), MenuTool::TemporaryPen);
         assert_eq!(tool_icon("Arrow tail-first"), MenuTool::Arrow);
-        assert!(PANEL_TOOLS[0].3.contains("P again"));
-        assert!(PANEL_TOOLS[1].3.contains("P again"));
+        assert!(
+            PANEL_TOOLS[0]
+                .3
+                .contains("P or click selects permanent pen")
+        );
+        assert!(
+            PANEL_TOOLS[1]
+                .3
+                .contains("S or click selects temporary fading ink")
+        );
         assert!(PANEL_TOOLS[3].3.contains("selected Arrow"));
         let state = State::new(HWND::default())?;
         for s in [1.0, 1.5, 2.0] {
@@ -3876,7 +4067,9 @@ mod tests {
             menu_open(&ui)?;
             ui.state
                 .panel_tooltip(Some(PanelHit::Tool(MenuTool::TemporaryPen)));
-            assert!(String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("P again"));
+            assert!(
+                String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("S or click")
+            );
             for upward in [false, true] {
                 ui.state.panel_upward.set(upward);
                 for progress in [0.0, 0.5, 1.0] {
@@ -4184,6 +4377,100 @@ mod tests {
                 expected
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_pin_is_expanded_only_and_has_distinct_states() -> Result<()> {
+        let state = State::new(HWND::default())?;
+        assert!(!state.pinned.get());
+        for scale in [1.0, 1.25, 2.0] {
+            state.panel_scale.set(scale);
+            for upward in [false, true] {
+                state.panel_upward.set(upward);
+                state.expanded.set(false);
+                state.motion.set(PanelMotion::settled(false));
+                assert!(!PanelGeometry::new(&state).revealed(PanelHit::Pin));
+                state.expanded.set(true);
+                state.motion.set(PanelMotion::settled(true));
+                let geometry = PanelGeometry::new(&state);
+                let (x, y) = geometry.center(PanelHit::Pin);
+                assert_eq!(geometry.hit(x, y), Some(PanelHit::Pin));
+                let toggle = geometry.bounds(PanelHit::Toggle);
+                let pin = geometry.bounds(PanelHit::Pin);
+                assert!(toggle.right <= pin.left && pin.right <= geometry.badge().left);
+                state.pinned.set(false);
+                let (normal, _) = followup_preview(&state, "pin-off")?;
+                state.pinned.set(true);
+                let (pinned, _) = followup_preview(&state, "pin-on")?;
+                assert!(normal.iter().zip(&pinned).enumerate().any(|(i, (a, b))| {
+                    let x = i as i32 % geometry.width;
+                    let y = i as i32 / geometry.width;
+                    a != b && x >= pin.left && x < pin.right && y >= pin.top && y < pin.bottom
+                }));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_menu_pin_keeps_open_without_timers_and_preserves_hide_show() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "PinRoot", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.create_tooltip(instance)?;
+        menu_open(&ui)?;
+        let pin = PanelGeometry::new(&ui.state).center(PanelHit::Pin);
+        let focus = unsafe { GetFocus() };
+        ui.state
+            .begin_panel_gesture(Some(PanelHit::Pin), POINT::default());
+        ui.state.finish_panel_gesture(None, pin.0);
+        assert!(
+            !ui.state.pinned.get(),
+            "Releasing outside must not toggle the pin"
+        );
+        panel_click(hwnd, pin);
+        assert!(ui.state.pinned.get());
+        ui.state.panel_tooltip(Some(PanelHit::Pin));
+        assert!(String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("Unpin menu"));
+        ui.state.tracking.set(false);
+        unsafe {
+            SendMessageW(hwnd, WM_MOUSELEAVE, None, None);
+        }
+        ui.state.finish_circle_leave(POINT {
+            x: -10000,
+            y: -10000,
+        });
+        ui.state.start_panel_reveal(false, false);
+        assert!(ui.state.expanded.get());
+        assert_eq!(ui.state.motion.get().progress, 1.0);
+        assert!(!ui.state.animation_timer.get() && !ui.state.leave_timer.get());
+        ui.update_label(true, "Temporary pen", Style::default())?;
+        assert!(ui.state.expanded.get() && ui.state.pinned.get());
+        ui.state
+            .begin_panel_gesture(Some(PanelHit::Width), POINT::default());
+        ui.state.panel_leave();
+        assert_eq!(ui.state.pressed.get(), Some(PanelHit::Width));
+        ui.state.cancel_panel_gesture();
+        ui.set_visible(false)?;
+        assert!(ui.state.pinned.get() && !ui.state.expanded.get());
+        ui.set_visible(true)?;
+        assert!(ui.state.expanded.get() && ui.state.pinned.get());
+        ui.set_visible(false)?;
+        menu_open(&ui)?;
+        panel_click(hwnd, PanelGeometry::new(&ui.state).center(PanelHit::Pin));
+        assert!(!ui.state.pinned.get());
+        ui.state.panel_tooltip(Some(PanelHit::Pin));
+        assert!(String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).contains("Pin menu"));
+        ui.state.start_panel_reveal(false, false);
+        assert!(!ui.state.expanded.get());
+        assert!(
+            decoded(root.0).is_empty(),
+            "Pinning must not send drawing commands"
+        );
+        assert_eq!(unsafe { GetFocus() }, focus);
         Ok(())
     }
 

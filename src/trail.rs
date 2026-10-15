@@ -41,6 +41,15 @@ impl Trail {
         }
     }
 
+    pub fn set_lifetime(&mut self, lifetime: Duration) {
+        assert!(
+            !lifetime.is_zero(),
+            "Temporary ink lifetime must be positive"
+        );
+        self.finish();
+        self.lifetime = lifetime;
+    }
+
     pub fn begin(&mut self, point: Point, style: Style, now: Duration) -> bool {
         let now = self.parts.back().map_or(now, |part| now.max(part.0));
         self.gesture += 1;
@@ -207,6 +216,111 @@ mod tests {
             .annotations()
             .map(|annotation| annotation.paths[0].clone())
             .collect()
+    }
+
+    #[test]
+    fn lifetime_update_preserves_births_geometry_and_groups_and_extends_existing_and_new_ink() {
+        let mut trail = Trail::default();
+        trail.begin((0, 0), Style::default(), ms(0));
+        trail.append((100, 100), ms(100));
+        trail.append((200, 0), ms(200));
+        let parts = trail.parts.clone();
+        let gesture = trail.gesture;
+        trail.set_lifetime(ms(2000));
+        assert_eq!(trail.lifetime, ms(2000));
+        assert_eq!(trail.parts, parts);
+        assert_eq!(trail.gesture, gesture);
+        assert!(!trail.is_active());
+        assert!(!trail.append((300, 0), ms(300)));
+        assert_eq!(
+            trail
+                .paint_parts(ms(1000))
+                .map(|part| part.2)
+                .collect::<Vec<_>>(),
+            [128, 140, 153]
+        );
+        assert!(!trail.expire(ms(1000)));
+        trail.begin((500, 0), Style::default(), ms(1000));
+        trail.append((600, 100), ms(1100));
+        trail.append((700, 0), ms(1200));
+        trail.finish();
+        assert_eq!(
+            trail.parts.iter().map(|part| part.0).collect::<Vec<_>>(),
+            [ms(0), ms(100), ms(200), ms(1000), ms(1100), ms(1200)]
+        );
+        assert_eq!(
+            trail
+                .paint_parts(ms(2000))
+                .map(|part| part.2)
+                .collect::<Vec<_>>(),
+            [0, 13, 26, 128, 140, 153]
+        );
+        for (now, remaining) in [
+            (2000, 5),
+            (2100, 4),
+            (2200, 3),
+            (3000, 2),
+            (3100, 1),
+            (3200, 0),
+        ] {
+            assert!(!trail.expire(ms(now - 1)));
+            assert!(trail.expire(ms(now)));
+            assert_eq!(trail.parts.len(), remaining);
+        }
+        assert!(trail.is_empty());
+    }
+
+    #[test]
+    fn lifetime_update_shortens_existing_ink_and_new_pause_boundary() {
+        let mut trail = Trail::default();
+        trail.begin((0, 0), Style::default(), ms(0));
+        trail.append((100, 100), ms(100));
+        trail.append((200, 0), ms(200));
+        let parts = trail.parts.clone();
+        trail.set_lifetime(ms(150));
+        assert_eq!(trail.parts, parts);
+        assert!(!trail.is_active());
+        assert_eq!(
+            trail
+                .paint_parts(ms(200))
+                .map(|part| part.2)
+                .collect::<Vec<_>>(),
+            [0, 85, 255]
+        );
+        assert!(trail.expire(ms(200)));
+        assert_eq!(trail.parts.front().unwrap().0, ms(100));
+        assert!(!trail.expire(ms(249)));
+        assert!(trail.expire(ms(250)));
+        assert_eq!(trail.parts.front().unwrap().0, ms(200));
+        assert!(!trail.expire(ms(349)));
+        assert!(trail.expire(ms(350)));
+        assert!(trail.is_empty());
+        trail.begin((500, 0), Style::default(), ms(400));
+        trail.append((600, 0), ms(549));
+        assert_eq!(trail.parts.back().unwrap().2.paths[0], [(500, 0), (600, 0)]);
+        trail.append((700, 0), ms(699));
+        assert_eq!(trail.parts.back().unwrap().2.paths[0], [(700, 0)]);
+        assert!(trail.expire(ms(699)));
+        assert_eq!(paths(&trail), [vec![(700, 0)]]);
+        assert!(!trail.expire(ms(848)));
+        assert!(trail.expire(ms(849)));
+    }
+
+    #[test]
+    fn lifetime_update_finishes_even_when_unchanged() {
+        let mut trail = Trail::default();
+        trail.begin((0, 0), Style::default(), ms(0));
+        let parts = trail.parts.clone();
+        trail.set_lifetime(ms(1000));
+        assert!(!trail.is_active());
+        assert_eq!(trail.parts, parts);
+        assert!(!trail.append((100, 0), ms(100)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Temporary ink lifetime must be positive")]
+    fn lifetime_update_rejects_zero() {
+        Trail::default().set_lifetime(Duration::ZERO);
     }
 
     #[test]
