@@ -746,6 +746,7 @@ impl PanelGeometry {
                     ring_angle(i, PANEL_PALETTE.len()),
                 ),
                 PanelHit::Collapse => return self.collapse_center(),
+                PanelHit::Grip => return self.ring_grip_center(),
                 _ => (0.0, 0.0),
             };
             let radius = radius * self.scale;
@@ -804,10 +805,20 @@ impl PanelGeometry {
         )
     }
     // Center swaps colors; the inner ring holds tools, the outer ring colors.
+    // Drag handle mirrored in the top-left corner.
+    fn ring_grip_center(&self) -> (i32, i32) {
+        let inset = scaled(RING_COLLAPSE.0, self.scale);
+        (inset, inset)
+    }
     fn ring_hit(&self, x: i32, y: i32) -> Option<PanelHit> {
-        let (bx, by) = self.collapse_center();
-        if f64::from(x - bx).hypot(f64::from(y - by)) <= (RING_COLLAPSE.1 + 1.0) * self.scale {
-            return Some(PanelHit::Collapse);
+        let reach = (RING_COLLAPSE.1 + 1.0) * self.scale;
+        for (hit, (bx, by)) in [
+            (PanelHit::Collapse, self.collapse_center()),
+            (PanelHit::Grip, self.ring_grip_center()),
+        ] {
+            if f64::from(x - bx).hypot(f64::from(y - by)) <= reach {
+                return Some(hit);
+            }
         }
         let (cx, cy) = self.ring_center();
         let dx = f64::from(x - cx) / self.scale;
@@ -1455,6 +1466,7 @@ impl State {
             return;
         };
         let description = match hit {
+            PanelHit::Grip if PanelGeometry::new(self).ring => "Drag to move the ring.".to_string(),
             PanelHit::Grip => "Drag the tool icon to move the menu.".to_string(),
             PanelHit::Pin => if self.pinned.get() {
                 "Unpin menu. The menu is pinned open."
@@ -1553,9 +1565,15 @@ impl State {
             motion.to = motion.progress;
             self.motion.set(motion);
             self.sync_animation_timer();
+            // The open ring moves its own center; the badge moves the anchor.
+            let ring = PanelGeometry::new(self).ring;
             self.panel_drag.set(Some(PanelDrag {
                 start: point,
-                anchor: self.panel_anchor.get(),
+                anchor: if ring {
+                    self.radial_center.get()
+                } else {
+                    self.panel_anchor.get()
+                },
                 scale: self.panel_scale.get(),
                 moving: false,
             }));
@@ -1602,10 +1620,26 @@ impl State {
             drag.moving = true;
         }
         if drag.moving {
-            self.panel_anchor.set(POINT {
+            let moved = POINT {
                 x: drag.anchor.x + point.x - drag.start.x,
                 y: drag.anchor.y + point.y - drag.start.y,
-            });
+            };
+            if PanelGeometry::new(self).ring {
+                // Follow the pointer's monitor so the ring can cross screens.
+                let mut info = MONITORINFO {
+                    cbSize: size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                if unsafe {
+                    GetMonitorInfoW(MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST), &mut info)
+                        .as_bool()
+                } {
+                    self.radial_work.set(info.rcWork);
+                }
+                self.radial_center.set(moved);
+            } else {
+                self.panel_anchor.set(moved);
+            }
             self.panel_drag.set(Some(drag));
             let _ = self.resize_panel();
         }
@@ -1658,7 +1692,17 @@ impl State {
                 let _ = ReleaseCapture();
             }
             if drag.is_some_and(|drag| drag.moving) && !hwnd.is_invalid() {
-                let _ = self.place_panel(self.panel_anchor.get(), self.panel_dpi.get());
+                let geometry = PanelGeometry::new(self);
+                if geometry.ring {
+                    // Keep the clamped position so the next drag has no dead zone.
+                    let origin = geometry.ring_origin;
+                    self.radial_center.set(POINT {
+                        x: origin.x + geometry.width / 2,
+                        y: origin.y + geometry.height / 2,
+                    });
+                } else {
+                    let _ = self.place_panel(self.panel_anchor.get(), self.panel_dpi.get());
+                }
             }
         }
     }
@@ -1683,7 +1727,7 @@ impl State {
         } else if let Some(target) = pressed.filter(|pressed| Some(*pressed) == hit) {
             match target {
                 // Clicking the radial badge opens the ring around the badge.
-                PanelHit::Grip if !moved && self.layout.get() == MenuLayout::Radial => {
+                PanelHit::Grip if !moved && !ring && self.layout.get() == MenuLayout::Radial => {
                     let geometry = PanelGeometry::new(self);
                     let origin = geometry.destination(self.panel_anchor.get());
                     let badge = geometry.badge();
@@ -2001,9 +2045,10 @@ fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
             let (x, y) = large.ring_center();
             let r = (RING_EDGE * large.scale).round() as i32;
             let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
-            let (x, y) = large.collapse_center();
             let r = (RING_COLLAPSE.1 * large.scale).round() as i32;
-            let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
+            for (x, y) in [large.collapse_center(), large.ring_grip_center()] {
+                let _ = Ellipse(sample.dc, x - r, y - r, x + r, y + r);
+            }
         } else {
             let _ = RoundRect(
                 sample.dc,
@@ -2990,41 +3035,41 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
         );
     }
     // Collapse button: a small graphite disc with a minimize bar.
-    let (bx, by) = geometry.collapse_center();
-    let hovered = hover == Some(PanelHit::Collapse);
+    // Corner buttons: minimize bar top-right, drag grip dots top-left.
     let button = (RING_COLLAPSE.1 * s).round() as i32;
-    ellipse(
-        dc,
-        bx,
-        by,
-        button,
-        if pressed == Some(PanelHit::Collapse) {
-            0xff426c5f
-        } else if hovered {
-            0xff30363d
+    for (hit, (bx, by)) in [
+        (PanelHit::Collapse, geometry.collapse_center()),
+        (PanelHit::Grip, geometry.ring_grip_center()),
+    ] {
+        let hovered = hover == Some(hit);
+        let ink = if hovered { PANEL_TEXT } else { PANEL_SECONDARY };
+        ellipse(
+            dc,
+            bx,
+            by,
+            button,
+            if pressed == Some(hit) {
+                0xff426c5f
+            } else if hovered {
+                0xff30363d
+            } else {
+                0xff23272c
+            },
+            1,
+            true,
+        );
+        ellipse(dc, bx, by, button - scaled(1, s), ink, scaled(1, s), false);
+        if hit == PanelHit::Collapse {
+            panel_line(dc, &[(-5, 0), (5, 0)], s, (bx, by), ink, scaled(2, s));
         } else {
-            0xff23272c
-        },
-        1,
-        true,
-    );
-    ellipse(
-        dc,
-        bx,
-        by,
-        button - scaled(1, s),
-        if hovered { PANEL_TEXT } else { PANEL_SECONDARY },
-        scaled(1, s),
-        false,
-    );
-    panel_line(
-        dc,
-        &[(-5, 0), (5, 0)],
-        s,
-        (bx, by),
-        if hovered { PANEL_TEXT } else { PANEL_SECONDARY },
-        scaled(2, s),
-    );
+            for dx in [-2, 2] {
+                for dy in [-4, 0, 4] {
+                    let (x, y) = (bx + scaled(dx, s), by + scaled(dy, s));
+                    ellipse(dc, x, y, scaled(1, s).max(1), ink, 1, true);
+                }
+            }
+        }
+    }
     let middle = if pressed == Some(PanelHit::Swap) {
         0xff426c5f
     } else if hover == Some(PanelHit::Swap) {
@@ -5434,6 +5479,23 @@ mod tests {
         assert_eq!(decoded(root.0), [UiEvent::Swap]);
         ui.state.panel_leave();
         assert!(ui.state.expanded.get());
+        // The top-left grip drags the open ring; it never reopens or collapses it.
+        assert_eq!(
+            g.hit(g.ring_grip_center().0, g.ring_grip_center().1),
+            Some(PanelHit::Grip)
+        );
+        let (start, anchor) = (ui.state.radial_center.get(), ui.state.panel_anchor.get());
+        ui.state
+            .begin_panel_gesture(Some(PanelHit::Grip), POINT::default());
+        ui.state.move_panel_grip(POINT { x: -60, y: 40 });
+        let moved = POINT {
+            x: start.x - 60,
+            y: start.y + 40,
+        };
+        assert_eq!(ui.state.radial_center.get(), moved);
+        ui.state.cancel_panel_gesture();
+        assert!(ui.state.expanded.get() && PanelGeometry::new(&ui.state).ring);
+        assert_eq!(ui.state.panel_anchor.get(), anchor, "the badge stays put");
         // Only the collapse button returns to the badge; a hidden menu hides again.
         panel_click(hwnd, g.collapse_center());
         assert!(decoded(root.0).is_empty());
