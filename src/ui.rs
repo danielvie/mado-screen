@@ -229,6 +229,9 @@ struct State {
     width: Cell<u32>,
     expanded: Cell<bool>,
     pinned: Cell<bool>,
+    // Per layout, in MenuLayout::ALL order: pinned (panel, rail) or ring open (radial).
+    // Only user actions change it, so layout switches and hide/show restore it.
+    remembered: Cell<[bool; 3]>,
     // The owner's show/hide choice. A summoned ring may show a hidden menu briefly.
     visible: Cell<bool>,
     layout: Cell<MenuLayout>,
@@ -272,6 +275,7 @@ impl State {
             width: Cell::new(Style::default().thickness),
             expanded: Cell::new(false),
             pinned: Cell::new(false),
+            remembered: Cell::new([false; 3]),
             visible: Cell::new(false),
             layout: Cell::new(MenuLayout::Panel),
             radial_center: Cell::new(POINT::default()),
@@ -413,7 +417,7 @@ impl DesktopUi {
         decode_event(message, self.state.owner)
     }
 
-    // Hiding ends gestures; showing restores expansion only when pinned.
+    // Hiding ends gestures; showing restores a pinned menu or a remembered open ring.
     pub fn set_visible(&self, visible: bool) -> Result<()> {
         let state = &self.state;
         let hwnd = state.status.get();
@@ -447,10 +451,13 @@ impl DesktopUi {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             }
         }
+        if visible {
+            state.restore_ring();
+        }
         Ok(())
     }
 
-    // Switching layouts collapses to the badge; a pinned panel or rail reopens pinned.
+    // Each layout returns in its remembered state: pinned open, ring open, or compact.
     pub fn set_layout(&self, layout: MenuLayout) -> Result<()> {
         let state = &self.state;
         if state.layout.get() == layout {
@@ -461,10 +468,9 @@ impl DesktopUi {
         state.hide_tooltip();
         state.tracking.set(false);
         state.layout.set(layout);
-        // The ring has no pin and closes after each pick.
-        if layout == MenuLayout::Radial {
-            state.pinned.set(false);
-        }
+        let remembered = state.remembered.get()[layout as usize];
+        // The ring has no pin; its memory reopens it instead.
+        state.pinned.set(layout != MenuLayout::Radial && remembered);
         let open = state.pinned.get() && state.visible.get();
         state.expanded.set(open);
         state.motion.set(PanelMotion::settled(open));
@@ -475,7 +481,9 @@ impl DesktopUi {
             }
         }
         // Scale and upward opening depend on the layout's size.
-        state.place_panel(state.panel_anchor.get(), state.panel_dpi.get())
+        state.place_panel(state.panel_anchor.get(), state.panel_dpi.get())?;
+        state.restore_ring();
+        Ok(())
     }
 
     // Opens the radial ring around a point in the owner's client coordinates.
@@ -944,7 +952,7 @@ fn rail_bounds(hit: PanelHit, body: i32) -> RECT {
     match hit {
         PanelHit::Toggle => rect(7, 48 + body, 30, 28),
         PanelHit::Pin => rect(7, 78 + body, 30, 28),
-        PanelHit::Tool(tool) => rect(5, 116 + body + tool_index(tool) as i32 * 32, 34, 30),
+        PanelHit::Tool(tool) => rect(2, 116 + body + tool_index(tool) as i32 * 32, 40, 30),
         PanelHit::Active => rect(9, 349 + body, 18, 18),
         PanelHit::Reserve => rect(19, 359 + body, 18, 18),
         // Two columns: warm colors left, cool and neutral colors right.
@@ -1234,6 +1242,23 @@ impl State {
         }
     }
 
+    fn remember(&self, open: bool) {
+        let mut remembered = self.remembered.get();
+        remembered[self.layout.get() as usize] = open;
+        self.remembered.set(remembered);
+    }
+
+    // Reopens the ring where it was last placed, if the user left it open.
+    fn restore_ring(&self) {
+        if self.layout.get() == MenuLayout::Radial
+            && self.visible.get()
+            && !self.expanded.get()
+            && self.remembered.get()[MenuLayout::Radial as usize]
+        {
+            self.open_radial(self.radial_center.get());
+        }
+    }
+
     // Shows the ring centered on a screen point, clamped to that point's work area.
     // A hidden menu shows only while the ring is open.
     fn open_radial(&self, center: POINT) {
@@ -1261,6 +1286,7 @@ impl State {
         // show it slightly large or small on another monitor until it is dragged there.
         self.radial_work.set(work);
         self.radial_center.set(center);
+        self.remember(true);
         self.stop_leave_timer();
         self.hide_tooltip();
         self.expanded.set(true);
@@ -1751,6 +1777,7 @@ impl State {
                 PanelHit::Grip => {}
                 PanelHit::Pin => {
                     self.pinned.set(!self.pinned.get());
+                    self.remember(self.pinned.get());
                     self.stop_leave_timer();
                     self.hide_tooltip();
                     let _ = self.resize_panel();
@@ -1763,6 +1790,7 @@ impl State {
                 PanelHit::Width => {}
                 PanelHit::Tool(tool) => self.post(UiEvent::Tool(tool)),
                 PanelHit::Collapse => {
+                    self.remember(false);
                     self.reveal_panel(false);
                     return;
                 }
@@ -2850,10 +2878,29 @@ fn paint_rail(state: &State, dc: HDC, geometry: &PanelGeometry) {
         paint_pin(state, dc, geometry.bounds(PanelHit::Pin), s);
         divider(geometry.bounds(PanelHit::Tool(MenuTool::Pen)).top - scaled(5, s));
         for (tool, ..) in PANEL_TOOLS {
-            paint_tool(state, dc, tool, geometry.bounds(PanelHit::Tool(tool)), s);
+            let r = geometry.bounds(PanelHit::Tool(tool));
+            paint_tool(state, dc, tool, r, s);
+            let key = shortcut_badge(state.shortcuts.get().binding(tool_shortcut(tool)));
+            key_badge(
+                dc,
+                &key,
+                (r.right - scaled(2, s), r.top + scaled(3, s)),
+                s,
+                state.tool.get() == tool,
+            );
         }
         divider(geometry.bounds(PanelHit::Active).top - scaled(6, s));
         paint_favorites(state, dc, geometry);
+        // Swap key under the active square, left of the reserve.
+        let active = geometry.bounds(PanelHit::Active);
+        let key = shortcut_badge(state.shortcuts.get().binding("swap_colors"));
+        key_badge(
+            dc,
+            &key,
+            (active.left + scaled(9, s), active.bottom + scaled(2, s)),
+            s,
+            false,
+        );
         for (i, color) in PANEL_PALETTE.iter().copied().enumerate() {
             let (x, y) = geometry.center(PanelHit::Palette(i));
             ellipse(dc, x, y, scaled(7, s), color, 1, true);
@@ -2894,6 +2941,39 @@ fn paint_rail(state: &State, dc: HDC, geometry: &PanelGeometry) {
         ellipse(dc, cx, thumb, scaled(5, s), PANEL_ACCENT, 1, true);
         paint_swatch_drag(state, dc, s);
         let _ = RestoreDC(dc, saved);
+    }
+}
+
+// Small boxed shortcut hint whose top-right corner sits at `corner`.
+fn key_badge(dc: HDC, key: &str, corner: (i32, i32), s: f64, bright: bool) {
+    let width = if key.len() > 2 { 18 } else { 11 };
+    let badge = rect(
+        corner.0 - scaled(width, s),
+        corner.1,
+        scaled(width, s),
+        scaled(12, s),
+    );
+    rounded_pen(
+        dc,
+        badge,
+        scaled(2, s),
+        PANEL_BACKGROUND,
+        PANEL_BORDER,
+        scaled(1, s),
+    );
+    if let Ok(font) = panel_font(s * 0.6) {
+        unsafe {
+            let saved = SaveDC(dc);
+            SelectObject(dc, font.0);
+            label(
+                dc,
+                key,
+                badge,
+                if bright { PANEL_TEXT } else { PANEL_SECONDARY },
+                DT_SINGLELINE | DT_CENTER | DT_VCENTER,
+            );
+            let _ = RestoreDC(dc, saved);
+        }
     }
 }
 
@@ -3174,7 +3254,7 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
                 dc,
                 &state.width.get().to_string(),
                 rect(
-                    cx - scaled(20, s),
+                    cx - scaled(14, s),
                     cy + scaled(13, s),
                     scaled(40, s),
                     scaled(16, s),
@@ -3185,6 +3265,9 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
             let _ = RestoreDC(dc, saved);
         }
     }
+    // Swap key hint: clicking the center does what this key does.
+    let key = shortcut_badge(state.shortcuts.get().binding("swap_colors"));
+    key_badge(dc, &key, (cx - scaled(5, s), cy + scaled(15, s)), s, false);
 }
 
 fn bitmap_info(width: i32, height: i32) -> BITMAPINFO {
@@ -5500,8 +5583,13 @@ mod tests {
         let hwnd = status(&ui)?;
         ui.set_visible(true)?;
         menu_open(&ui)?;
-        ui.state.pinned.set(true);
-        // Rail keeps a pinned menu open; the ring has no pin and starts compact.
+        // Each layout remembers its own pin: a pinned rail returns pinned and open,
+        // while the panel's unpinned state comes back too.
+        ui.state.remembered.set([false, true, false]);
+        ui.set_layout(MenuLayout::Rail)?;
+        assert!(ui.state.expanded.get() && ui.state.pinned.get());
+        ui.set_layout(MenuLayout::Panel)?;
+        assert!(!ui.state.pinned.get() && !ui.state.expanded.get());
         ui.set_layout(MenuLayout::Rail)?;
         assert!(ui.state.expanded.get());
         let rail = panel_preview(&ui, "layout-rail-100")?;
@@ -5582,7 +5670,20 @@ mod tests {
         unsafe { GetCursorPos(&mut cursor)? };
         ui.state.open_radial(cursor);
         assert!(ui.state.expanded.get());
-        ui.state.reveal_panel(false);
+        // An open ring comes back open after a layout round trip and hide/show.
+        let center = ui.state.radial_center.get();
+        ui.set_layout(MenuLayout::Rail)?;
+        assert!(!PanelGeometry::new(&ui.state).ring);
+        ui.set_layout(MenuLayout::Radial)?;
+        assert!(ui.state.expanded.get() && ui.state.radial_center.get() == center);
+        ui.set_visible(false)?;
+        ui.set_visible(true)?;
+        assert!(ui.state.expanded.get());
+        // Collapsing is remembered too.
+        panel_click(hwnd, PanelGeometry::new(&ui.state).collapse_center());
+        ui.set_visible(false)?;
+        ui.set_visible(true)?;
+        assert!(!ui.state.expanded.get());
         assert!(unsafe { IsWindowVisible(hwnd) }.as_bool());
         // Other layouts ignore summon requests.
         ui.set_layout(MenuLayout::Panel)?;
