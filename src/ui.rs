@@ -797,19 +797,20 @@ impl PanelGeometry {
             (self.body.top + self.body.bottom) / 2,
         )
     }
-    // Collapse button in the ring window's top-right corner, outside the disc.
+    // Collapse button in the ring window's top-left corner, outside the disc.
     fn collapse_center(&self) -> (i32, i32) {
+        let inset = scaled(RING_COLLAPSE.0, self.scale);
+        (inset, inset)
+    }
+    // Drag handle mirrored in the top-right corner.
+    fn ring_grip_center(&self) -> (i32, i32) {
         (
             self.width - scaled(RING_COLLAPSE.0, self.scale),
             scaled(RING_COLLAPSE.0, self.scale),
         )
     }
-    // Center swaps colors; the inner ring holds tools, the outer ring colors.
-    // Drag handle mirrored in the top-left corner.
-    fn ring_grip_center(&self) -> (i32, i32) {
-        let inset = scaled(RING_COLLAPSE.0, self.scale);
-        (inset, inset)
-    }
+    // Corner buttons first; the center swaps colors, the inner ring holds tools,
+    // the outer ring colors.
     fn ring_hit(&self, x: i32, y: i32) -> Option<PanelHit> {
         let reach = (RING_COLLAPSE.1 + 1.0) * self.scale;
         for (hit, (bx, by)) in [
@@ -3035,7 +3036,7 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
         );
     }
     // Collapse button: a small graphite disc with a minimize bar.
-    // Corner buttons: minimize bar top-right, drag grip dots top-left.
+    // Corner buttons: minimize bar top-left, drag grip dots top-right.
     let button = (RING_COLLAPSE.1 * s).round() as i32;
     for (hit, (bx, by)) in [
         (PanelHit::Collapse, geometry.collapse_center()),
@@ -5413,10 +5414,11 @@ mod tests {
                 // Pen and the first color sit at the top; order runs clockwise.
                 assert!(g.center(PanelHit::Tool(MenuTool::Pen)).1 < cy);
                 assert!(g.center(PanelHit::Palette(4)).0 > cx);
-                // Only the top-right corner holds a target: the collapse button.
+                // The top corners hold collapse (left) and grip (right) buttons.
                 let (bx, by) = g.collapse_center();
                 assert_eq!(g.hit(bx, by), Some(PanelHit::Collapse));
-                assert!(g.hit(0, 0).is_none() && g.hit(side - 1, side - 1).is_none());
+                assert!(bx < cx && g.ring_grip_center().0 > cx);
+                assert!(g.hit(0, side - 1).is_none() && g.hit(side - 1, side - 1).is_none());
             }
         }
         Ok(())
@@ -5479,7 +5481,7 @@ mod tests {
         assert_eq!(decoded(root.0), [UiEvent::Swap]);
         ui.state.panel_leave();
         assert!(ui.state.expanded.get());
-        // The top-left grip drags the open ring; it never reopens or collapses it.
+        // The top-right grip drags the open ring; it never reopens or collapses it.
         assert_eq!(
             g.hit(g.ring_grip_center().0, g.ring_grip_center().1),
             Some(PanelHit::Grip)
