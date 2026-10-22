@@ -1,0 +1,7550 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "id": "mado-bottom-bar-1",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 1910,
+      "height": 1060,
+      "angle": 0,
+      "strokeColor": "#f3f6f7",
+      "backgroundColor": "#f3f6f7",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9001,
+      "version": 1,
+      "versionNonce": 90001,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-2",
+      "type": "text",
+      "x": 60,
+      "y": 34,
+      "width": 807,
+      "height": 45,
+      "angle": 0,
+      "strokeColor": "#20343f",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9002,
+      "version": 1,
+      "versionNonce": 90002,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Mado Screen / compact action bar",
+      "originalText": "Mado Screen / compact action bar",
+      "fontFamily": 5,
+      "fontSize": 36,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-3",
+      "type": "text",
+      "x": 60,
+      "y": 88,
+      "width": 1323,
+      "height": 26.25,
+      "angle": 0,
+      "strokeColor": "#56717d",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9003,
+      "version": 1,
+      "versionNonce": 90003,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Radial ring stays primary. Four support actions move into an icon bar directly beneath it.",
+      "originalText": "Radial ring stays primary. Four support actions move into an icon bar directly beneath it.",
+      "fontFamily": 5,
+      "fontSize": 21,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-4",
+      "type": "rectangle",
+      "x": 58,
+      "y": 168,
+      "width": 850,
+      "height": 784,
+      "angle": 0,
+      "strokeColor": "#d7e1e5",
+      "backgroundColor": "#ffffff",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9004,
+      "version": 1,
+      "versionNonce": 90004,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-5",
+      "type": "text",
+      "x": 92,
+      "y": 189,
+      "width": 138,
+      "height": 35,
+      "angle": 0,
+      "strokeColor": "#20343f",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9005,
+      "version": 1,
+      "versionNonce": 90005,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "01   ON",
+      "originalText": "01   ON",
+      "fontFamily": 5,
+      "fontSize": 28,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-6",
+      "type": "text",
+      "x": 92,
+      "y": 230,
+      "width": 189,
+      "height": 22.5,
+      "angle": 0,
+      "strokeColor": "#5c7480",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9006,
+      "version": 1,
+      "versionNonce": 90006,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Drawing enabled",
+      "originalText": "Drawing enabled",
+      "fontFamily": 5,
+      "fontSize": 18,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-7",
+      "type": "rectangle",
+      "x": 86,
+      "y": 270,
+      "width": 794,
+      "height": 555,
+      "angle": 0,
+      "strokeColor": "#e1e8eb",
+      "backgroundColor": "#f5f7f8",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9007,
+      "version": 1,
+      "versionNonce": 90007,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-8",
+      "type": "ellipse",
+      "x": 309,
+      "y": 324,
+      "width": 348,
+      "height": 348,
+      "angle": 0,
+      "strokeColor": "#46565f",
+      "backgroundColor": "#192026",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9008,
+      "version": 1,
+      "versionNonce": 90008,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-9",
+      "type": "line",
+      "x": 484.52396342426334,
+      "y": 332.01195185657673,
+      "width": 60.156588710595884,
+      "height": 48.08059981356422,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#ffdf32",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9009,
+      "version": 1,
+      "versionNonce": 90009,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0.4679887680808861,
+          0
+        ],
+        [
+          10.657751123472679,
+          0.43562191330886435
+        ],
+        [
+          20.801528778148338,
+          1.4961869529070668
+        ],
+        [
+          30.861030030413986,
+          3.1776915964870227
+        ],
+        [
+          40.79828131319687,
+          5.473788339558723
+        ],
+        [
+          50.575770540296844,
+          8.375809656616525
+        ],
+        [
+          60.156588710595884,
+          11.872800720142891
+        ],
+        [
+          45.66537465481565,
+          48.08059981356422
+        ],
+        [
+          38.335471596815864,
+          45.40519098785421
+        ],
+        [
+          30.855103332709177,
+          43.184969859743774
+        ],
+        [
+          23.252507471784952,
+          41.428317532212986
+        ],
+        [
+          15.556383019750399,
+          40.14186518441386
+        ],
+        [
+          7.795782042980477,
+          39.33046903966101
+        ],
+        [
+          0,
+          38.9971920336958
+        ],
+        [
+          0.4679887680808861,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-10",
+      "type": "line",
+      "x": 533.0052553110245,
+      "y": 345.40932678086654,
+      "width": 65.95749622410324,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#ffb51b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9010,
+      "version": 1,
+      "versionNonce": 90010,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          15.355944544330328,
+          0
+        ],
+        [
+          24.60335213663234,
+          4.301915402765417
+        ],
+        [
+          33.569120024532594,
+          9.16360538578681
+        ],
+        [
+          42.21940337022954,
+          14.566717576910946
+        ],
+        [
+          50.52154825713319,
+          20.49085579167047
+        ],
+        [
+          58.44421495499216,
+          26.91365702675097
+        ],
+        [
+          65.95749622410324,
+          33.81087587799368
+        ],
+        [
+          38.71323532127201,
+          61.71697284368315
+        ],
+        [
+          32.96512254309664,
+          56.44018492737098
+        ],
+        [
+          26.903805250156324,
+          51.52635506679735
+        ],
+        [
+          20.552164282465014,
+          46.994032456710215
+        ],
+        [
+          13.934176421600569,
+          42.86032614181403
+        ],
+        [
+          7.07482388085748,
+          39.140840431912125
+        ],
+        [
+          0,
+          35.84961599726631
+        ],
+        [
+          15.355944544330328,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-11",
+      "type": "line",
+      "x": 573.8737003754503,
+      "y": 382.0372484648723,
+      "width": 61.71697284368315,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#f97316",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9011,
+      "version": 1,
+      "versionNonce": 90011,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          27.90609696568947,
+          0
+        ],
+        [
+          34.80331581693224,
+          7.513281269111133
+        ],
+        [
+          41.22611705201268,
+          15.435947966970105
+        ],
+        [
+          47.150255266772206,
+          23.738092853873752
+        ],
+        [
+          52.55336745789634,
+          32.388376199570644
+        ],
+        [
+          57.415057440917735,
+          41.3541440874709
+        ],
+        [
+          61.71697284368315,
+          50.60155167977291
+        ],
+        [
+          25.867356846416783,
+          65.95749622410324
+        ],
+        [
+          22.576132411771027,
+          58.8826723432457
+        ],
+        [
+          18.85664670186918,
+          52.023319802502726
+        ],
+        [
+          14.722940386972937,
+          45.405331941638224
+        ],
+        [
+          10.190617776885802,
+          39.053690973946914
+        ],
+        [
+          5.276787916312173,
+          32.9923736810066
+        ],
+        [
+          0,
+          27.24426090283123
+        ],
+        [
+          27.90609696568947,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-12",
+      "type": "line",
+      "x": 600.9074483298591,
+      "y": 436.31944786514083,
+      "width": 48.08059981356416,
+      "height": 60.15658871059583,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#e31635",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9012,
+      "version": 1,
+      "versionNonce": 90012,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          36.20779909342127,
+          0
+        ],
+        [
+          39.70479015694764,
+          9.580818170298983
+        ],
+        [
+          42.60681147400544,
+          19.35830739739896
+        ],
+        [
+          44.90290821707708,
+          29.295558680181898
+        ],
+        [
+          46.58441286065704,
+          39.35505993244749
+        ],
+        [
+          47.6449779002553,
+          49.49883758712315
+        ],
+        [
+          48.08059981356416,
+          59.68859994251494
+        ],
+        [
+          9.083407779868367,
+          60.15658871059583
+        ],
+        [
+          8.750130773903152,
+          52.36080666761535
+        ],
+        [
+          7.938734629150304,
+          44.60020569084543
+        ],
+        [
+          6.652282281351177,
+          36.904081238810875
+        ],
+        [
+          4.895629953820389,
+          29.30148537788665
+        ],
+        [
+          2.675408825709951,
+          21.821117113779962
+        ],
+        [
+          0,
+          14.491214055780176
+        ],
+        [
+          36.20779909342127,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-13",
+      "type": "line",
+      "x": 600.9074483298591,
+      "y": 499.52396342426334,
+      "width": 48.08059981356416,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#673b92",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9013,
+      "version": 1,
+      "versionNonce": 90013,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          48.08059981356416,
+          0.4679887680808861
+        ],
+        [
+          47.6449779002553,
+          10.657751123472679
+        ],
+        [
+          46.58441286065704,
+          20.80152877814828
+        ],
+        [
+          44.90290821707708,
+          30.861030030413986
+        ],
+        [
+          42.60681147400544,
+          40.79828131319687
+        ],
+        [
+          39.70479015694764,
+          50.575770540296844
+        ],
+        [
+          36.20779909342127,
+          60.156588710595884
+        ],
+        [
+          0,
+          45.66537465481565
+        ],
+        [
+          2.675408825709951,
+          38.335471596815864
+        ],
+        [
+          4.895629953820389,
+          30.855103332709177
+        ],
+        [
+          6.652282281351177,
+          23.252507471784952
+        ],
+        [
+          7.938734629150304,
+          15.556383019750342
+        ],
+        [
+          8.750130773903152,
+          7.795782042980477
+        ],
+        [
+          9.083407779868367,
+          0
+        ],
+        [
+          48.08059981356416,
+          0.4679887680808861
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-14",
+      "type": "line",
+      "x": 573.8737003754503,
+      "y": 548.0052553110245,
+      "width": 61.71697284368315,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#9b4fc0",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9014,
+      "version": 1,
+      "versionNonce": 90014,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          61.71697284368315,
+          15.355944544330328
+        ],
+        [
+          57.415057440917735,
+          24.60335213663234
+        ],
+        [
+          52.55336745789634,
+          33.569120024532594
+        ],
+        [
+          47.150255266772206,
+          42.21940337022943
+        ],
+        [
+          41.22611705201268,
+          50.52154825713308
+        ],
+        [
+          34.80331581693224,
+          58.44421495499205
+        ],
+        [
+          27.90609696568947,
+          65.95749622410324
+        ],
+        [
+          0,
+          38.71323532127201
+        ],
+        [
+          5.276787916312173,
+          32.96512254309664
+        ],
+        [
+          10.190617776885802,
+          26.903805250156324
+        ],
+        [
+          14.722940386972937,
+          20.552164282465014
+        ],
+        [
+          18.85664670186918,
+          13.934176421600455
+        ],
+        [
+          22.576132411771027,
+          7.07482388085748
+        ],
+        [
+          25.867356846416783,
+          0
+        ],
+        [
+          61.71697284368315,
+          15.355944544330328
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-15",
+      "type": "line",
+      "x": 533.0052553110245,
+      "y": 588.8737003754503,
+      "width": 65.95749622410324,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#d50d81",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9015,
+      "version": 1,
+      "versionNonce": 90015,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          65.95749622410324,
+          27.90609696568947
+        ],
+        [
+          58.44421495499205,
+          34.80331581693224
+        ],
+        [
+          50.52154825713308,
+          41.22611705201268
+        ],
+        [
+          42.21940337022943,
+          47.150255266772206
+        ],
+        [
+          33.569120024532594,
+          52.55336745789634
+        ],
+        [
+          24.60335213663234,
+          57.415057440917735
+        ],
+        [
+          15.355944544330328,
+          61.71697284368315
+        ],
+        [
+          0,
+          25.867356846416783
+        ],
+        [
+          7.07482388085748,
+          22.576132411771027
+        ],
+        [
+          13.934176421600569,
+          18.85664670186918
+        ],
+        [
+          20.552164282465014,
+          14.722940386972937
+        ],
+        [
+          26.903805250156324,
+          10.190617776885802
+        ],
+        [
+          32.96512254309664,
+          5.276787916312173
+        ],
+        [
+          38.71323532127201,
+          0
+        ],
+        [
+          65.95749622410324,
+          27.90609696568947
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-16",
+      "type": "line",
+      "x": 484.5239634242634,
+      "y": 615.907448329859,
+      "width": 60.15658871059583,
+      "height": 48.08059981356428,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#b9085e",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9016,
+      "version": 1,
+      "versionNonce": 90016,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          60.15658871059583,
+          36.207799093421386
+        ],
+        [
+          50.5757705402969,
+          39.70479015694775
+        ],
+        [
+          40.79828131319681,
+          42.60681147400555
+        ],
+        [
+          30.86103003041393,
+          44.9029082170772
+        ],
+        [
+          20.801528778148338,
+          46.58441286065715
+        ],
+        [
+          10.657751123472679,
+          47.64497790025541
+        ],
+        [
+          0.4679887680808861,
+          48.08059981356428
+        ],
+        [
+          0,
+          9.08340777986848
+        ],
+        [
+          7.79578204298042,
+          8.750130773903265
+        ],
+        [
+          15.556383019750399,
+          7.938734629150417
+        ],
+        [
+          23.252507471784895,
+          6.65228228135129
+        ],
+        [
+          30.85510333270912,
+          4.895629953820503
+        ],
+        [
+          38.33547159681581,
+          2.6754088257100648
+        ],
+        [
+          45.66537465481571,
+          0
+        ],
+        [
+          60.15658871059583,
+          36.207799093421386
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-17",
+      "type": "line",
+      "x": 421.3194478651408,
+      "y": 615.9074483298591,
+      "width": 60.156588710595884,
+      "height": 48.08059981356416,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#35c7ef",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9017,
+      "version": 1,
+      "versionNonce": 90017,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          59.688599942515,
+          48.08059981356416
+        ],
+        [
+          49.498837587123205,
+          47.6449779002553
+        ],
+        [
+          39.355059932447546,
+          46.58441286065704
+        ],
+        [
+          29.295558680181898,
+          44.90290821707708
+        ],
+        [
+          19.358307397399017,
+          42.60681147400544
+        ],
+        [
+          9.580818170298983,
+          39.70479015694764
+        ],
+        [
+          0,
+          36.20779909342127
+        ],
+        [
+          14.491214055780176,
+          0
+        ],
+        [
+          21.82111711378002,
+          2.675408825709951
+        ],
+        [
+          29.30148537788665,
+          4.895629953820389
+        ],
+        [
+          36.90408123881093,
+          6.652282281351177
+        ],
+        [
+          44.60020569084543,
+          7.938734629150304
+        ],
+        [
+          52.36080666761541,
+          8.750130773903152
+        ],
+        [
+          60.156588710595884,
+          9.083407779868367
+        ],
+        [
+          59.688599942515,
+          48.08059981356416
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-18",
+      "type": "line",
+      "x": 367.0372484648723,
+      "y": 588.8737003754503,
+      "width": 65.9574962241033,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#0085dc",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9018,
+      "version": 1,
+      "versionNonce": 90018,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          50.60155167977297,
+          61.71697284368315
+        ],
+        [
+          41.35414408747096,
+          57.415057440917735
+        ],
+        [
+          32.388376199570644,
+          52.55336745789634
+        ],
+        [
+          23.73809285387381,
+          47.150255266772206
+        ],
+        [
+          15.435947966970161,
+          41.22611705201268
+        ],
+        [
+          7.513281269111133,
+          34.80331581693224
+        ],
+        [
+          0,
+          27.90609696568947
+        ],
+        [
+          27.24426090283123,
+          0
+        ],
+        [
+          32.9923736810066,
+          5.276787916312173
+        ],
+        [
+          39.053690973946914,
+          10.190617776885915
+        ],
+        [
+          45.40533194163828,
+          14.722940386972937
+        ],
+        [
+          52.023319802502726,
+          18.85664670186918
+        ],
+        [
+          58.88267234324576,
+          22.576132411771027
+        ],
+        [
+          65.9574962241033,
+          25.867356846416783
+        ],
+        [
+          50.60155167977297,
+          61.71697284368315
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-19",
+      "type": "line",
+      "x": 330.40932678086654,
+      "y": 548.0052553110245,
+      "width": 61.71697284368315,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#075cbf",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9019,
+      "version": 1,
+      "versionNonce": 90019,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          33.81087587799374,
+          65.95749622410324
+        ],
+        [
+          26.91365702675097,
+          58.44421495499216
+        ],
+        [
+          20.49085579167047,
+          50.52154825713308
+        ],
+        [
+          14.566717576910946,
+          42.21940337022943
+        ],
+        [
+          9.16360538578681,
+          33.569120024532594
+        ],
+        [
+          4.301915402765417,
+          24.603352136632225
+        ],
+        [
+          0,
+          15.355944544330214
+        ],
+        [
+          35.84961599726631,
+          0
+        ],
+        [
+          39.140840431912125,
+          7.07482388085748
+        ],
+        [
+          42.86032614181403,
+          13.934176421600569
+        ],
+        [
+          46.994032456710215,
+          20.552164282465014
+        ],
+        [
+          51.526355066797294,
+          26.903805250156324
+        ],
+        [
+          56.44018492737098,
+          32.96512254309664
+        ],
+        [
+          61.71697284368315,
+          38.71323532127201
+        ],
+        [
+          33.81087587799374,
+          65.95749622410324
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-20",
+      "type": "line",
+      "x": 317.01195185657673,
+      "y": 499.52396342426334,
+      "width": 48.08059981356428,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#83c400",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9020,
+      "version": 1,
+      "versionNonce": 90020,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          11.872800720143005,
+          60.156588710595884
+        ],
+        [
+          8.375809656616525,
+          50.57577054029696
+        ],
+        [
+          5.473788339558723,
+          40.79828131319687
+        ],
+        [
+          3.1776915964870227,
+          30.861030030413986
+        ],
+        [
+          1.4961869529070668,
+          20.801528778148395
+        ],
+        [
+          0.43562191330886435,
+          10.657751123472679
+        ],
+        [
+          0,
+          0.4679887680808861
+        ],
+        [
+          38.9971920336958,
+          0
+        ],
+        [
+          39.33046903966101,
+          7.795782042980477
+        ],
+        [
+          40.14186518441386,
+          15.556383019750456
+        ],
+        [
+          41.428317532212986,
+          23.252507471784952
+        ],
+        [
+          43.184969859743774,
+          30.85510333270929
+        ],
+        [
+          45.40519098785427,
+          38.33547159681598
+        ],
+        [
+          48.08059981356428,
+          45.665374654815764
+        ],
+        [
+          11.872800720143005,
+          60.156588710595884
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-21",
+      "type": "line",
+      "x": 317.01195185657673,
+      "y": 436.3194478651408,
+      "width": 48.08059981356422,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#00b85a",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9021,
+      "version": 1,
+      "versionNonce": 90021,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          59.688599942515054
+        ],
+        [
+          0.43562191330886435,
+          49.49883758712326
+        ],
+        [
+          1.4961869529070668,
+          39.355059932447546
+        ],
+        [
+          3.1776915964870227,
+          29.295558680181898
+        ],
+        [
+          5.473788339558723,
+          19.358307397399017
+        ],
+        [
+          8.375809656616525,
+          9.580818170298926
+        ],
+        [
+          11.872800720142948,
+          0
+        ],
+        [
+          48.08059981356422,
+          14.491214055780176
+        ],
+        [
+          45.40519098785427,
+          21.821117113779962
+        ],
+        [
+          43.184969859743774,
+          29.301485377886706
+        ],
+        [
+          41.428317532212986,
+          36.90408123881093
+        ],
+        [
+          40.14186518441386,
+          44.600205690845485
+        ],
+        [
+          39.33046903966101,
+          52.36080666761541
+        ],
+        [
+          38.9971920336958,
+          60.156588710595884
+        ],
+        [
+          0,
+          59.688599942515054
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-22",
+      "type": "line",
+      "x": 330.40932678086654,
+      "y": 382.0372484648723,
+      "width": 61.71697284368315,
+      "height": 65.95749622410335,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#f1f1ef",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9022,
+      "version": 1,
+      "versionNonce": 90022,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          50.601551679773024
+        ],
+        [
+          4.301915402765417,
+          41.35414408747101
+        ],
+        [
+          9.16360538578681,
+          32.388376199570644
+        ],
+        [
+          14.566717576910946,
+          23.73809285387381
+        ],
+        [
+          20.49085579167047,
+          15.435947966970161
+        ],
+        [
+          26.91365702675091,
+          7.513281269111133
+        ],
+        [
+          33.81087587799368,
+          0
+        ],
+        [
+          61.71697284368315,
+          27.24426090283123
+        ],
+        [
+          56.44018492737092,
+          32.9923736810066
+        ],
+        [
+          51.526355066797294,
+          39.053690973946914
+        ],
+        [
+          46.994032456710215,
+          45.40533194163828
+        ],
+        [
+          42.86032614181403,
+          52.023319802502726
+        ],
+        [
+          39.140840431912125,
+          58.88267234324576
+        ],
+        [
+          35.84961599726631,
+          65.95749622410335
+        ],
+        [
+          0,
+          50.601551679773024
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-23",
+      "type": "line",
+      "x": 367.0372484648722,
+      "y": 345.40932678086654,
+      "width": 65.95749622410341,
+      "height": 61.71697284368321,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#bdbdbb",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9023,
+      "version": 1,
+      "versionNonce": 90023,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          33.81087587799374
+        ],
+        [
+          7.513281269111189,
+          26.91365702675091
+        ],
+        [
+          15.435947966970161,
+          20.49085579167047
+        ],
+        [
+          23.73809285387381,
+          14.566717576910946
+        ],
+        [
+          32.388376199570814,
+          9.163605385786752
+        ],
+        [
+          41.35414408747107,
+          4.30191540276536
+        ],
+        [
+          50.60155167977308,
+          0
+        ],
+        [
+          65.95749622410341,
+          35.849615997266255
+        ],
+        [
+          58.88267234324587,
+          39.140840431912125
+        ],
+        [
+          52.02331980250284,
+          42.86032614181397
+        ],
+        [
+          45.40533194163828,
+          46.994032456710215
+        ],
+        [
+          39.05369097394697,
+          51.52635506679735
+        ],
+        [
+          32.992373681006654,
+          56.44018492737092
+        ],
+        [
+          27.24426090283123,
+          61.71697284368321
+        ],
+        [
+          0,
+          33.81087587799374
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-24",
+      "type": "line",
+      "x": 421.31944786514066,
+      "y": 332.01195185657673,
+      "width": 60.156588710596,
+      "height": 48.08059981356428,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#161616",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9024,
+      "version": 1,
+      "versionNonce": 90024,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          11.872800720143005
+        ],
+        [
+          9.580818170298926,
+          8.375809656616525
+        ],
+        [
+          19.35830739739913,
+          5.473788339558723
+        ],
+        [
+          29.295558680182012,
+          3.1776915964870796
+        ],
+        [
+          39.3550599324476,
+          1.4961869529070668
+        ],
+        [
+          49.498837587123376,
+          0.43562191330886435
+        ],
+        [
+          59.68859994251517,
+          0
+        ],
+        [
+          60.156588710596,
+          38.9971920336958
+        ],
+        [
+          52.36080666761558,
+          39.33046903966101
+        ],
+        [
+          44.60020569084554,
+          40.14186518441386
+        ],
+        [
+          36.90408123881099,
+          41.428317532212986
+        ],
+        [
+          29.301485377886763,
+          43.184969859743774
+        ],
+        [
+          21.82111711378002,
+          45.40519098785427
+        ],
+        [
+          14.491214055780176,
+          48.08059981356428
+        ],
+        [
+          0,
+          11.872800720143005
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-25",
+      "type": "ellipse",
+      "x": 361,
+      "y": 376,
+      "width": 244,
+      "height": 244,
+      "angle": 0,
+      "strokeColor": "#233039",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9025,
+      "version": 1,
+      "versionNonce": 90025,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-26",
+      "type": "line",
+      "x": 484.2099023956954,
+      "y": 380.0285548482599,
+      "width": 89.40543849281562,
+      "height": 82.74186458039759,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#286351",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9026,
+      "version": 1,
+      "versionNonce": 90026,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          1.3858881987056293,
+          0
+        ],
+        [
+          18.08646866479569,
+          1.5598904679551993
+        ],
+        [
+          34.397154553482665,
+          5.471945173215829
+        ],
+        [
+          49.98837882017642,
+          11.657118739254656
+        ],
+        [
+          64.54511156741069,
+          19.990436080023926
+        ],
+        [
+          77.7732254100381,
+          30.303517595403036
+        ],
+        [
+          89.40543849281562,
+          42.387981380496115
+        ],
+        [
+          41.02606157776313,
+          82.74186458039759
+        ],
+        [
+          35.60426734426517,
+          77.10927552802366
+        ],
+        [
+          29.438621061684557,
+          72.30233075390629
+        ],
+        [
+          22.653703255770324,
+          68.41815741710707
+        ],
+        [
+          15.386607199260482,
+          65.53523753463134
+        ],
+        [
+          7.784168861313162,
+          63.71182220590816
+        ],
+        [
+          0,
+          62.984754614912106
+        ],
+        [
+          1.3858881987056293,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-27",
+      "type": "text",
+      "x": 483.1817690423451,
+      "y": 409.3397396245871,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#e4fff0",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9027,
+      "version": 1,
+      "versionNonce": 90027,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Pen",
+      "originalText": "Pen",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-28",
+      "type": "line",
+      "x": 526.7446875833796,
+      "y": 426.47547784595025,
+      "width": 74.04203288867109,
+      "height": 95.24492960473043,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9028,
+      "version": 1,
+      "versionNonce": 90028,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          50.10755123187107,
+          0
+        ],
+        [
+          59.30062136055028,
+          14.029615382666464
+        ],
+        [
+          66.41160014375782,
+          29.220949324132505
+        ],
+        [
+          71.29680605407566,
+          45.26705194720466
+        ],
+        [
+          73.85753061994899,
+          61.843702268487846
+        ],
+        [
+          74.04203288867109,
+          78.6159592749018
+        ],
+        [
+          71.84658488290006,
+          95.24492960473043
+        ],
+        [
+          10.132600430564366,
+          82.58064427089244
+        ],
+        [
+          11.155902467152487,
+          74.82985301546387
+        ],
+        [
+          11.06990564698549,
+          67.01227559722003
+        ],
+        [
+          9.876347586620682,
+          59.28587078645245
+        ],
+        [
+          7.59934483181155,
+          51.8067551570544
+        ],
+        [
+          4.284905568452132,
+          44.7260486589135
+        ],
+        [
+          0,
+          38.1868211500435
+        ],
+        [
+          50.10755123187107,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-29",
+      "type": "text",
+      "x": 530.7936562720005,
+      "y": 469.0431578118443,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9029,
+      "version": 1,
+      "versionNonce": 90029,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Smoke",
+      "originalText": "Smoke",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-30",
+      "type": "line",
+      "x": 507.9479152835411,
+      "y": 511.4152573500009,
+      "width": 89.4881216878963,
+      "height": 91.74707070410983,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9030,
+      "version": 1,
+      "versionNonce": 90030,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          89.4881216878963,
+          15.366567510001062
+        ],
+        [
+          84.25111216781352,
+          31.301321272231746
+        ],
+        [
+          76.8076717842539,
+          46.33255014524019
+        ],
+        [
+          67.30819964768648,
+          60.1565392693297
+        ],
+        [
+          55.94463820483463,
+          72.49396677715714
+        ],
+        [
+          42.94659492814321,
+          83.09554765708361
+        ],
+        [
+          28.57670296114702,
+          91.74707070410983
+        ],
+        [
+          0,
+          35.601081997254084
+        ],
+        [
+          6.697831001565987,
+          31.568592441436806
+        ],
+        [
+          12.75624100341372,
+          26.62717762452195
+        ],
+        [
+          18.0528162522005,
+          20.876681752229445
+        ],
+        [
+          22.48053631585492,
+          14.433296991001328
+        ],
+        [
+          25.949936494632652,
+          7.427215736632945
+        ],
+        [
+          28.39091550823059,
+          0
+        ],
+        [
+          89.4881216878963,
+          15.366567510001062
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-31",
+      "type": "text",
+      "x": 513.8011704571866,
+      "y": 543.4921025635686,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9031,
+      "version": 1,
+      "versionNonce": 90031,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Line",
+      "originalText": "Line",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-32",
+      "type": "line",
+      "x": 434.15283478161035,
+      "y": 548.0662532980782,
+      "width": 97.69433043677935,
+      "height": 67.93374670192179,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9032,
+      "version": 1,
+      "versionNonce": 90032,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          97.69433043677935,
+          57.34861741416228
+        ],
+        [
+          81.97081625208267,
+          63.18931496325774
+        ],
+        [
+          65.57801912908945,
+          66.74161684524233
+        ],
+        [
+          48.84716521838965,
+          67.93374670192179
+        ],
+        [
+          32.11631130768984,
+          66.74161684524233
+        ],
+        [
+          15.723514184696626,
+          63.18931496325774
+        ],
+        [
+          0,
+          57.34861741416228
+        ],
+        [
+          26.079418718292743,
+          0
+        ],
+        [
+          33.408175329803896,
+          2.722359027120774
+        ],
+        [
+          41.048885853232946,
+          4.378092955164448
+        ],
+        [
+          48.84716521838965,
+          4.933746701921791
+        ],
+        [
+          56.64544458354635,
+          4.378092955164448
+        ],
+        [
+          64.2861551069754,
+          2.722359027120774
+        ],
+        [
+          71.61491171848655,
+          0
+        ],
+        [
+          97.69433043677935,
+          57.34861741416228
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-33",
+      "type": "text",
+      "x": 445,
+      "y": 576.625,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9033,
+      "version": 1,
+      "versionNonce": 90033,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Arrow",
+      "originalText": "Arrow",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-34",
+      "type": "line",
+      "x": 368.5639630285626,
+      "y": 511.4152573500009,
+      "width": 89.4881216878963,
+      "height": 91.74707070410983,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9034,
+      "version": 1,
+      "versionNonce": 90034,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          60.911418726749275,
+          91.74707070410983
+        ],
+        [
+          46.54152675975308,
+          83.09554765708361
+        ],
+        [
+          33.543483483061664,
+          72.49396677715714
+        ],
+        [
+          22.179922040209874,
+          60.1565392693297
+        ],
+        [
+          12.68044990364234,
+          46.33255014524019
+        ],
+        [
+          5.237009520082836,
+          31.301321272231746
+        ],
+        [
+          0,
+          15.366567510001062
+        ],
+        [
+          61.097206179665704,
+          0
+        ],
+        [
+          63.538185193263644,
+          7.427215736632945
+        ],
+        [
+          67.00758537204138,
+          14.433296991001328
+        ],
+        [
+          71.43530543569574,
+          20.876681752229445
+        ],
+        [
+          76.73188068448258,
+          26.62717762452195
+        ],
+        [
+          82.79029068633031,
+          31.568592441436806
+        ],
+        [
+          89.4881216878963,
+          35.601081997254084
+        ],
+        [
+          60.911418726749275,
+          91.74707070410983
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-35",
+      "type": "text",
+      "x": 376.19882954281337,
+      "y": 543.4921025635686,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9035,
+      "version": 1,
+      "versionNonce": 90035,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Rect",
+      "originalText": "Rect",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-36",
+      "type": "line",
+      "x": 365.21327952794934,
+      "y": 426.4754778459503,
+      "width": 74.04203288867109,
+      "height": 95.2449296047306,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9036,
+      "version": 1,
+      "versionNonce": 90036,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          2.195448005771084,
+          95.2449296047306
+        ],
+        [
+          0,
+          78.61595927490191
+        ],
+        [
+          0.18450226872209896,
+          61.8437022684879
+        ],
+        [
+          2.745226834595428,
+          45.26705194720472
+        ],
+        [
+          7.630432744913207,
+          29.22094932413256
+        ],
+        [
+          14.74141152812075,
+          14.02961538266652
+        ],
+        [
+          23.934481656799903,
+          0
+        ],
+        [
+          74.04203288867109,
+          38.1868211500435
+        ],
+        [
+          69.75712732021896,
+          44.72604865891344
+        ],
+        [
+          66.44268805685948,
+          51.8067551570544
+        ],
+        [
+          64.16568530205035,
+          59.28587078645245
+        ],
+        [
+          62.972127241685655,
+          67.01227559722003
+        ],
+        [
+          62.8861304215186,
+          74.82985301546387
+        ],
+        [
+          63.90943245810678,
+          82.58064427089249
+        ],
+        [
+          2.195448005771084,
+          95.2449296047306
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-37",
+      "type": "text",
+      "x": 359.2063437279995,
+      "y": 469.0431578118444,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9037,
+      "version": 1,
+      "versionNonce": 90037,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Oval",
+      "originalText": "Oval",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-38",
+      "type": "line",
+      "x": 392.3846591114891,
+      "y": 380.0285548482599,
+      "width": 89.40543849281556,
+      "height": 82.74186458039753,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9038,
+      "version": 1,
+      "versionNonce": 90038,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          42.38798138049606
+        ],
+        [
+          11.632213082777469,
+          30.30351759540298
+        ],
+        [
+          24.860326925404877,
+          19.990436080023926
+        ],
+        [
+          39.41705967263914,
+          11.6571187392546
+        ],
+        [
+          55.00828393933284,
+          5.471945173215772
+        ],
+        [
+          71.31896982801993,
+          1.5598904679551993
+        ],
+        [
+          88.01955029410993,
+          0
+        ],
+        [
+          89.40543849281556,
+          62.984754614912106
+        ],
+        [
+          81.6212696315024,
+          63.71182220590816
+        ],
+        [
+          74.01883129355502,
+          65.53523753463134
+        ],
+        [
+          66.75173523704524,
+          68.41815741710707
+        ],
+        [
+          59.96681743113095,
+          72.30233075390629
+        ],
+        [
+          53.801171148550395,
+          77.10927552802366
+        ],
+        [
+          48.37937691505243,
+          82.74186458039753
+        ],
+        [
+          0,
+          42.38798138049606
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-39",
+      "type": "text",
+      "x": 406.8182309576549,
+      "y": 409.3397396245871,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9039,
+      "version": 1,
+      "versionNonce": 90039,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Erase",
+      "originalText": "Erase",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-40",
+      "type": "ellipse",
+      "x": 437,
+      "y": 452,
+      "width": 92,
+      "height": 92,
+      "angle": 0,
+      "strokeColor": "#48545b",
+      "backgroundColor": "#20282e",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9040,
+      "version": 1,
+      "versionNonce": 90040,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-41",
+      "type": "ellipse",
+      "x": 467,
+      "y": 482,
+      "width": 32,
+      "height": 32,
+      "angle": 0,
+      "strokeColor": "#f97316",
+      "backgroundColor": "#f97316",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9041,
+      "version": 1,
+      "versionNonce": 90041,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-42",
+      "type": "ellipse",
+      "x": 503,
+      "y": 471,
+      "width": 15,
+      "height": 15,
+      "angle": 0,
+      "strokeColor": "#0085dc",
+      "backgroundColor": "#0085dc",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9042,
+      "version": 1,
+      "versionNonce": 90042,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-43",
+      "type": "text",
+      "x": 448,
+      "y": 515.625,
+      "width": 70,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#a9bac3",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9043,
+      "version": 1,
+      "versionNonce": 90043,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "5 px",
+      "originalText": "5 px",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-44",
+      "type": "ellipse",
+      "x": 281,
+      "y": 303,
+      "width": 48,
+      "height": 48,
+      "angle": 0,
+      "strokeColor": "#70858e",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9044,
+      "version": 1,
+      "versionNonce": 90044,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-45",
+      "type": "text",
+      "x": 285,
+      "y": 309.5,
+      "width": 40,
+      "height": 35,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9045,
+      "version": 1,
+      "versionNonce": 90045,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "-",
+      "originalText": "-",
+      "fontFamily": 5,
+      "fontSize": 28,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-46",
+      "type": "ellipse",
+      "x": 637,
+      "y": 303,
+      "width": 48,
+      "height": 48,
+      "angle": 0,
+      "strokeColor": "#70858e",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9046,
+      "version": 1,
+      "versionNonce": 90046,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-47",
+      "type": "text",
+      "x": 641,
+      "y": 312.625,
+      "width": 40,
+      "height": 28.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9047,
+      "version": 1,
+      "versionNonce": 90047,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "::",
+      "originalText": "::",
+      "fontFamily": 5,
+      "fontSize": 23,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-48",
+      "type": "rectangle",
+      "x": 281,
+      "y": 687,
+      "width": 404,
+      "height": 84,
+      "angle": 0,
+      "strokeColor": "#59707a",
+      "backgroundColor": "#172027",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9048,
+      "version": 1,
+      "versionNonce": 90048,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-49",
+      "type": "rectangle",
+      "x": 289,
+      "y": 695,
+      "width": 126,
+      "height": 68,
+      "angle": 0,
+      "strokeColor": "#71d8b8",
+      "backgroundColor": "#286953",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9049,
+      "version": 1,
+      "versionNonce": 90049,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-50",
+      "type": "ellipse",
+      "x": 300,
+      "y": 713,
+      "width": 31,
+      "height": 31,
+      "angle": 0,
+      "strokeColor": "#76dbb5",
+      "backgroundColor": "#76dbb5",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9050,
+      "version": 1,
+      "versionNonce": 90050,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-51",
+      "type": "ellipse",
+      "x": 307,
+      "y": 720,
+      "width": 17,
+      "height": 17,
+      "angle": 0,
+      "strokeColor": "#286953",
+      "backgroundColor": "#286953",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9051,
+      "version": 1,
+      "versionNonce": 90051,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-52",
+      "type": "text",
+      "x": 341,
+      "y": 714.875,
+      "width": 70,
+      "height": 26.25,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9052,
+      "version": 1,
+      "versionNonce": 90052,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "ON",
+      "originalText": "ON",
+      "fontFamily": 5,
+      "fontSize": 21,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-53",
+      "type": "rectangle",
+      "x": 425,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9053,
+      "version": 1,
+      "versionNonce": 90053,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-54",
+      "type": "line",
+      "x": 442,
+      "y": 720,
+      "width": 23,
+      "height": 18,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9054,
+      "version": 1,
+      "versionNonce": 90054,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          18
+        ],
+        [
+          18,
+          18
+        ],
+        [
+          23,
+          14
+        ],
+        [
+          23,
+          4
+        ],
+        [
+          18,
+          0
+        ],
+        [
+          3,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-55",
+      "type": "line",
+      "x": 438,
+      "y": 713,
+      "width": 7,
+      "height": 14,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9055,
+      "version": 1,
+      "versionNonce": 90055,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          7,
+          0
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          7,
+          14
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-56",
+      "type": "rectangle",
+      "x": 488,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9056,
+      "version": 1,
+      "versionNonce": 90056,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-57",
+      "type": "line",
+      "x": 504,
+      "y": 720,
+      "width": 23,
+      "height": 18,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9057,
+      "version": 1,
+      "versionNonce": 90057,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          23,
+          18
+        ],
+        [
+          5,
+          18
+        ],
+        [
+          0,
+          14
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          20,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-58",
+      "type": "line",
+      "x": 524,
+      "y": 713,
+      "width": 7,
+      "height": 14,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9058,
+      "version": 1,
+      "versionNonce": 90058,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          0,
+          14
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-59",
+      "type": "rectangle",
+      "x": 551,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#ae7773",
+      "backgroundColor": "#46363a",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9059,
+      "version": 1,
+      "versionNonce": 90059,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-60",
+      "type": "line",
+      "x": 567,
+      "y": 720,
+      "width": 24,
+      "height": 22,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.6,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9060,
+      "version": 1,
+      "versionNonce": 90060,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          24,
+          0
+        ],
+        [
+          21,
+          22
+        ],
+        [
+          3,
+          22
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-61",
+      "type": "line",
+      "x": 564,
+      "y": 716,
+      "width": 30,
+      "height": 0,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9061,
+      "version": 1,
+      "versionNonce": 90061,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          30,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-62",
+      "type": "line",
+      "x": 574,
+      "y": 712,
+      "width": 10,
+      "height": 0,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9062,
+      "version": 1,
+      "versionNonce": 90062,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          10,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-63",
+      "type": "line",
+      "x": 576,
+      "y": 725,
+      "width": 0,
+      "height": 12,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9063,
+      "version": 1,
+      "versionNonce": 90063,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          12
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-64",
+      "type": "line",
+      "x": 582,
+      "y": 725,
+      "width": 0,
+      "height": 12,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9064,
+      "version": 1,
+      "versionNonce": 90064,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          12
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-65",
+      "type": "rectangle",
+      "x": 614,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9065,
+      "version": 1,
+      "versionNonce": 90065,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-66",
+      "type": "rectangle",
+      "x": 629,
+      "y": 717,
+      "width": 26,
+      "height": 22,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9066,
+      "version": 1,
+      "versionNonce": 90066,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-67",
+      "type": "line",
+      "x": 624,
+      "y": 712,
+      "width": 36,
+      "height": 33,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9067,
+      "version": 1,
+      "versionNonce": 90067,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          33
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-68",
+      "type": "text",
+      "x": 93,
+      "y": 849,
+      "width": 536,
+      "height": 21.25,
+      "angle": 0,
+      "strokeColor": "#496571",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9068,
+      "version": 1,
+      "versionNonce": 90068,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "48+ px hit areas   /   ON-OFF stays prominent",
+      "originalText": "48+ px hit areas   /   ON-OFF stays prominent",
+      "fontFamily": 5,
+      "fontSize": 17,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-69",
+      "type": "text",
+      "x": 93,
+      "y": 881,
+      "width": 650,
+      "height": 20,
+      "angle": 0,
+      "strokeColor": "#657b84",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9069,
+      "version": 1,
+      "versionNonce": 90069,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Icons only in the menu; labels below explain the proposal.",
+      "originalText": "Icons only in the menu; labels below explain the proposal.",
+      "fontFamily": 5,
+      "fontSize": 16,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-70",
+      "type": "rectangle",
+      "x": 1000,
+      "y": 168,
+      "width": 850,
+      "height": 784,
+      "angle": 0,
+      "strokeColor": "#d7e1e5",
+      "backgroundColor": "#ffffff",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9070,
+      "version": 1,
+      "versionNonce": 90070,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-71",
+      "type": "text",
+      "x": 1034,
+      "y": 189,
+      "width": 157,
+      "height": 35,
+      "angle": 0,
+      "strokeColor": "#20343f",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9071,
+      "version": 1,
+      "versionNonce": 90071,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "02   OFF",
+      "originalText": "02   OFF",
+      "fontFamily": 5,
+      "fontSize": 28,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-72",
+      "type": "text",
+      "x": 1034,
+      "y": 230,
+      "width": 265,
+      "height": 22.5,
+      "angle": 0,
+      "strokeColor": "#5c7480",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9072,
+      "version": 1,
+      "versionNonce": 90072,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Click-through enabled",
+      "originalText": "Click-through enabled",
+      "fontFamily": 5,
+      "fontSize": 18,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-73",
+      "type": "rectangle",
+      "x": 1028,
+      "y": 270,
+      "width": 794,
+      "height": 555,
+      "angle": 0,
+      "strokeColor": "#e1e8eb",
+      "backgroundColor": "#f5f7f8",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9073,
+      "version": 1,
+      "versionNonce": 90073,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-74",
+      "type": "ellipse",
+      "x": 1251,
+      "y": 324,
+      "width": 348,
+      "height": 348,
+      "angle": 0,
+      "strokeColor": "#46565f",
+      "backgroundColor": "#192026",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9074,
+      "version": 1,
+      "versionNonce": 90074,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-75",
+      "type": "line",
+      "x": 1426.5239634242635,
+      "y": 332.01195185657673,
+      "width": 60.15658871059577,
+      "height": 48.08059981356422,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#ffdf32",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9075,
+      "version": 1,
+      "versionNonce": 90075,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0.4679887680806587,
+          0
+        ],
+        [
+          10.657751123472508,
+          0.43562191330886435
+        ],
+        [
+          20.801528778148167,
+          1.4961869529070668
+        ],
+        [
+          30.861030030413758,
+          3.1776915964870227
+        ],
+        [
+          40.79828131319664,
+          5.473788339558723
+        ],
+        [
+          50.575770540296844,
+          8.375809656616525
+        ],
+        [
+          60.15658871059577,
+          11.872800720142891
+        ],
+        [
+          45.66537465481565,
+          48.08059981356422
+        ],
+        [
+          38.33547159681575,
+          45.40519098785421
+        ],
+        [
+          30.855103332709177,
+          43.184969859743774
+        ],
+        [
+          23.25250747178484,
+          41.428317532212986
+        ],
+        [
+          15.556383019750228,
+          40.14186518441386
+        ],
+        [
+          7.795782042980363,
+          39.33046903966101
+        ],
+        [
+          0,
+          38.9971920336958
+        ],
+        [
+          0.4679887680806587,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-76",
+      "type": "line",
+      "x": 1475.0052553110245,
+      "y": 345.40932678086654,
+      "width": 65.95749622410335,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#ffb51b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9076,
+      "version": 1,
+      "versionNonce": 90076,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          15.355944544330214,
+          0
+        ],
+        [
+          24.60335213663234,
+          4.301915402765417
+        ],
+        [
+          33.569120024532594,
+          9.16360538578681
+        ],
+        [
+          42.21940337022943,
+          14.566717576910946
+        ],
+        [
+          50.52154825713319,
+          20.49085579167047
+        ],
+        [
+          58.44421495499205,
+          26.91365702675097
+        ],
+        [
+          65.95749622410335,
+          33.81087587799368
+        ],
+        [
+          38.71323532127212,
+          61.71697284368315
+        ],
+        [
+          32.96512254309664,
+          56.44018492737098
+        ],
+        [
+          26.903805250156438,
+          51.52635506679735
+        ],
+        [
+          20.5521642824649,
+          46.994032456710215
+        ],
+        [
+          13.934176421600569,
+          42.86032614181403
+        ],
+        [
+          7.074823880857593,
+          39.140840431912125
+        ],
+        [
+          0,
+          35.84961599726631
+        ],
+        [
+          15.355944544330214,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-77",
+      "type": "line",
+      "x": 1515.8737003754502,
+      "y": 382.0372484648723,
+      "width": 61.71697284368315,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#f97316",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9077,
+      "version": 1,
+      "versionNonce": 90077,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          27.906096965689585,
+          0
+        ],
+        [
+          34.803315816932354,
+          7.513281269111133
+        ],
+        [
+          41.226117052012796,
+          15.435947966970105
+        ],
+        [
+          47.15025526677232,
+          23.738092853873752
+        ],
+        [
+          52.55336745789646,
+          32.388376199570644
+        ],
+        [
+          57.41505744091796,
+          41.3541440874709
+        ],
+        [
+          61.71697284368315,
+          50.60155167977291
+        ],
+        [
+          25.867356846416897,
+          65.95749622410324
+        ],
+        [
+          22.57613241177114,
+          58.8826723432457
+        ],
+        [
+          18.856646701869295,
+          52.023319802502726
+        ],
+        [
+          14.72294038697305,
+          45.405331941638224
+        ],
+        [
+          10.190617776886029,
+          39.053690973946914
+        ],
+        [
+          5.276787916312287,
+          32.9923736810066
+        ],
+        [
+          0,
+          27.24426090283123
+        ],
+        [
+          27.906096965689585,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-78",
+      "type": "line",
+      "x": 1542.907448329859,
+      "y": 436.31944786514083,
+      "width": 48.08059981356428,
+      "height": 60.15658871059583,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#e31635",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9078,
+      "version": 1,
+      "versionNonce": 90078,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          36.20779909342127,
+          0
+        ],
+        [
+          39.70479015694764,
+          9.580818170298983
+        ],
+        [
+          42.60681147400555,
+          19.35830739739896
+        ],
+        [
+          44.90290821707708,
+          29.295558680181898
+        ],
+        [
+          46.58441286065704,
+          39.35505993244749
+        ],
+        [
+          47.6449779002553,
+          49.49883758712315
+        ],
+        [
+          48.08059981356428,
+          59.68859994251494
+        ],
+        [
+          9.083407779868367,
+          60.15658871059583
+        ],
+        [
+          8.750130773903038,
+          52.36080666761535
+        ],
+        [
+          7.938734629150304,
+          44.60020569084543
+        ],
+        [
+          6.652282281351063,
+          36.904081238810875
+        ],
+        [
+          4.895629953820389,
+          29.30148537788665
+        ],
+        [
+          2.6754088257098374,
+          21.821117113779962
+        ],
+        [
+          0,
+          14.491214055780176
+        ],
+        [
+          36.20779909342127,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-79",
+      "type": "line",
+      "x": 1542.907448329859,
+      "y": 499.52396342426334,
+      "width": 48.08059981356428,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#673b92",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9079,
+      "version": 1,
+      "versionNonce": 90079,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          48.08059981356428,
+          0.4679887680808861
+        ],
+        [
+          47.6449779002553,
+          10.657751123472679
+        ],
+        [
+          46.58441286065704,
+          20.80152877814828
+        ],
+        [
+          44.90290821707708,
+          30.861030030413986
+        ],
+        [
+          42.60681147400555,
+          40.79828131319687
+        ],
+        [
+          39.70479015694764,
+          50.575770540296844
+        ],
+        [
+          36.20779909342127,
+          60.156588710595884
+        ],
+        [
+          0,
+          45.66537465481565
+        ],
+        [
+          2.6754088257098374,
+          38.335471596815864
+        ],
+        [
+          4.895629953820389,
+          30.855103332709177
+        ],
+        [
+          6.652282281351063,
+          23.252507471784952
+        ],
+        [
+          7.938734629150304,
+          15.556383019750342
+        ],
+        [
+          8.750130773903038,
+          7.795782042980477
+        ],
+        [
+          9.083407779868367,
+          0
+        ],
+        [
+          48.08059981356428,
+          0.4679887680808861
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-80",
+      "type": "line",
+      "x": 1515.8737003754504,
+      "y": 548.0052553110245,
+      "width": 61.716972843682925,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#9b4fc0",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9080,
+      "version": 1,
+      "versionNonce": 90080,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          61.716972843682925,
+          15.355944544330328
+        ],
+        [
+          57.415057440917735,
+          24.60335213663234
+        ],
+        [
+          52.55336745789623,
+          33.569120024532594
+        ],
+        [
+          47.15025526677209,
+          42.21940337022943
+        ],
+        [
+          41.22611705201257,
+          50.52154825713308
+        ],
+        [
+          34.80331581693213,
+          58.44421495499205
+        ],
+        [
+          27.906096965689358,
+          65.95749622410324
+        ],
+        [
+          0,
+          38.71323532127201
+        ],
+        [
+          5.27678791631206,
+          32.96512254309664
+        ],
+        [
+          10.190617776885802,
+          26.903805250156324
+        ],
+        [
+          14.722940386972823,
+          20.552164282465014
+        ],
+        [
+          18.856646701869067,
+          13.934176421600455
+        ],
+        [
+          22.576132411770914,
+          7.07482388085748
+        ],
+        [
+          25.86735684641667,
+          0
+        ],
+        [
+          61.716972843682925,
+          15.355944544330328
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-81",
+      "type": "line",
+      "x": 1475.0052553110245,
+      "y": 588.8737003754503,
+      "width": 65.95749622410312,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#d50d81",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9081,
+      "version": 1,
+      "versionNonce": 90081,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          65.95749622410312,
+          27.90609696568947
+        ],
+        [
+          58.44421495499205,
+          34.80331581693224
+        ],
+        [
+          50.52154825713319,
+          41.22611705201268
+        ],
+        [
+          42.21940337022943,
+          47.150255266772206
+        ],
+        [
+          33.569120024532594,
+          52.55336745789634
+        ],
+        [
+          24.60335213663234,
+          57.415057440917735
+        ],
+        [
+          15.355944544330214,
+          61.71697284368315
+        ],
+        [
+          0,
+          25.867356846416783
+        ],
+        [
+          7.074823880857593,
+          22.576132411771027
+        ],
+        [
+          13.934176421600569,
+          18.85664670186918
+        ],
+        [
+          20.5521642824649,
+          14.722940386972937
+        ],
+        [
+          26.903805250156438,
+          10.190617776885802
+        ],
+        [
+          32.96512254309664,
+          5.276787916312173
+        ],
+        [
+          38.71323532127212,
+          0
+        ],
+        [
+          65.95749622410312,
+          27.90609696568947
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-82",
+      "type": "line",
+      "x": 1426.5239634242635,
+      "y": 615.907448329859,
+      "width": 60.15658871059577,
+      "height": 48.08059981356428,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#b9085e",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9082,
+      "version": 1,
+      "versionNonce": 90082,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          60.15658871059577,
+          36.207799093421386
+        ],
+        [
+          50.575770540296844,
+          39.70479015694775
+        ],
+        [
+          40.79828131319664,
+          42.60681147400555
+        ],
+        [
+          30.861030030413986,
+          44.9029082170772
+        ],
+        [
+          20.801528778148167,
+          46.58441286065715
+        ],
+        [
+          10.657751123472508,
+          47.64497790025541
+        ],
+        [
+          0.4679887680808861,
+          48.08059981356428
+        ],
+        [
+          0,
+          9.08340777986848
+        ],
+        [
+          7.795782042980363,
+          8.750130773903265
+        ],
+        [
+          15.556383019750228,
+          7.938734629150417
+        ],
+        [
+          23.25250747178484,
+          6.65228228135129
+        ],
+        [
+          30.855103332709177,
+          4.895629953820503
+        ],
+        [
+          38.33547159681575,
+          2.6754088257100648
+        ],
+        [
+          45.66537465481565,
+          0
+        ],
+        [
+          60.15658871059577,
+          36.207799093421386
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-83",
+      "type": "line",
+      "x": 1363.3194478651408,
+      "y": 615.9074483298591,
+      "width": 60.15658871059577,
+      "height": 48.08059981356416,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#35c7ef",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9083,
+      "version": 1,
+      "versionNonce": 90083,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          59.688599942514884,
+          48.08059981356416
+        ],
+        [
+          49.49883758712326,
+          47.6449779002553
+        ],
+        [
+          39.3550599324476,
+          46.58441286065704
+        ],
+        [
+          29.295558680182012,
+          44.90290821707708
+        ],
+        [
+          19.35830739739913,
+          42.60681147400544
+        ],
+        [
+          9.580818170298926,
+          39.70479015694764
+        ],
+        [
+          0,
+          36.20779909342127
+        ],
+        [
+          14.49121405578012,
+          0
+        ],
+        [
+          21.82111711378002,
+          2.675408825709951
+        ],
+        [
+          29.301485377886593,
+          4.895629953820389
+        ],
+        [
+          36.90408123881093,
+          6.652282281351177
+        ],
+        [
+          44.60020569084554,
+          7.938734629150304
+        ],
+        [
+          52.36080666761541,
+          8.750130773903152
+        ],
+        [
+          60.15658871059577,
+          9.083407779868367
+        ],
+        [
+          59.688599942514884,
+          48.08059981356416
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-84",
+      "type": "line",
+      "x": 1309.0372484648724,
+      "y": 588.8737003754503,
+      "width": 65.95749622410312,
+      "height": 61.71697284368315,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#0085dc",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9084,
+      "version": 1,
+      "versionNonce": 90084,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          50.60155167977291,
+          61.71697284368315
+        ],
+        [
+          41.354144087470786,
+          57.415057440917735
+        ],
+        [
+          32.38837619957053,
+          52.55336745789634
+        ],
+        [
+          23.738092853873695,
+          47.150255266772206
+        ],
+        [
+          15.435947966970161,
+          41.22611705201268
+        ],
+        [
+          7.513281269111076,
+          34.80331581693224
+        ],
+        [
+          0,
+          27.90609696568947
+        ],
+        [
+          27.244260902831,
+          0
+        ],
+        [
+          32.992373681006484,
+          5.276787916312173
+        ],
+        [
+          39.053690973946914,
+          10.190617776885915
+        ],
+        [
+          45.405331941638224,
+          14.722940386972937
+        ],
+        [
+          52.023319802502556,
+          18.85664670186918
+        ],
+        [
+          58.88267234324553,
+          22.576132411771027
+        ],
+        [
+          65.95749622410312,
+          25.867356846416783
+        ],
+        [
+          50.60155167977291,
+          61.71697284368315
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-85",
+      "type": "line",
+      "x": 1272.4093267808666,
+      "y": 548.0052553110245,
+      "width": 61.71697284368315,
+      "height": 65.95749622410324,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#075cbf",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9085,
+      "version": 1,
+      "versionNonce": 90085,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          33.81087587799357,
+          65.95749622410324
+        ],
+        [
+          26.913657026750798,
+          58.44421495499216
+        ],
+        [
+          20.490855791670356,
+          50.52154825713308
+        ],
+        [
+          14.566717576910833,
+          42.21940337022943
+        ],
+        [
+          9.163605385786695,
+          33.569120024532594
+        ],
+        [
+          4.301915402765189,
+          24.603352136632225
+        ],
+        [
+          0,
+          15.355944544330214
+        ],
+        [
+          35.849615997266255,
+          0
+        ],
+        [
+          39.14084043191201,
+          7.07482388085748
+        ],
+        [
+          42.86032614181386,
+          13.934176421600569
+        ],
+        [
+          46.9940324567101,
+          20.552164282465014
+        ],
+        [
+          51.52635506679712,
+          26.903805250156324
+        ],
+        [
+          56.440184927370865,
+          32.96512254309664
+        ],
+        [
+          61.71697284368315,
+          38.71323532127201
+        ],
+        [
+          33.81087587799357,
+          65.95749622410324
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-86",
+      "type": "line",
+      "x": 1259.0119518565766,
+      "y": 499.52396342426334,
+      "width": 48.08059981356428,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#83c400",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9086,
+      "version": 1,
+      "versionNonce": 90086,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          11.872800720143005,
+          60.156588710595884
+        ],
+        [
+          8.375809656616639,
+          50.57577054029696
+        ],
+        [
+          5.473788339558951,
+          40.79828131319687
+        ],
+        [
+          3.1776915964871932,
+          30.861030030413986
+        ],
+        [
+          1.4961869529072374,
+          20.801528778148395
+        ],
+        [
+          0.43562191330897804,
+          10.657751123472679
+        ],
+        [
+          0,
+          0.4679887680808861
+        ],
+        [
+          38.99719203369591,
+          0
+        ],
+        [
+          39.33046903966124,
+          7.795782042980477
+        ],
+        [
+          40.14186518441397,
+          15.556383019750456
+        ],
+        [
+          41.428317532213214,
+          23.252507471784952
+        ],
+        [
+          43.18496985974389,
+          30.85510333270929
+        ],
+        [
+          45.40519098785444,
+          38.33547159681598
+        ],
+        [
+          48.08059981356428,
+          45.665374654815764
+        ],
+        [
+          11.872800720143005,
+          60.156588710595884
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-87",
+      "type": "line",
+      "x": 1259.0119518565766,
+      "y": 436.3194478651408,
+      "width": 48.08059981356428,
+      "height": 60.156588710595884,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#00b85a",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9087,
+      "version": 1,
+      "versionNonce": 90087,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          59.688599942515054
+        ],
+        [
+          0.43562191330897804,
+          49.49883758712326
+        ],
+        [
+          1.4961869529072374,
+          39.355059932447546
+        ],
+        [
+          3.1776915964871932,
+          29.295558680181898
+        ],
+        [
+          5.473788339558951,
+          19.358307397399017
+        ],
+        [
+          8.375809656616639,
+          9.580818170298926
+        ],
+        [
+          11.872800720143005,
+          0
+        ],
+        [
+          48.08059981356428,
+          14.491214055780176
+        ],
+        [
+          45.40519098785444,
+          21.821117113779962
+        ],
+        [
+          43.18496985974389,
+          29.301485377886706
+        ],
+        [
+          41.428317532213214,
+          36.90408123881093
+        ],
+        [
+          40.14186518441397,
+          44.600205690845485
+        ],
+        [
+          39.33046903966124,
+          52.36080666761541
+        ],
+        [
+          38.99719203369591,
+          60.156588710595884
+        ],
+        [
+          0,
+          59.688599942515054
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-88",
+      "type": "line",
+      "x": 1272.4093267808666,
+      "y": 382.0372484648723,
+      "width": 61.71697284368315,
+      "height": 65.95749622410335,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#f1f1ef",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9088,
+      "version": 1,
+      "versionNonce": 90088,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          50.601551679773024
+        ],
+        [
+          4.301915402765189,
+          41.35414408747101
+        ],
+        [
+          9.163605385786695,
+          32.388376199570644
+        ],
+        [
+          14.566717576910833,
+          23.73809285387381
+        ],
+        [
+          20.490855791670356,
+          15.435947966970161
+        ],
+        [
+          26.913657026750798,
+          7.513281269111133
+        ],
+        [
+          33.81087587799357,
+          0
+        ],
+        [
+          61.71697284368315,
+          27.24426090283123
+        ],
+        [
+          56.440184927370865,
+          32.9923736810066
+        ],
+        [
+          51.52635506679712,
+          39.053690973946914
+        ],
+        [
+          46.9940324567101,
+          45.40533194163828
+        ],
+        [
+          42.86032614181386,
+          52.023319802502726
+        ],
+        [
+          39.14084043191201,
+          58.88267234324576
+        ],
+        [
+          35.849615997266255,
+          65.95749622410335
+        ],
+        [
+          0,
+          50.601551679773024
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-89",
+      "type": "line",
+      "x": 1309.0372484648722,
+      "y": 345.40932678086654,
+      "width": 65.95749622410335,
+      "height": 61.71697284368321,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#bdbdbb",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9089,
+      "version": 1,
+      "versionNonce": 90089,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          33.81087587799374
+        ],
+        [
+          7.513281269111303,
+          26.91365702675091
+        ],
+        [
+          15.435947966970161,
+          20.49085579167047
+        ],
+        [
+          23.738092853873923,
+          14.566717576910946
+        ],
+        [
+          32.38837619957076,
+          9.163605385786752
+        ],
+        [
+          41.35414408747124,
+          4.30191540276536
+        ],
+        [
+          50.60155167977314,
+          0
+        ],
+        [
+          65.95749622410335,
+          35.849615997266255
+        ],
+        [
+          58.882672343245986,
+          39.140840431912125
+        ],
+        [
+          52.02331980250301,
+          42.86032614181397
+        ],
+        [
+          45.40533194163845,
+          46.994032456710215
+        ],
+        [
+          39.053690973946914,
+          51.52635506679735
+        ],
+        [
+          32.99237368100671,
+          56.44018492737092
+        ],
+        [
+          27.24426090283123,
+          61.71697284368321
+        ],
+        [
+          0,
+          33.81087587799374
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-90",
+      "type": "line",
+      "x": 1363.3194478651405,
+      "y": 332.01195185657673,
+      "width": 60.156588710596225,
+      "height": 48.08059981356428,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#161616",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9090,
+      "version": 1,
+      "versionNonce": 90090,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          11.872800720143005
+        ],
+        [
+          9.580818170299153,
+          8.375809656616525
+        ],
+        [
+          19.35830739739913,
+          5.473788339558723
+        ],
+        [
+          29.295558680182012,
+          3.1776915964870796
+        ],
+        [
+          39.3550599324476,
+          1.4961869529070668
+        ],
+        [
+          49.49883758712349,
+          0.43562191330886435
+        ],
+        [
+          59.68859994251534,
+          0
+        ],
+        [
+          60.156588710596225,
+          38.9971920336958
+        ],
+        [
+          52.360806667615634,
+          39.33046903966101
+        ],
+        [
+          44.60020569084554,
+          40.14186518441386
+        ],
+        [
+          36.90408123881116,
+          41.428317532212986
+        ],
+        [
+          29.30148537788682,
+          43.184969859743774
+        ],
+        [
+          21.82111711378002,
+          45.40519098785427
+        ],
+        [
+          14.491214055780347,
+          48.08059981356428
+        ],
+        [
+          0,
+          11.872800720143005
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-91",
+      "type": "ellipse",
+      "x": 1303,
+      "y": 376,
+      "width": 244,
+      "height": 244,
+      "angle": 0,
+      "strokeColor": "#233039",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9091,
+      "version": 1,
+      "versionNonce": 90091,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-92",
+      "type": "line",
+      "x": 1426.2099023956953,
+      "y": 380.0285548482599,
+      "width": 89.40543849281562,
+      "height": 82.74186458039759,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#286351",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9092,
+      "version": 1,
+      "versionNonce": 90092,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          1.385888198705743,
+          0
+        ],
+        [
+          18.086468664795802,
+          1.5598904679551993
+        ],
+        [
+          34.39715455348278,
+          5.471945173215829
+        ],
+        [
+          49.98837882017665,
+          11.657118739254656
+        ],
+        [
+          64.54511156741069,
+          19.990436080023926
+        ],
+        [
+          77.77322541003832,
+          30.303517595403036
+        ],
+        [
+          89.40543849281562,
+          42.387981380496115
+        ],
+        [
+          41.02606157776313,
+          82.74186458039759
+        ],
+        [
+          35.60426734426528,
+          77.10927552802366
+        ],
+        [
+          29.43862106168467,
+          72.30233075390629
+        ],
+        [
+          22.653703255770324,
+          68.41815741710707
+        ],
+        [
+          15.386607199260652,
+          65.53523753463134
+        ],
+        [
+          7.784168861313219,
+          63.71182220590816
+        ],
+        [
+          0,
+          62.984754614912106
+        ],
+        [
+          1.385888198705743,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-93",
+      "type": "text",
+      "x": 1425.1817690423452,
+      "y": 409.3397396245871,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#e4fff0",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9093,
+      "version": 1,
+      "versionNonce": 90093,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Pen",
+      "originalText": "Pen",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-94",
+      "type": "line",
+      "x": 1468.7446875833796,
+      "y": 426.47547784595025,
+      "width": 74.0420328886712,
+      "height": 95.24492960473043,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9094,
+      "version": 1,
+      "versionNonce": 90094,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          50.107551231871184,
+          0
+        ],
+        [
+          59.30062136055017,
+          14.029615382666464
+        ],
+        [
+          66.41160014375782,
+          29.220949324132505
+        ],
+        [
+          71.29680605407566,
+          45.26705194720466
+        ],
+        [
+          73.8575306199491,
+          61.843702268487846
+        ],
+        [
+          74.0420328886712,
+          78.6159592749018
+        ],
+        [
+          71.84658488290006,
+          95.24492960473043
+        ],
+        [
+          10.132600430564253,
+          82.58064427089244
+        ],
+        [
+          11.1559024671526,
+          74.82985301546387
+        ],
+        [
+          11.06990564698549,
+          67.01227559722003
+        ],
+        [
+          9.876347586620795,
+          59.28587078645245
+        ],
+        [
+          7.59934483181155,
+          51.8067551570544
+        ],
+        [
+          4.284905568452132,
+          44.7260486589135
+        ],
+        [
+          0,
+          38.1868211500435
+        ],
+        [
+          50.107551231871184,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-95",
+      "type": "text",
+      "x": 1472.7936562720006,
+      "y": 469.0431578118443,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9095,
+      "version": 1,
+      "versionNonce": 90095,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Smoke",
+      "originalText": "Smoke",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-96",
+      "type": "line",
+      "x": 1449.947915283541,
+      "y": 511.4152573500009,
+      "width": 89.48812168789618,
+      "height": 91.74707070410983,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9096,
+      "version": 1,
+      "versionNonce": 90096,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          89.48812168789618,
+          15.366567510001062
+        ],
+        [
+          84.25111216781352,
+          31.301321272231746
+        ],
+        [
+          76.8076717842539,
+          46.33255014524019
+        ],
+        [
+          67.30819964768648,
+          60.1565392693297
+        ],
+        [
+          55.944638204834746,
+          72.49396677715714
+        ],
+        [
+          42.94659492814321,
+          83.09554765708361
+        ],
+        [
+          28.57670296114702,
+          91.74707070410983
+        ],
+        [
+          0,
+          35.601081997254084
+        ],
+        [
+          6.697831001566101,
+          31.568592441436806
+        ],
+        [
+          12.756241003413606,
+          26.62717762452195
+        ],
+        [
+          18.0528162522005,
+          20.876681752229445
+        ],
+        [
+          22.480536315854806,
+          14.433296991001328
+        ],
+        [
+          25.94993649463254,
+          7.427215736632945
+        ],
+        [
+          28.39091550823059,
+          0
+        ],
+        [
+          89.48812168789618,
+          15.366567510001062
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-97",
+      "type": "text",
+      "x": 1455.8011704571866,
+      "y": 543.4921025635686,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9097,
+      "version": 1,
+      "versionNonce": 90097,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Line",
+      "originalText": "Line",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-98",
+      "type": "line",
+      "x": 1376.1528347816104,
+      "y": 548.0662532980782,
+      "width": 97.69433043677918,
+      "height": 67.93374670192179,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9098,
+      "version": 1,
+      "versionNonce": 90098,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          97.69433043677918,
+          57.34861741416228
+        ],
+        [
+          81.97081625208261,
+          63.18931496325774
+        ],
+        [
+          65.5780191290894,
+          66.74161684524233
+        ],
+        [
+          48.84716521838959,
+          67.93374670192179
+        ],
+        [
+          32.116311307689784,
+          66.74161684524233
+        ],
+        [
+          15.723514184696569,
+          63.18931496325774
+        ],
+        [
+          0,
+          57.34861741416228
+        ],
+        [
+          26.0794187182928,
+          0
+        ],
+        [
+          33.40817532980395,
+          2.722359027120774
+        ],
+        [
+          41.04888585323283,
+          4.378092955164448
+        ],
+        [
+          48.84716521838959,
+          4.933746701921791
+        ],
+        [
+          56.64544458354635,
+          4.378092955164448
+        ],
+        [
+          64.28615510697523,
+          2.722359027120774
+        ],
+        [
+          71.61491171848638,
+          0
+        ],
+        [
+          97.69433043677918,
+          57.34861741416228
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-99",
+      "type": "text",
+      "x": 1387,
+      "y": 576.625,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9099,
+      "version": 1,
+      "versionNonce": 90099,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Arrow",
+      "originalText": "Arrow",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-100",
+      "type": "line",
+      "x": 1310.5639630285627,
+      "y": 511.4152573500009,
+      "width": 89.48812168789618,
+      "height": 91.74707070410983,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9100,
+      "version": 1,
+      "versionNonce": 90100,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          60.91141872674916,
+          91.74707070410983
+        ],
+        [
+          46.54152675975297,
+          83.09554765708361
+        ],
+        [
+          33.543483483061664,
+          72.49396677715714
+        ],
+        [
+          22.179922040209703,
+          60.1565392693297
+        ],
+        [
+          12.680449903642284,
+          46.33255014524019
+        ],
+        [
+          5.237009520082665,
+          31.301321272231746
+        ],
+        [
+          0,
+          15.366567510001062
+        ],
+        [
+          61.09720617966559,
+          0
+        ],
+        [
+          63.538185193263644,
+          7.427215736632945
+        ],
+        [
+          67.00758537204138,
+          14.433296991001328
+        ],
+        [
+          71.43530543569568,
+          20.876681752229445
+        ],
+        [
+          76.73188068448258,
+          26.62717762452195
+        ],
+        [
+          82.79029068633008,
+          31.568592441436806
+        ],
+        [
+          89.48812168789618,
+          35.601081997254084
+        ],
+        [
+          60.91141872674916,
+          91.74707070410983
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-101",
+      "type": "text",
+      "x": 1318.1988295428134,
+      "y": 543.4921025635686,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9101,
+      "version": 1,
+      "versionNonce": 90101,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Rect",
+      "originalText": "Rect",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-102",
+      "type": "line",
+      "x": 1307.2132795279495,
+      "y": 426.4754778459503,
+      "width": 74.04203288867097,
+      "height": 95.2449296047306,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9102,
+      "version": 1,
+      "versionNonce": 90102,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          2.1954480057709134,
+          95.2449296047306
+        ],
+        [
+          0,
+          78.61595927490191
+        ],
+        [
+          0.1845022687218716,
+          61.8437022684879
+        ],
+        [
+          2.7452268345953144,
+          45.26705194720472
+        ],
+        [
+          7.630432744913151,
+          29.22094932413256
+        ],
+        [
+          14.74141152812058,
+          14.02961538266652
+        ],
+        [
+          23.93448165679979,
+          0
+        ],
+        [
+          74.04203288867097,
+          38.1868211500435
+        ],
+        [
+          69.75712732021884,
+          44.72604865891344
+        ],
+        [
+          66.44268805685942,
+          51.8067551570544
+        ],
+        [
+          64.16568530205018,
+          59.28587078645245
+        ],
+        [
+          62.972127241685484,
+          67.01227559722003
+        ],
+        [
+          62.886130421518374,
+          74.82985301546387
+        ],
+        [
+          63.90943245810672,
+          82.58064427089249
+        ],
+        [
+          2.1954480057709134,
+          95.2449296047306
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-103",
+      "type": "text",
+      "x": 1301.2063437279994,
+      "y": 469.0431578118444,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9103,
+      "version": 1,
+      "versionNonce": 90103,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Oval",
+      "originalText": "Oval",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-104",
+      "type": "line",
+      "x": 1334.384659111489,
+      "y": 380.0285548482599,
+      "width": 89.40543849281562,
+      "height": 82.74186458039753,
+      "angle": 0,
+      "strokeColor": "#253039",
+      "backgroundColor": "#29343b",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9104,
+      "version": 1,
+      "versionNonce": 90104,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          42.38798138049606
+        ],
+        [
+          11.632213082777525,
+          30.30351759540298
+        ],
+        [
+          24.860326925404934,
+          19.990436080023926
+        ],
+        [
+          39.4170596726392,
+          11.6571187392546
+        ],
+        [
+          55.00828393933284,
+          5.471945173215772
+        ],
+        [
+          71.31896982802004,
+          1.5598904679551993
+        ],
+        [
+          88.01955029410988,
+          0
+        ],
+        [
+          89.40543849281562,
+          62.984754614912106
+        ],
+        [
+          81.6212696315024,
+          63.71182220590816
+        ],
+        [
+          74.01883129355497,
+          65.53523753463134
+        ],
+        [
+          66.7517352370453,
+          68.41815741710707
+        ],
+        [
+          59.96681743113095,
+          72.30233075390629
+        ],
+        [
+          53.80117114855034,
+          77.10927552802366
+        ],
+        [
+          48.37937691505249,
+          82.74186458039753
+        ],
+        [
+          0,
+          42.38798138049606
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-105",
+      "type": "text",
+      "x": 1348.818230957655,
+      "y": 409.3397396245871,
+      "width": 76,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9105,
+      "version": 1,
+      "versionNonce": 90105,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Erase",
+      "originalText": "Erase",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-106",
+      "type": "ellipse",
+      "x": 1379,
+      "y": 452,
+      "width": 92,
+      "height": 92,
+      "angle": 0,
+      "strokeColor": "#48545b",
+      "backgroundColor": "#20282e",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9106,
+      "version": 1,
+      "versionNonce": 90106,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-107",
+      "type": "ellipse",
+      "x": 1409,
+      "y": 482,
+      "width": 32,
+      "height": 32,
+      "angle": 0,
+      "strokeColor": "#4c575d",
+      "backgroundColor": "#4c575d",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9107,
+      "version": 1,
+      "versionNonce": 90107,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-108",
+      "type": "ellipse",
+      "x": 1445,
+      "y": 471,
+      "width": 15,
+      "height": 15,
+      "angle": 0,
+      "strokeColor": "#53616a",
+      "backgroundColor": "#53616a",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9108,
+      "version": 1,
+      "versionNonce": 90108,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-109",
+      "type": "text",
+      "x": 1390,
+      "y": 515.625,
+      "width": 70,
+      "height": 18.75,
+      "angle": 0,
+      "strokeColor": "#a9bac3",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9109,
+      "version": 1,
+      "versionNonce": 90109,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "5 px",
+      "originalText": "5 px",
+      "fontFamily": 5,
+      "fontSize": 15,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-110",
+      "type": "ellipse",
+      "x": 1223,
+      "y": 303,
+      "width": 48,
+      "height": 48,
+      "angle": 0,
+      "strokeColor": "#70858e",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9110,
+      "version": 1,
+      "versionNonce": 90110,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-111",
+      "type": "text",
+      "x": 1227,
+      "y": 309.5,
+      "width": 40,
+      "height": 35,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9111,
+      "version": 1,
+      "versionNonce": 90111,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "-",
+      "originalText": "-",
+      "fontFamily": 5,
+      "fontSize": 28,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-112",
+      "type": "ellipse",
+      "x": 1579,
+      "y": 303,
+      "width": 48,
+      "height": 48,
+      "angle": 0,
+      "strokeColor": "#70858e",
+      "backgroundColor": "#2e3b44",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9112,
+      "version": 1,
+      "versionNonce": 90112,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-113",
+      "type": "text",
+      "x": 1583,
+      "y": 312.625,
+      "width": 40,
+      "height": 28.75,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9113,
+      "version": 1,
+      "versionNonce": 90113,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "::",
+      "originalText": "::",
+      "fontFamily": 5,
+      "fontSize": 23,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-114",
+      "type": "rectangle",
+      "x": 1223,
+      "y": 687,
+      "width": 404,
+      "height": 84,
+      "angle": 0,
+      "strokeColor": "#59707a",
+      "backgroundColor": "#172027",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9114,
+      "version": 1,
+      "versionNonce": 90114,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-115",
+      "type": "rectangle",
+      "x": 1231,
+      "y": 695,
+      "width": 126,
+      "height": 68,
+      "angle": 0,
+      "strokeColor": "#9cabb3",
+      "backgroundColor": "#35464d",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9115,
+      "version": 1,
+      "versionNonce": 90115,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-116",
+      "type": "ellipse",
+      "x": 1242,
+      "y": 713,
+      "width": 31,
+      "height": 31,
+      "angle": 0,
+      "strokeColor": "#a9bac3",
+      "backgroundColor": "#44565e",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9116,
+      "version": 1,
+      "versionNonce": 90116,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-117",
+      "type": "text",
+      "x": 1283,
+      "y": 714.875,
+      "width": 70,
+      "height": 26.25,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9117,
+      "version": 1,
+      "versionNonce": 90117,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "OFF",
+      "originalText": "OFF",
+      "fontFamily": 5,
+      "fontSize": 21,
+      "lineHeight": 1.25,
+      "textAlign": "center",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-118",
+      "type": "rectangle",
+      "x": 1367,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9118,
+      "version": 1,
+      "versionNonce": 90118,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-119",
+      "type": "line",
+      "x": 1384,
+      "y": 720,
+      "width": 23,
+      "height": 18,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9119,
+      "version": 1,
+      "versionNonce": 90119,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          18
+        ],
+        [
+          18,
+          18
+        ],
+        [
+          23,
+          14
+        ],
+        [
+          23,
+          4
+        ],
+        [
+          18,
+          0
+        ],
+        [
+          3,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-120",
+      "type": "line",
+      "x": 1380,
+      "y": 713,
+      "width": 7,
+      "height": 14,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9120,
+      "version": 1,
+      "versionNonce": 90120,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          7,
+          0
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          7,
+          14
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-121",
+      "type": "rectangle",
+      "x": 1430,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9121,
+      "version": 1,
+      "versionNonce": 90121,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-122",
+      "type": "line",
+      "x": 1446,
+      "y": 720,
+      "width": 23,
+      "height": 18,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9122,
+      "version": 1,
+      "versionNonce": 90122,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          23,
+          18
+        ],
+        [
+          5,
+          18
+        ],
+        [
+          0,
+          14
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          20,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-123",
+      "type": "line",
+      "x": 1466,
+      "y": 713,
+      "width": 7,
+      "height": 14,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9123,
+      "version": 1,
+      "versionNonce": 90123,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          0,
+          14
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-124",
+      "type": "rectangle",
+      "x": 1493,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#ae7773",
+      "backgroundColor": "#46363a",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9124,
+      "version": 1,
+      "versionNonce": 90124,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-125",
+      "type": "line",
+      "x": 1509,
+      "y": 720,
+      "width": 24,
+      "height": 22,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.6,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9125,
+      "version": 1,
+      "versionNonce": 90125,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          24,
+          0
+        ],
+        [
+          21,
+          22
+        ],
+        [
+          3,
+          22
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-126",
+      "type": "line",
+      "x": 1506,
+      "y": 716,
+      "width": 30,
+      "height": 0,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9126,
+      "version": 1,
+      "versionNonce": 90126,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          30,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-127",
+      "type": "line",
+      "x": 1516,
+      "y": 712,
+      "width": 10,
+      "height": 0,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9127,
+      "version": 1,
+      "versionNonce": 90127,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          10,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-128",
+      "type": "line",
+      "x": 1518,
+      "y": 725,
+      "width": 0,
+      "height": 12,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9128,
+      "version": 1,
+      "versionNonce": 90128,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          12
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-129",
+      "type": "line",
+      "x": 1524,
+      "y": 725,
+      "width": 0,
+      "height": 12,
+      "angle": 0,
+      "strokeColor": "#f29488",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9129,
+      "version": 1,
+      "versionNonce": 90129,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          12
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-130",
+      "type": "rectangle",
+      "x": 1556,
+      "y": 699,
+      "width": 56,
+      "height": 60,
+      "angle": 0,
+      "strokeColor": "#718f9c",
+      "backgroundColor": "#2d3d47",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9130,
+      "version": 1,
+      "versionNonce": 90130,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-131",
+      "type": "rectangle",
+      "x": 1571,
+      "y": 717,
+      "width": 26,
+      "height": 22,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9131,
+      "version": 1,
+      "versionNonce": 90131,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "mado-bottom-bar-132",
+      "type": "line",
+      "x": 1566,
+      "y": 712,
+      "width": 36,
+      "height": 33,
+      "angle": 0,
+      "strokeColor": "#eaf0f2",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 3.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9132,
+      "version": 1,
+      "versionNonce": 90132,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          33
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": null,
+      "lastCommittedPoint": null
+    },
+    {
+      "id": "mado-bottom-bar-133",
+      "type": "text",
+      "x": 1035,
+      "y": 849,
+      "width": 536,
+      "height": 21.25,
+      "angle": 0,
+      "strokeColor": "#496571",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9133,
+      "version": 1,
+      "versionNonce": 90133,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "48+ px hit areas   /   ON-OFF stays prominent",
+      "originalText": "48+ px hit areas   /   ON-OFF stays prominent",
+      "fontFamily": 5,
+      "fontSize": 17,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-134",
+      "type": "text",
+      "x": 1035,
+      "y": 881,
+      "width": 650,
+      "height": 20,
+      "angle": 0,
+      "strokeColor": "#657b84",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9134,
+      "version": 1,
+      "versionNonce": 90134,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Icons only in the menu; labels below explain the proposal.",
+      "originalText": "Icons only in the menu; labels below explain the proposal.",
+      "fontFamily": 5,
+      "fontSize": 16,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-135",
+      "type": "text",
+      "x": 60,
+      "y": 985,
+      "width": 120,
+      "height": 23.75,
+      "angle": 0,
+      "strokeColor": "#20343f",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9135,
+      "version": 1,
+      "versionNonce": 90135,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Bar order",
+      "originalText": "Bar order",
+      "fontFamily": 5,
+      "fontSize": 19,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-136",
+      "type": "text",
+      "x": 175,
+      "y": 985,
+      "width": 832,
+      "height": 22.5,
+      "angle": 0,
+      "strokeColor": "#47606d",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9136,
+      "version": 1,
+      "versionNonce": 90136,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "ON / OFF     Undo     Redo     Clean screen     Hide floating menu",
+      "originalText": "ON / OFF     Undo     Redo     Clean screen     Hide floating menu",
+      "fontFamily": 5,
+      "fontSize": 18,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    },
+    {
+      "id": "mado-bottom-bar-137",
+      "type": "text",
+      "x": 60,
+      "y": 1017,
+      "width": 1790,
+      "height": 20,
+      "angle": 0,
+      "strokeColor": "#657b84",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1.5,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "groupIds": [],
+      "frameId": null,
+      "roundness": null,
+      "seed": 9137,
+      "version": 1,
+      "versionNonce": 90137,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Clean screen clears ink; Undo restores permanent ink. Hide removes ring and badge. Reopen via H while drawing or the tray.",
+      "originalText": "Clean screen clears ink; Undo restores permanent ink. Hide removes ring and badge. Reopen via H while drawing or the tray.",
+      "fontFamily": 5,
+      "fontSize": 16,
+      "lineHeight": 1.25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "autoResize": false
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#f3f6f7",
+    "gridSize": null
+  },
+  "files": {}
+}

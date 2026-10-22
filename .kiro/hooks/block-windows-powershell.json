@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Block Windows PowerShell and encoded commands",
+      "trigger": "PreToolUse",
+      "description": "Blocks agent shell commands that launch powershell.exe or pass a script block / -EncodedCommand to a nested pwsh, which Defender flags as obfuscated PowerShell.",
+      "matcher": "execute_pwsh|control_pwsh_process",
+      "action": {
+        "type": "command",
+        "command": "pwsh -NoProfile -File .kiro/hooks/block-windows-powershell.ps1",
+        "timeout": 15
+      }
+    }
+  ]
+}

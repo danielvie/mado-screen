@@ -323,6 +323,31 @@ fn main() -> Result<()> {
                     )?;
                     false
                 }
+                UiEvent::Undo | UiEvent::Redo => {
+                    trail.finish();
+                    apply_edit(
+                        if event == UiEvent::Undo {
+                            Action::Undo
+                        } else {
+                            Action::Redo
+                        },
+                        &mut strokes,
+                        &mut drag,
+                    )
+                }
+                UiEvent::Clear => {
+                    clear_ink(&mut strokes, &mut trail, &mut drag, &mut expiry);
+                    true
+                }
+                UiEvent::Hide => {
+                    if panel_visible {
+                        toggle_panel(&mut panel_visible, &ui, &tray)?;
+                    } else {
+                        // A ring summoned while the menu is hidden must hide again.
+                        ui.set_visible(false)?;
+                    }
+                    false
+                }
                 UiEvent::Reserve(color) => {
                     reserve = color | 0xff000000;
                     false

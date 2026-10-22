@@ -76,7 +76,7 @@ head_scale = 1.0
 [menu]
 visible_on_start = true
 # panel, rail or radial. Also selectable from the tray icon's Menu layout submenu.
-layout = \"panel\"
+layout = \"radial\"
 # Startup state of each layout: expanded or compact. Pinning or unpinning the panel
 # or rail, and opening or minimizing the radial ring, save the choice here.
 panel_state = \"compact\"
@@ -547,7 +547,7 @@ mod tests {
                 duration_ms: 2500,
                 tail_first: true,
                 visible_on_start: false,
-                layout: MenuLayout::Panel,
+                layout: MenuLayout::Radial,
                 menu_expanded: [false; 3],
                 shortcuts: Shortcuts::default(),
                 head_scale: 1.0,
@@ -591,8 +591,8 @@ mod tests {
             ("'panel'", MenuLayout::Panel),
             ("'rail'", MenuLayout::Rail),
             ("' Radial '", MenuLayout::Radial),
-            ("'ring'", MenuLayout::Panel),
-            ("true", MenuLayout::Panel),
+            ("'ring'", MenuLayout::Radial),
+            ("true", MenuLayout::Radial),
         ] {
             let settings = parse(&document(&format!(
                 "[menu]\nlayout = {text}\nvisible_on_start = false"
