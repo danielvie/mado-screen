@@ -42,29 +42,28 @@ const PANEL_HEIGHT: i32 = 304;
 const PANEL_ROW: i32 = 44;
 // Edge rail: one badge-wide column that grows down (or up) from the badge.
 const RAIL_HEIGHT: i32 = 656;
-// Radial popup, logical px: unchanged disc above an opaque action bar.
-const RING_WIDTH: i32 = 350;
-const RING_HEIGHT: i32 = 300;
+// Radial popup, logical px: center mode toggle and a disc-wide action bar.
 const RING_DISC_SIZE: i32 = 232;
-const RING_ACTIONS: [PanelHit; 5] = [
-    PanelHit::Toggle,
+const RING_WIDTH: i32 = RING_DISC_SIZE;
+const RING_HEIGHT: i32 = 292;
+const RING_ACTIONS: [PanelHit; 4] = [
     PanelHit::Undo,
     PanelHit::Redo,
     PanelHit::Clear,
-    PanelHit::Hide,
+    PanelHit::Collapse,
 ];
 const RING_EDGE: f64 = 113.0;
 const RING_CENTER: f64 = 34.0;
 const RING_TOOLS: (f64, f64) = (38.0, 76.0);
 const RING_COLORS: (f64, f64) = (80.0, 106.0);
-// Minimize stays small; the separate drag grip has a 48 px circular target.
-const RING_COLLAPSE: (i32, f64) = (16, 11.0);
-const RING_GRIP: (i32, i32, f64) = (RING_DISC_SIZE / 2 - 5, 25, 24.0);
+// Both 40 px corner targets stay inside the disc's square footprint.
+const RING_HIDE: (i32, f64) = (21, 20.0);
+const RING_GRIP: (i32, i32, f64) = (RING_DISC_SIZE / 2 - 21, 21, 20.0);
 fn ring_button_radius(hit: PanelHit) -> f64 {
     if hit == PanelHit::Grip {
         RING_GRIP.2
     } else {
-        RING_COLLAPSE.1
+        RING_HIDE.1
     }
 }
 const PANEL_SAMPLES: i32 = 4;
@@ -744,11 +743,10 @@ impl PanelGeometry {
         if self.ring {
             if RING_ACTIONS.contains(&hit) {
                 let local = match hit {
-                    PanelHit::Toggle => rect(23, 242, 112, 48),
-                    PanelHit::Undo => rect(135, 242, 48, 48),
-                    PanelHit::Redo => rect(183, 242, 48, 48),
-                    PanelHit::Clear => rect(231, 242, 48, 48),
-                    PanelHit::Hide => rect(279, 242, 48, 48),
+                    PanelHit::Undo => rect(20, 242, 48, 48),
+                    PanelHit::Redo => rect(68, 242, 48, 48),
+                    PanelHit::Clear => rect(116, 242, 48, 48),
+                    PanelHit::Collapse => rect(164, 242, 48, 48),
                     _ => unreachable!(),
                 };
                 return RECT {
@@ -759,12 +757,13 @@ impl PanelGeometry {
                 };
             }
             let (x, y) = self.center(hit);
-            return rect(
-                x - scaled(10, s),
-                y - scaled(10, s),
-                scaled(20, s),
-                scaled(20, s),
-            );
+            let radius = match hit {
+                PanelHit::Toggle => RING_CENTER,
+                PanelHit::Hide | PanelHit::Grip => ring_button_radius(hit),
+                _ => 10.0,
+            };
+            let radius = (radius * s).round() as i32;
+            return rect(x - radius, y - radius, radius * 2, radius * 2);
         }
         let (full_width, full_height) = self.layout.anchored_size();
         let ox = self.body.right - scaled(full_width, s);
@@ -833,7 +832,7 @@ impl PanelGeometry {
                     (RING_COLORS.0 + RING_COLORS.1) / 2.0,
                     ring_angle(i, PANEL_PALETTE.len()),
                 ),
-                PanelHit::Collapse => return self.collapse_center(),
+                PanelHit::Hide => return self.ring_hide_center(),
                 PanelHit::Grip => return self.ring_grip_center(),
                 _ => (0.0, 0.0),
             };
@@ -890,13 +889,13 @@ impl PanelGeometry {
     fn ring_center(&self) -> (i32, i32) {
         (self.width / 2, scaled(RING_DISC_SIZE / 2, self.scale))
     }
-    // Corner controls follow the disc, not the wider popup.
-    fn collapse_center(&self) -> (i32, i32) {
+    // Corner controls sit inside the unchanged disc-wide footprint.
+    fn ring_hide_center(&self) -> (i32, i32) {
         let (cx, _) = self.ring_center();
-        let offset = scaled(RING_DISC_SIZE / 2 - RING_COLLAPSE.0, self.scale);
-        (cx - offset, scaled(RING_COLLAPSE.0, self.scale))
+        let offset = scaled(RING_DISC_SIZE / 2 - RING_HIDE.0, self.scale);
+        (cx - offset, scaled(RING_HIDE.0, self.scale))
     }
-    // Move the larger grip outward so its target does not cover the color ring.
+    // Keep the grip clear of the color ring without extending beyond its width.
     fn ring_grip_center(&self) -> (i32, i32) {
         (
             self.ring_center().0 + scaled(RING_GRIP.0, self.scale),
@@ -905,19 +904,19 @@ impl PanelGeometry {
     }
     fn ring_bar(&self) -> RECT {
         rect(
-            scaled(15, self.scale),
+            scaled(2, self.scale),
             scaled(240, self.scale),
-            scaled(320, self.scale),
+            scaled(228, self.scale),
             scaled(52, self.scale),
         )
     }
     fn ring_buttons(&self) -> [(PanelHit, (i32, i32)); 2] {
         [
-            (PanelHit::Collapse, self.collapse_center()),
+            (PanelHit::Hide, self.ring_hide_center()),
             (PanelHit::Grip, self.ring_grip_center()),
         ]
     }
-    // Corner buttons first; the center swaps colors, the inner ring holds tools,
+    // Corner buttons first; the center toggles drawing, the inner ring holds tools,
     // the outer ring colors.
     fn ring_hit(&self, x: i32, y: i32) -> Option<PanelHit> {
         for hit in RING_ACTIONS {
@@ -944,7 +943,7 @@ impl PanelGeometry {
                 % count
         };
         if distance <= RING_CENTER {
-            Some(PanelHit::Swap)
+            Some(PanelHit::Toggle)
         } else if distance <= (RING_TOOLS.1 + RING_COLORS.0) / 2.0 {
             Some(PanelHit::Tool(PANEL_TOOLS[sector(PANEL_TOOLS.len())].0))
         } else if distance <= RING_COLORS.1 + 4.0 {
@@ -1634,6 +1633,12 @@ impl State {
                 "Pin menu. Keep the menu expanded when the pointer leaves."
             }
             .into(),
+            PanelHit::Toggle if PanelGeometry::new(self).ring => format!(
+                "Drawing / Click-through. Click the center to toggle input. {} or {} also toggles. {} swaps colors while drawing.",
+                self.shortcuts.get().binding("activation_key").label(),
+                self.shortcuts.get().binding("toggle").label(),
+                self.shortcuts.get().binding("swap_colors").label()
+            ),
             PanelHit::Toggle => format!(
                 "Drawing / Click-through. {} or {} toggles canvas input.",
                 self.shortcuts.get().binding("activation_key").label(),
@@ -1720,9 +1725,11 @@ impl State {
         self.hover.set(hit);
         if matches!(
             hit,
-            Some(PanelHit::Tool(_) | PanelHit::Pin | PanelHit::Collapse)
-        ) || hit.is_some_and(|hit| PanelGeometry::new(self).ring && RING_ACTIONS.contains(&hit))
-        {
+            Some(PanelHit::Tool(_) | PanelHit::Pin | PanelHit::Hide)
+        ) || hit.is_some_and(|hit| {
+            PanelGeometry::new(self).ring
+                && (hit == PanelHit::Toggle || RING_ACTIONS.contains(&hit))
+        }) {
             let _ = self.resize_panel();
         }
         let hwnd = self.status.get();
@@ -1847,11 +1854,11 @@ impl State {
         let swatch = self.swatch.replace(None);
         if matches!(
             pressed.or(hover),
-            Some(PanelHit::Tool(_) | PanelHit::Pin | PanelHit::Collapse)
-        ) || pressed
-            .or(hover)
-            .is_some_and(|hit| PanelGeometry::new(self).ring && RING_ACTIONS.contains(&hit))
-            || swatch.is_some_and(|drag| drag.moving)
+            Some(PanelHit::Tool(_) | PanelHit::Pin | PanelHit::Hide)
+        ) || pressed.or(hover).is_some_and(|hit| {
+            PanelGeometry::new(self).ring
+                && (hit == PanelHit::Toggle || RING_ACTIONS.contains(&hit))
+        }) || swatch.is_some_and(|drag| drag.moving)
         {
             let _ = self.resize_panel();
         }
@@ -2207,7 +2214,7 @@ fn panel_font(scale: f64) -> Result<GdiObject> {
 fn panel_bitmap(state: &State) -> Result<(Bitmap, Vec<u32>)> {
     let geometry = PanelGeometry::new(state);
     // The icon-only ring bar needs smoother small strokes than the larger panel controls.
-    // ponytail: 6x sampling is bounded by the 350 x 300 popup; raise it only if DPI review warrants it.
+    // ponytail: 6x sampling is bounded by the 232 x 292 popup; raise it only if DPI review warrants it.
     let n = if geometry.ring { 6 } else { PANEL_SAMPLES };
     let large = PanelGeometry {
         width: geometry.width * n,
@@ -3231,6 +3238,30 @@ fn ring_icon_curve(from: (f64, f64), via: (f64, f64), to: (f64, f64)) -> Vec<(f6
         .collect()
 }
 
+fn ring_icon_cubic(
+    from: (f64, f64),
+    first: (f64, f64),
+    second: (f64, f64),
+    to: (f64, f64),
+) -> Vec<(f64, f64)> {
+    (0..=16)
+        .map(|i| {
+            let t = f64::from(i) / 16.0;
+            let u = 1.0 - t;
+            (
+                u.powi(3) * from.0
+                    + 3.0 * u * u * t * first.0
+                    + 3.0 * u * t * t * second.0
+                    + t.powi(3) * to.0,
+                u.powi(3) * from.1
+                    + 3.0 * u * u * t * first.1
+                    + 3.0 * u * t * t * second.1
+                    + t.powi(3) * to.1,
+            )
+        })
+        .collect()
+}
+
 fn paint_ring_actions(state: &State, dc: HDC, geometry: &PanelGeometry) {
     let s = geometry.scale;
     rounded_pen(
@@ -3262,97 +3293,57 @@ fn paint_ring_actions(state: &State, dc: HDC, geometry: &PanelGeometry) {
             PANEL_SECONDARY
         };
         match hit {
-            PanelHit::Toggle => {
-                let on = state.drawing.get();
-                let pill = rect(
-                    r.left + scaled(8, s),
-                    y - scaled(10, s),
-                    scaled(40, s),
-                    scaled(20, s),
-                );
-                rounded_pen(
-                    dc,
-                    pill,
-                    scaled(10, s),
-                    if on { 0xff426c5f } else { PANEL_BACKGROUND },
-                    if on { PANEL_ACCENT } else { PANEL_SECONDARY },
-                    scaled(1, s),
-                );
-                ellipse(
-                    dc,
-                    pill.left + scaled(if on { 30 } else { 10 }, s),
-                    y,
-                    scaled(7, s),
-                    if on { PANEL_ACCENT } else { PANEL_SECONDARY },
-                    1,
-                    true,
-                );
-                if let Ok(font) = panel_font(s) {
-                    let saved = unsafe { SaveDC(dc) };
-                    unsafe { SelectObject(dc, font.0) };
-                    label(
-                        dc,
-                        if on { "ON" } else { "OFF" },
-                        rect(
-                            r.left + scaled(54, s),
-                            r.top,
-                            scaled(50, s),
-                            r.bottom - r.top,
-                        ),
-                        PANEL_TEXT,
-                        DT_SINGLELINE | DT_CENTER | DT_VCENTER,
-                    );
-                    let _ = unsafe { RestoreDC(dc, saved) };
-                }
-            }
             PanelHit::Undo | PanelHit::Redo => {
                 let mirror = if hit == PanelHit::Redo { -1.0 } else { 1.0 };
-                let mut tail = vec![(-10.0, -5.0), (2.0, -5.0)];
-                tail.extend(ring_icon_curve((2.0, -5.0), (12.0, -5.0), (11.0, 5.0)));
-                tail.push((6.0, 10.0));
+                // Tangent cubic quarter-circles avoid a corner where the tail bends back.
+                let k = 8.0 * 0.552_284_749_8;
+                let mut tail = vec![(-9.25, -5.0), (3.0, -5.0)];
+                tail.extend(ring_icon_cubic(
+                    (3.0, -5.0),
+                    (3.0 + k, -5.0),
+                    (11.0, 3.0 - k),
+                    (11.0, 3.0),
+                ));
+                tail.extend(ring_icon_cubic(
+                    (11.0, 3.0),
+                    (11.0, 3.0 + k),
+                    (3.0 + k, 11.0),
+                    (3.0, 11.0),
+                ));
                 let mirrored: Vec<_> = tail.into_iter().map(|(dx, dy)| (dx * mirror, dy)).collect();
                 ring_icon_stroke(dc, &mirrored, s, (x, y), ink, 2.5);
-                let head =
-                    [(-3.0, -12.0), (-10.0, -5.0), (-3.0, 2.0)].map(|(dx, dy)| (dx * mirror, dy));
-                ring_icon_stroke(dc, &head, s, (x, y), ink, 2.5);
+                let mut head = vec![(-3.0, -12.0), (-8.5, -6.5)];
+                head.extend(ring_icon_curve((-8.5, -6.5), (-10.0, -5.0), (-8.5, -3.5)));
+                head.push((-3.0, 2.0));
+                let mirrored: Vec<_> = head.into_iter().map(|(dx, dy)| (dx * mirror, dy)).collect();
+                ring_icon_stroke(dc, &mirrored, s, (x, y), ink, 2.5);
             }
             PanelHit::Clear => {
-                // Rounded outline handle, wide ferrule and three bristles follow the supplied broom.
-                ring_icon_stroke(dc, &[(11.0, -13.0), (-1.0, -1.0)], s, (x, y), ink, 4.2);
-                ring_icon_stroke(dc, &[(8.5, -10.5), (0.5, -2.5)], s, (x, y), 0xff23272c, 1.7);
-                ring_icon_stroke(
-                    dc,
-                    &[
-                        (-10.0, -5.0),
-                        (3.0, 8.0),
-                        (-5.0, 15.0),
-                        (-15.0, 5.0),
-                        (-10.0, -5.0),
-                    ],
-                    s,
-                    (x, y),
-                    ink,
-                    3.2,
-                );
-                ring_icon_stroke(dc, &[(-6.0, -4.0), (4.0, 6.0)], s, (x, y), ink, 3.4);
-                for (start, end) in [
-                    ((-12.0, 2.0), (-8.0, 6.0)),
-                    ((-9.0, -1.0), (-5.0, 3.0)),
-                    ((-6.0, -4.0), (-2.0, 0.0)),
-                ] {
-                    ring_icon_stroke(dc, &[start, end], s, (x, y), ink, 2.2);
+                // ponytail: this bundled SVG uses only 2 px rounded polylines. Curves
+                // or fills would need a full SVG renderer instead of this points reader.
+                for line in include_str!("../assets/broom.svg")
+                    .split("points=\"")
+                    .skip(1)
+                {
+                    let points: Vec<_> = line
+                        .split_once('"')
+                        .expect("bundled broom SVG points")
+                        .0
+                        .split_ascii_whitespace()
+                        .map(|point| {
+                            let (x, y) = point.split_once(',').expect("bundled broom SVG point");
+                            (
+                                x.parse().expect("bundled broom SVG x"),
+                                y.parse().expect("bundled broom SVG y"),
+                            )
+                        })
+                        .collect();
+                    ring_icon_stroke(dc, &points, s, (x, y), ink, 2.0);
                 }
             }
-            PanelHit::Hide => {
-                // Curved eye with a clean diagonal break, distinct from clear ink.
-                let upper = ring_icon_curve((-12.0, 0.0), (0.0, -12.0), (12.0, 0.0));
-                let lower = ring_icon_curve((-12.0, 0.0), (0.0, 12.0), (12.0, 0.0));
-                ring_icon_stroke(dc, &upper, s, (x, y), ink, 2.4);
-                ring_icon_stroke(dc, &lower, s, (x, y), ink, 2.4);
-                ellipse(dc, x, y, scaled(3, s), ink, 1, true);
-                let slash = [(-11.0, -11.0), (11.0, 11.0)];
-                ring_icon_stroke(dc, &slash, s, (x, y), 0xff23272c, 5.5);
-                ring_icon_stroke(dc, &slash, s, (x, y), ink, 2.5);
+            PanelHit::Collapse => {
+                ellipse(dc, x, y, scaled(11, s), ink, scaled(2, s), false);
+                ring_icon_stroke(dc, &[(-5.0, 0.0), (5.0, 0.0)], s, (x, y), ink, 2.0);
             }
             _ => unreachable!(),
         }
@@ -3360,7 +3351,7 @@ fn paint_ring_actions(state: &State, dc: HDC, geometry: &PanelGeometry) {
 }
 
 // Radial ring: 16 colors outside, 7 tools inside, and the brush at true width in
-// the center (click swaps with the reserve). A bottom bar holds mode and actions.
+// the center (click toggles drawing). A disc-wide bottom bar holds four actions.
 fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
     let s = geometry.scale;
     let center = geometry.ring_center();
@@ -3496,25 +3487,26 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
         let button = (ring_button_radius(hit) * s).round() as i32;
         let hovered = hover == Some(hit);
         let ink = if hovered { PANEL_TEXT } else { PANEL_SECONDARY };
-        ellipse(
-            dc,
-            bx,
-            by,
-            button,
-            if pressed == Some(hit) {
-                0xff426c5f
-            } else if hovered {
-                0xff30363d
-            } else {
-                0xff23272c
-            },
-            1,
-            true,
-        );
+        let background = if pressed == Some(hit) {
+            0xff426c5f
+        } else if hovered {
+            0xff30363d
+        } else {
+            0xff23272c
+        };
+        ellipse(dc, bx, by, button, background, 1, true);
         ellipse(dc, bx, by, button - scaled(1, s), ink, scaled(1, s), false);
         match hit {
-            PanelHit::Collapse => {
-                panel_line(dc, &[(-5, 0), (5, 0)], s, (bx, by), ink, scaled(2, s))
+            PanelHit::Hide => {
+                let icon_scale = s * 0.8;
+                let upper = ring_icon_curve((-12.0, 0.0), (0.0, -12.0), (12.0, 0.0));
+                let lower = ring_icon_curve((-12.0, 0.0), (0.0, 12.0), (12.0, 0.0));
+                ring_icon_stroke(dc, &upper, icon_scale, (bx, by), ink, 2.4);
+                ring_icon_stroke(dc, &lower, icon_scale, (bx, by), ink, 2.4);
+                ellipse(dc, bx, by, scaled(3, icon_scale), ink, 1, true);
+                let slash = [(-11.0, -11.0), (11.0, 11.0)];
+                ring_icon_stroke(dc, &slash, icon_scale, (bx, by), background, 5.5);
+                ring_icon_stroke(dc, &slash, icon_scale, (bx, by), ink, 2.5);
             }
             _ => {
                 for dx in [-5, 0, 5] {
@@ -3526,10 +3518,12 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
             }
         }
     }
-    let middle = if pressed == Some(PanelHit::Swap) {
+    let middle = if pressed == Some(PanelHit::Toggle) {
         0xff426c5f
-    } else if hover == Some(PanelHit::Swap) {
+    } else if hover == Some(PanelHit::Toggle) {
         0xff30363d
+    } else if drawing {
+        0xff29453d
     } else {
         0xff23272c
     };
@@ -3560,22 +3554,23 @@ fn paint_ring(state: &State, dc: HDC, geometry: &PanelGeometry) {
             SelectObject(dc, font.0);
             label(
                 dc,
-                &state.width.get().to_string(),
+                &format!(
+                    "{}  {}",
+                    if drawing { "ON" } else { "OFF" },
+                    state.width.get()
+                ),
                 rect(
-                    cx - scaled(14, s),
-                    cy + scaled(13, s),
-                    scaled(40, s),
+                    cx - scaled(26, s),
+                    cy + scaled(12, s),
+                    scaled(52, s),
                     scaled(16, s),
                 ),
-                PANEL_SECONDARY,
+                PANEL_TEXT,
                 DT_SINGLELINE | DT_CENTER | DT_VCENTER,
             );
             let _ = RestoreDC(dc, saved);
         }
     }
-    // Swap key hint: clicking the center does what this key does.
-    let key = shortcut_badge(state.shortcuts.get().binding("swap_colors"));
-    key_badge(dc, &key, (cx - scaled(5, s), cy + scaled(15, s)), s, false);
 }
 
 fn bitmap_info(width: i32, height: i32) -> BITMAPINFO {
@@ -5910,8 +5905,15 @@ mod tests {
             ] {
                 state.radial_center.set(center);
                 let g = PanelGeometry::new(&state);
-                let (width, height) = (scaled(RING_WIDTH, s), scaled(RING_HEIGHT, s));
+                let (width, height) = (scaled(232, s), scaled(292, s));
                 assert!(g.ring && (g.width, g.height) == (width, height));
+                for hit in [PanelHit::Toggle, PanelHit::Hide, PanelHit::Grip]
+                    .into_iter()
+                    .chain(RING_ACTIONS)
+                {
+                    let r = g.bounds(hit);
+                    assert!(r.left >= 0 && r.top >= 0 && r.right <= width && r.bottom <= height);
+                }
                 let origin = g.destination(state.panel_anchor.get());
                 assert!(origin.x >= work.left && origin.x + width <= work.right);
                 assert!(origin.y >= work.top && origin.y + height <= work.bottom);
@@ -5921,7 +5923,7 @@ mod tests {
                     assert_eq!(origin.y + cy, center.y);
                 }
                 let (cx, cy) = g.ring_center();
-                assert_eq!(g.hit(cx, cy), Some(PanelHit::Swap));
+                assert_eq!(g.hit(cx, cy), Some(PanelHit::Toggle));
                 for target in (0..16)
                     .map(PanelHit::Palette)
                     .chain(PANEL_TOOLS.map(|entry| PanelHit::Tool(entry.0)))
@@ -5932,13 +5934,21 @@ mod tests {
                 // Pen and the first color sit at the top; order runs clockwise.
                 assert!(g.center(PanelHit::Tool(MenuTool::Pen)).1 < cy);
                 assert!(g.center(PanelHit::Palette(4)).0 > cx);
-                // The top corners hold collapse (left) and grip (right) buttons.
-                let (bx, by) = g.collapse_center();
-                assert_eq!(g.hit(bx, by), Some(PanelHit::Collapse));
+                // Hide is at the top-left; minimize is the rightmost toolbar action.
+                let (bx, by) = (scaled(21, s), scaled(21, s));
+                assert_eq!(g.center(PanelHit::Hide), (bx, by));
+                assert_eq!(g.hit(bx, by), Some(PanelHit::Hide));
+                let minimize = (scaled(188, s), scaled(266, s));
+                assert_eq!(g.center(PanelHit::Collapse), minimize);
+                assert_eq!(g.hit(minimize.0, minimize.1), Some(PanelHit::Collapse));
                 let (gx, gy) = g.ring_grip_center();
                 assert!(bx < cx && gx > cx);
-                assert_eq!(g.hit(gx + scaled(20, s), gy), Some(PanelHit::Grip));
-                assert_eq!(g.hit(gx, gy - scaled(22, s)), Some(PanelHit::Grip));
+                for (hit, (x, y)) in g.ring_buttons() {
+                    let distance = f64::from(x - cx).hypot(f64::from(y - cy)) / s;
+                    assert!(distance - ring_button_radius(hit) >= RING_EDGE);
+                }
+                assert_eq!(g.hit(gx + scaled(16, s), gy), Some(PanelHit::Grip));
+                assert_eq!(g.hit(gx, gy - scaled(18, s)), Some(PanelHit::Grip));
                 assert_eq!(g.hit(gx + scaled(27, s), gy), None);
                 assert!(g.hit(0, height - 1).is_none() && g.hit(width - 1, height - 1).is_none());
             }
@@ -5974,16 +5984,16 @@ mod tests {
                 }
             };
             let (gx, gy) = g.ring_grip_center();
-            for (x, y) in [(gx + scaled(20, s), gy), (gx, gy - scaled(22, s))] {
+            for (x, y) in [(gx + scaled(16, s), gy), (gx, gy - scaled(18, s))] {
                 assert_eq!(g.hit(x, y), Some(PanelHit::Grip));
                 assert_ne!(pixel(&baseline, x, y) >> 24, 0);
                 assert_eq!(native_hit(x, y), HTCLIENT as isize);
             }
-            let outside = (gx + scaled(27, s), gy);
+            let outside = (scaled(231, s), scaled(44, s));
             assert_eq!(g.hit(outside.0, outside.1), None);
             assert_eq!(pixel(&baseline, outside.0, outside.1), 0);
             assert_eq!(native_hit(outside.0, outside.1), HTTRANSPARENT as isize);
-            panel_click(hwnd, (gx + scaled(20, s), gy));
+            panel_click(hwnd, (gx + scaled(16, s), gy));
             assert!(decoded(root.0).is_empty());
             assert!(ui.state.expanded.get());
             for (hit, event, tooltip) in [
@@ -5991,17 +6001,20 @@ mod tests {
                 (PanelHit::Undo, UiEvent::Undo, "Undo"),
                 (PanelHit::Redo, UiEvent::Redo, "Redo"),
                 (PanelHit::Clear, UiEvent::Clear, "Clean screen"),
-                (PanelHit::Hide, UiEvent::Hide, "Hide floating menu"),
             ] {
                 let r = g.bounds(hit);
                 let (x, y) = g.center(hit);
                 assert!(r.right - r.left >= scaled(48, s));
                 assert!(r.bottom - r.top >= scaled(48, s));
-                // Every point in each rectangular action target is opaque and routes to it.
+                // The center toggle is circular; footer actions have rectangular targets.
                 for yy in r.top..r.bottom {
                     for xx in r.left..r.right {
-                        assert_eq!(g.hit(xx, yy), Some(hit), "{hit:?} at {s}: {xx},{yy}");
-                        assert_eq!(pixel(&baseline, xx, yy) >> 24, 255);
+                        if hit != PanelHit::Toggle
+                            || (xx - x).pow(2) + (yy - y).pow(2) < scaled(32, s).pow(2)
+                        {
+                            assert_eq!(g.hit(xx, yy), Some(hit), "{hit:?} at {s}: {xx},{yy}");
+                            assert_eq!(pixel(&baseline, xx, yy) >> 24, 255);
+                        }
                     }
                 }
                 assert_eq!(native_hit(x, y), HTCLIENT as isize);
@@ -6016,6 +6029,37 @@ mod tests {
                         }),
                         "rounded icon edges at {s}: {hit:?}"
                     );
+                }
+                if matches!(hit, PanelHit::Undo | PanelHit::Redo) {
+                    let mirror = if hit == PanelHit::Redo { -1 } else { 1 };
+                    for (dx, dy) in [(3, 11), (11, 3), (-9, -5)] {
+                        let color = pixel(&baseline, x + scaled(dx * mirror, s), y + scaled(dy, s));
+                        assert!(
+                            (color & 255) > 100,
+                            "rounded arrow at {s}: {hit:?} {dx},{dy}"
+                        );
+                    }
+                    for (dx, dy) in [(11, -5), (3, 3)] {
+                        assert_eq!(
+                            pixel(&baseline, x + scaled(dx * mirror, s), y + scaled(dy, s)),
+                            0xff23272c,
+                            "open arrow bend at {s}: {hit:?} {dx},{dy}"
+                        );
+                    }
+                }
+                if hit == PanelHit::Clear {
+                    // The SVG keeps its handle, head and bristles, with open space inside.
+                    for (dx, dy) in [(11, -11), (-8, 0), (-9, 7), (-6, 10)] {
+                        let color = pixel(&baseline, x + scaled(dx, s), y + scaled(dy, s));
+                        assert!((color & 255) > 100, "broom stroke at {s}: {dx},{dy}");
+                    }
+                    for (dx, dy) in [(-5, 0), (-3, 5), (0, -10)] {
+                        assert_eq!(
+                            pixel(&baseline, x + scaled(dx, s), y + scaled(dy, s)),
+                            0xff23272c,
+                            "broom opening at {s}: {dx},{dy}"
+                        );
+                    }
                 }
                 ui.state.panel_tooltip(Some(hit));
                 let text = String::from_utf16_lossy(&ui.state.tooltip_text.borrow());
@@ -6055,7 +6099,7 @@ mod tests {
                     "outside release cancels {hit:?}"
                 );
             }
-            // Transparent corners, the gap, and the former bottom-left toggle pass through.
+            // Empty corners and the gap between the disc and footer pass through.
             for (x, y) in [
                 (0, 0),
                 (g.width - 1, g.height - 1),
@@ -6069,7 +6113,7 @@ mod tests {
                 panel_click(hwnd, (x, y));
                 assert!(decoded(root.0).is_empty());
             }
-            for target in [PanelHit::Collapse, PanelHit::Grip]
+            for target in [PanelHit::Hide, PanelHit::Collapse, PanelHit::Grip]
                 .into_iter()
                 .chain((0..16).map(PanelHit::Palette))
                 .chain(PANEL_TOOLS.map(|entry| PanelHit::Tool(entry.0)))
@@ -6097,6 +6141,151 @@ mod tests {
             // Native WM_PAINT validates without replacing the uploaded alpha or colors.
             unsafe { SendMessageW(hwnd, WM_PAINT, None, None) };
             assert_eq!(*ui.state.panel_pixels.borrow(), baseline);
+            assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_layout_ring_center_mode_preserves_favorites_and_shortcuts() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "RingCenterMode", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.create_tooltip(instance)?;
+        ui.state.layout.set(MenuLayout::Radial);
+        ui.state.radial_work.set(rect(-1600, -900, 3200, 1800));
+        ui.state.expanded.set(true);
+        ui.state.motion.set(PanelMotion::settled(true));
+        let mut shortcuts = Shortcuts::default();
+        shortcuts.set("activation_key", Shortcut::parse("F10").unwrap());
+        shortcuts.set("toggle", Shortcut::parse("Alt+D").unwrap());
+        shortcuts.set("swap_colors", Shortcut::parse("Alt+V").unwrap());
+        ui.set_shortcuts(shortcuts)?;
+        ui.set_reserve(0xff0085dc)?;
+        let focus = unsafe { GetFocus() };
+        for s in [1.0, 1.25, 2.0] {
+            ui.state.panel_scale.set(s);
+            for drawing in [false, true] {
+                for thickness in [1, 31] {
+                    let style = Style {
+                        color: 0xfff97316,
+                        thickness,
+                    };
+                    ui.update_label(drawing, "Arrow tail-first", style)?;
+                    let g = PanelGeometry::new(&ui.state);
+                    let (cx, cy) = g.ring_center();
+                    assert_eq!(g.center(PanelHit::Toggle), (cx, cy));
+                    for (dx, dy) in [(0, 0), (0, -5), (17, -17), (0, 20)] {
+                        assert_eq!(
+                            g.hit(cx + scaled(dx, s), cy + scaled(dy, s)),
+                            Some(PanelHit::Toggle)
+                        );
+                    }
+                    let bounds = g.bounds(PanelHit::Toggle);
+                    assert_ne!(
+                        g.hit(bounds.left + 1, bounds.top + 1),
+                        Some(PanelHit::Toggle)
+                    );
+                    ui.state.panel_tooltip(Some(PanelHit::Toggle));
+                    let tooltip = String::from_utf16_lossy(&ui.state.tooltip_text.borrow());
+                    assert!(tooltip.contains("Click the center to toggle input"));
+                    assert!(
+                        tooltip.contains("F10 or Alt+D") && tooltip.contains("Alt+V swaps colors")
+                    );
+                    panel_click(hwnd, (cx, cy));
+                    assert_eq!(decoded(root.0), [UiEvent::Toggle]);
+                    assert_eq!(
+                        ui.state.drawing.get(),
+                        drawing,
+                        "wait for the owner to commit"
+                    );
+                    assert_eq!(ui.state.color.get(), style.color);
+                    assert_eq!(ui.state.reserve.get(), 0xff0085dc);
+                    assert_eq!(ui.state.width.get(), thickness);
+                    assert_eq!(*ui.state.tool_label.borrow(), "Arrow tail-first");
+                    assert!(ui.state.expanded.get());
+                    assert_eq!(unsafe { GetFocus() }, focus);
+                    assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+                    ui.state.set_panel_hover(None);
+                    panel_preview(
+                        &ui,
+                        &format!(
+                            "layout4-{}-{}-{thickness}",
+                            (s * 100.0) as u32,
+                            if drawing { "on" } else { "off" }
+                        ),
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn panel_layout_ring_swapped_hide_and_minimize_controls() -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)? }.0);
+        let class = WindowClass::new(instance, "SwappedRingControls", Some(root_proc))?;
+        let root = HiddenRoot(create_hidden(&class, HWND::default(), None, 1, 1)?);
+        let ui = hidden_ui(root.0)?;
+        let hwnd = status(&ui)?;
+        ui.state.create_tooltip(instance)?;
+        ui.state.layout.set(MenuLayout::Radial);
+        ui.state.radial_work.set(rect(-1600, -900, 3200, 1800));
+        for s in [1.0, 1.25, 2.0] {
+            ui.state.panel_scale.set(s);
+            ui.state.expanded.set(true);
+            ui.state.motion.set(PanelMotion::settled(true));
+            ui.state.remembered.set([false, false, true]);
+            ui.state.resize_panel()?;
+            let g = PanelGeometry::new(&ui.state);
+            let baseline = panel_preview(&ui, &format!("ring-controls-{}", (s * 100.0) as u32))?;
+            for (hit, tooltip) in [
+                (PanelHit::Hide, "Hide floating menu"),
+                (PanelHit::Collapse, "Collapse to the compact badge"),
+            ] {
+                let (x, y) = g.center(hit);
+                // Hidden windows cannot sample the pointer; simulate it inside the target.
+                ui.state.tracking.set(true);
+                ui.state.panel_tooltip(Some(hit));
+                assert!(
+                    String::from_utf16_lossy(&ui.state.tooltip_text.borrow()).starts_with(tooltip)
+                );
+                ui.state.set_panel_hover(Some(hit));
+                let hover = ui.state.panel_pixels.borrow().clone();
+                assert_ne!(baseline, hover);
+                unsafe { SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(x, y))) };
+                assert_ne!(*ui.state.panel_pixels.borrow(), hover);
+                ui.state.cancel_panel_gesture();
+                assert_eq!(*ui.state.panel_pixels.borrow(), baseline);
+                for cancel in [WM_CANCELMODE, WM_CAPTURECHANGED] {
+                    unsafe {
+                        SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(x, y)));
+                        SendMessageW(hwnd, cancel, None, None);
+                        SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(x, y)));
+                    }
+                    assert!(decoded(root.0).is_empty());
+                    assert!(ui.state.expanded.get());
+                }
+                unsafe {
+                    SendMessageW(hwnd, WM_LBUTTONDOWN, None, Some(point(x, y)));
+                    SendMessageW(hwnd, WM_LBUTTONUP, None, Some(point(-1, -1)));
+                }
+                assert!(decoded(root.0).is_empty());
+                assert!(ui.state.expanded.get());
+            }
+            panel_click(hwnd, g.ring_hide_center());
+            assert_eq!(decoded(root.0), [UiEvent::Hide]);
+            assert!(ui.state.expanded.get(), "hide is committed by the owner");
+            panel_click(hwnd, g.center(PanelHit::Collapse));
+            assert_eq!(
+                decoded(root.0),
+                [UiEvent::Remember(MenuLayout::Radial, false)]
+            );
+            assert!(!ui.state.expanded.get());
+            assert!(!PanelGeometry::new(&ui.state).ring);
+            assert!(!ui.state.drawing.get());
             assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
         }
         Ok(())
@@ -6204,12 +6393,12 @@ mod tests {
             let (x, y) = g.center(PanelHit::Palette(i));
             assert_eq!(ring[(y * g.width + x) as usize], *color);
         }
-        // Picks, swaps and pointer leave keep the ring open.
+        // Picks, mode-toggle requests and pointer leave keep the ring open.
         panel_click(hwnd, g.center(PanelHit::Tool(MenuTool::Ellipse)));
         assert_eq!(decoded(root.0), [UiEvent::Tool(MenuTool::Ellipse)]);
         let (cx, cy) = g.ring_center();
         panel_click(hwnd, (cx, cy));
-        assert_eq!(decoded(root.0), [UiEvent::Swap]);
+        assert_eq!(decoded(root.0), [UiEvent::Toggle]);
         ui.state.panel_leave();
         assert!(ui.state.expanded.get());
         // The top-right grip drags the open ring; it never reopens or collapses it.
@@ -6230,7 +6419,7 @@ mod tests {
         assert!(ui.state.expanded.get() && PanelGeometry::new(&ui.state).ring);
         assert_eq!(ui.state.panel_anchor.get(), anchor, "the badge stays put");
         // Only the collapse button returns to the badge; a hidden menu hides again.
-        panel_click(hwnd, g.collapse_center());
+        panel_click(hwnd, g.center(PanelHit::Collapse));
         // The helper opened the ring without a user choice, so nothing new to save.
         assert!(decoded(root.0).is_empty());
         assert!(!ui.state.expanded.get());
@@ -6251,7 +6440,10 @@ mod tests {
         ui.set_visible(true)?;
         assert!(ui.state.expanded.get());
         // Collapsing is remembered too.
-        panel_click(hwnd, PanelGeometry::new(&ui.state).collapse_center());
+        panel_click(
+            hwnd,
+            PanelGeometry::new(&ui.state).center(PanelHit::Collapse),
+        );
         ui.set_visible(false)?;
         ui.set_visible(true)?;
         assert!(!ui.state.expanded.get());

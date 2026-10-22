@@ -108,8 +108,8 @@ white = \"5\"
 swap_colors = \"X\"
 quick_clear = \"C\"
 deactivate = \"Escape\"
-previous_tool = \"T\"
-menu = \"H\"
+previous_tool = \"Q\"
+menu = \"T\"
 ";
 
 pub fn path() -> Option<PathBuf> {

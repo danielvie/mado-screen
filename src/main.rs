@@ -63,8 +63,8 @@ Drawing shortcuts
   E            Erase a whole annotation
   C            Clear all ink, undoable for permanent ink
   X            Swap active and reserve colors
-  T            Swap current and previously selected tool
-  H            Hide / show the floating menu
+  Q            Swap current and previously selected tool
+  T            Hide / show the floating menu
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
@@ -1045,8 +1045,8 @@ mod tests {
             "E            Erase",
             "C            Clear all ink",
             "X            Swap active and reserve",
-            "T            Swap current and previously selected tool",
-            "H            Hide / show the floating menu",
+            "Q            Swap current and previously selected tool",
+            "T            Hide / show the floating menu",
             "F4           Switch between drawing",
             "~/.mado/mado-screen/settings.toml",
             "Ctrl+Z",
@@ -1824,7 +1824,7 @@ mod tests {
             apply_edit(Action::PreviousTool, &mut strokes, &mut drag);
             assert_eq!(strokes.tool_label(), label);
         }
-        // Repeating A is itself a variant selection; T restores the exact previous variant.
+        // Repeating A is itself a variant selection; Q restores the exact previous variant.
         apply_edit(Action::Arrow, &mut strokes, &mut drag);
         assert_eq!(strokes.tool_label(), "Arrow tail-first");
         for label in ["Arrow head-first", "Arrow tail-first"] {

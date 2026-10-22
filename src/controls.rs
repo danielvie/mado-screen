@@ -65,8 +65,8 @@ const BASIC_KEYS: [Key; 18] = [
     (QUICK_CLEAR, b'C' as u16, BARE_MODIFIERS),
     (SWAP, b'X' as u16, BARE_MODIFIERS),
     (DEACTIVATE, VK_ESCAPE.0, BARE_MODIFIERS),
-    (PREVIOUS_TOOL, b'T' as u16, BARE_MODIFIERS),
-    (PANEL, b'H' as u16, BARE_MODIFIERS),
+    (PREVIOUS_TOOL, b'Q' as u16, BARE_MODIFIERS),
+    (PANEL, b'T' as u16, BARE_MODIFIERS),
 ];
 const ADVANCED_KEYS: [Key; 3] = [
     (ARROW, b'A' as u16, BARE_MODIFIERS),
@@ -725,8 +725,8 @@ mod tests {
             (20, b'C' as u16),
             (19, b'X' as u16),
             (21, VK_ESCAPE.0),
-            (23, b'T' as u16),
-            (24, b'H' as u16),
+            (23, b'Q' as u16),
+            (24, b'T' as u16),
             (16, b'A' as u16),
             (17, b'O' as u16),
             (18, b'E' as u16),
@@ -817,14 +817,14 @@ mod tests {
         for advanced in [false, true] {
             assert!(
                 drawing_key_list(advanced)
-                    .any(|key| key == (PREVIOUS_TOOL, b'T' as u16, MOD_NOREPEAT))
+                    .any(|key| key == (PREVIOUS_TOOL, b'Q' as u16, MOD_NOREPEAT))
             );
         }
         assert!(
             PERMANENT_KEYS
                 .into_iter()
                 .chain(activation_binding(ActivationKey::default()))
-                .all(|(_, key, _)| key != b'T' as u16)
+                .all(|(_, key, modifiers)| key != b'Q' as u16 || modifiers != BARE_MODIFIERS)
         );
         assert_eq!(action(PREVIOUS_TOOL), Some(Action::PreviousTool));
     }
@@ -833,17 +833,38 @@ mod tests {
     fn panel_shortcut_is_drawing_only_and_suppresses_repeat() {
         for advanced in [false, true] {
             assert!(
-                drawing_key_list(advanced).any(|key| key == (PANEL, b'H' as u16, MOD_NOREPEAT))
+                drawing_key_list(advanced).any(|key| key == (PANEL, b'T' as u16, MOD_NOREPEAT))
             );
         }
         assert!(
             PERMANENT_KEYS
                 .into_iter()
                 .chain(activation_binding(ActivationKey::default()))
-                .all(|(_, key, _)| key != b'H' as u16)
+                .all(|(_, key, _)| key != b'T' as u16)
         );
         assert_eq!(action(PANEL), Some(Action::Panel));
-        assert_eq!(key_label(b'H' as u16, BARE_MODIFIERS), "H");
+        assert_eq!(key_label(b'T' as u16, BARE_MODIFIERS), "T");
+        let defaults = Shortcuts::default();
+        assert!(defaults.validate().is_ok());
+        assert!(
+            defaults
+                .keys(true)
+                .iter()
+                .all(|(_, key, _)| *key != b'H' as u16)
+        );
+        for id in [PANEL, PREVIOUS_TOOL] {
+            assert!(
+                defaults
+                    .keys(false)
+                    .iter()
+                    .all(|(action, _, _)| *action != id)
+            );
+        }
+        assert!(
+            defaults
+                .keys(false)
+                .contains(&(QUIT, b'Q' as u16, PERMANENT_MODIFIERS))
+        );
     }
 
     #[test]
@@ -907,8 +928,8 @@ mod tests {
             "C",
             "X",
             "Escape",
+            "Q",
             "T",
-            "H",
             "A",
             "O",
             "E",
