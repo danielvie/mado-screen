@@ -110,6 +110,7 @@ quick_clear = \"C\"
 deactivate = \"Escape\"
 previous_tool = \"Q\"
 menu = \"T\"
+zoom = \"Z\"
 ";
 
 pub fn path() -> Option<PathBuf> {

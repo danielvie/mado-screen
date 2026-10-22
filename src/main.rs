@@ -11,6 +11,7 @@ mod surface;
 mod trail;
 mod tray;
 mod ui;
+mod zoom;
 
 use controls::{Action, Hotkeys, Shortcuts};
 use input::{DragCapture, Event, ExpiryTimer, MouseWheel};
@@ -65,6 +66,9 @@ Drawing shortcuts
   X            Swap active and reserve colors
   Q            Swap current and previously selected tool
   T            Hide / show the floating menu
+  Z            Toggle live cursor-centered zoom lens
+  Ctrl+wheel   Adjust magnification while zoom is active
+  Alt+wheel    Resize the lens while zoom is active
   Ctrl+Z       Undo
   Ctrl+Y       Redo
   [ / ]        Thinner / thicker brush (1 to 31 pixels)
@@ -284,9 +288,14 @@ fn main() -> Result<()> {
     let mut tool_keys: Option<MouseWheel> = None;
     let mut drag: Option<DragCapture> = None;
     let mut expiry: Option<ExpiryTimer> = None;
+    let mut zoom: Option<zoom::Zoom> = None;
     print_startup_help(startup.shortcuts);
     let mut message = MSG::default();
     loop {
+        if !drawing {
+            drop(zoom.take());
+        }
+        MouseWheel::set_zoom(zoom.is_some());
         match unsafe { GetMessageW(&mut message, None, 0, 0) }.0 {
             -1 => return Err(Error::from_thread()),
             0 => break,
@@ -302,6 +311,24 @@ fn main() -> Result<()> {
             drop(expiry.take());
         }
         if tick {
+            continue;
+        }
+        let zoom_event = match input::event(&message, overlay.hwnd()) {
+            Some(event @ (Event::ZoomWheel(_) | Event::ZoomResize(_))) => Some(event),
+            _ => None,
+        };
+        if zoom_event.is_some() || zoom::Zoom::is_tick(&message, overlay.hwnd()) {
+            if let Some(lens) = zoom.as_mut() {
+                let result = match zoom_event {
+                    Some(Event::ZoomWheel(steps)) => lens.scroll(steps),
+                    Some(Event::ZoomResize(steps)) => lens.resize(steps),
+                    _ => lens.update(),
+                };
+                if let Err(error) = result {
+                    drop(zoom.take());
+                    tray.notify_zoom_error(&error.to_string());
+                }
+            }
             continue;
         }
         if let Some(event) = ui.event(&message) {
@@ -517,6 +544,19 @@ fn main() -> Result<()> {
                     )?;
                 }
                 Action::Quit => break,
+                Action::Zoom if drawing => {
+                    if zoom.is_some() {
+                        drop(zoom.take());
+                    } else {
+                        match zoom::Zoom::new(overlay.hwnd()).and_then(|lens| {
+                            lens.update()?;
+                            Ok(lens)
+                        }) {
+                            Ok(lens) => zoom = Some(lens),
+                            Err(error) => tray.notify_zoom_error(&error.to_string()),
+                        }
+                    }
+                }
                 Action::Panel if drawing => toggle_panel(&mut panel_visible, &ui, &tray)?,
                 Action::Swap if drawing => {
                     if swap_colors(&mut reserve, &mut strokes, &mut trail, &mut drag) {

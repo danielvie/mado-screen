@@ -274,12 +274,21 @@ impl Tray {
     }
 
     pub fn notify_reload(&self, result: std::result::Result<&str, &str>) {
-        let mut data = self.state.data();
-        data.uFlags = NIF_INFO;
         let (title, message, flags) = match result {
             Ok(message) => ("Config reloaded", message, NIIF_INFO),
             Err(message) => ("Config reload failed", message, NIIF_ERROR),
         };
+        self.notify(title, message, flags);
+    }
+
+    pub fn notify_zoom_error(&self, message: &str) {
+        eprintln!("Zoom stopped: {message}");
+        self.notify("Zoom unavailable", message, NIIF_ERROR);
+    }
+
+    fn notify(&self, title: &str, message: &str, flags: NOTIFY_ICON_INFOTIP_FLAGS) {
+        let mut data = self.state.data();
+        data.uFlags = NIF_INFO;
         for (slot, unit) in data
             .szInfoTitle
             .iter_mut()

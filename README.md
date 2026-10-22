@@ -47,6 +47,7 @@ Drawing-mode-only controls:
 - `L` straight line, `R` outline rectangle, `O` ellipse, `E` eraser.
 - `C` clears all permanent and temporary ink, like `Ctrl+Alt+C`. Permanent ink can be restored with undo. `C` is inactive in click-through.
 - `T` hides or shows the floating menu without changing drawing mode, the selected tool or ink. The tray menu checkmark stays in sync. `T` is inactive in click-through; use the tray's Show floating menu command there. `H` is unbound by default.
+- `Z` toggles a live rectangular zoom lens centered on the cursor. While it is open, `Ctrl+wheel` adjusts magnification and `Alt+wheel` resizes the lens, without changing brush thickness. `Z` is inactive in click-through.
 - `X` swaps the active and reserve favorite colors.
 - `Q` swaps the current and previously selected tool, including temporary-pen and arrow-direction variants. Press it again to switch back. Shortcut and menu selections both count; selecting the same tool again does not replace the previous selection. Before a second tool is selected, `Q` does nothing. It is inactive in click-through.
 - `Ctrl+Z` undo, `Ctrl+Y` redo.
@@ -129,6 +130,7 @@ quick_clear = "C"
 deactivate = "Escape"
 previous_tool = "Q"
 menu = "T"
+zoom = "Z"
 ```
 
 Edit this file, save it, then choose **Reload config** from the tray menu, or restart Mado. Colors must be quoted `#RRGGBB` strings. Thickness must be an odd integer from 1 to 31 physical pixels. Duration must be an integer from 1 to 60000 milliseconds; `2500` gives a 2.5-second fade. `tail_first` and `visible_on_start` accept `true` or `false`. Arrow `head_scale` accepts a finite number from 0.1 to 4.0. `1.0` preserves today's size, `0.5` halves it and `2.0` doubles it. Heads still scale with brush thickness and are capped for short arrows. Completed arrows keep their original geometry.
@@ -140,6 +142,18 @@ Reload validates the complete file and checks every shortcut before applying cha
 At startup, invalid existing values or incompatible sections use defaults without overwriting those values. Duplicate combinations restore the default shortcut set. Invalid TOML syntax uses all defaults and leaves the file untouched. Diagnostics also write to standard error, normally hidden during desktop launches.
 
 `panel_state`, `rail_state` and `radial_state` accept `"expanded"` or `"compact"` and set how each layout starts; pinning/unpinning and opening/minimizing the ring update them. `layout` accepts `"panel"`, `"rail"` or `"radial"`; it is also saved when chosen from the tray, and Reload applies it. Favorite colors, brush thickness and arrow direction save automatically. Thickness changes from the mouse wheel, slider and `[` / `]` are remembered. Arrow-direction changes from `A`, the menu and `Q` are remembered even when you switch to another tool. The next launch restores the last saved thickness and arrow direction. Fade duration, menu visibility, arrowhead scale and shortcut mappings are file preferences; using tools or the menu does not overwrite them. Reload applies their current file values. Brush saves reread the TOML document and preserve other settings and comments using [toml_edit](https://docs.rs/toml_edit/0.22.27/toml_edit/). Writes use a temporary file followed by same-directory replacement rather than truncating the existing settings. There is no cross-process edit lock; simultaneous file edits are not supported.
+
+## Zoom lens
+
+Enter drawing mode with `F4` or your configured toggle, then press `Z`. The lens follows the cursor and uses the aspect ratio of the monitor under it, including portrait monitors. Its initial content area is one third of that monitor's dimensions, capped at 640 physical pixels on the longer axis. Pixel rounding can change the ratio slightly. The source stays centered on the cursor at screen edges, so part of the lens can extend offscreen.
+
+Each entry starts at 2×. `Ctrl+wheel` up multiplies magnification by 1.25 per notch; down divides it by 1.25, within 1× to 8×. `Alt+wheel` uses the same steps to enlarge or shrink both lens dimensions, from 25% to 200% of the initial size, without changing magnification. Resizing preserves the monitor aspect ratio and cursor-centered focus. Reopening zoom resets the size. If Ctrl and Alt are both held, Ctrl takes priority and only magnification changes.
+
+High-resolution deltas accumulate separately for magnification, lens size and brush width. Plain wheel input still adjusts brush thickness, and `Ctrl+Z` still undoes ink. Outside zoom, modifier-wheel input keeps its existing brush-width behavior. Remap the zoom toggle with `shortcuts.zoom`.
+
+The lens shows live desktop content, including annotations. It does not freeze the screen or change annotation coordinates, tools or history. Mouse input passes through the lens to the drawing canvas. `Z` hides it, and leaving drawing mode also closes it. Its refresh timer runs only while zoom is active.
+
+Mado uses the [Windows Magnification control](https://learn.microsoft.com/en-us/windows/win32/winauto/magapi/magapi-intro) rather than repeatedly capturing its own visible lens. The host is explicitly excluded from capture and does not take focus. Initialization or update failures close only the lens and report a tray notification. Use the native 64-bit build on 64-bit Windows; Microsoft does not support this API under WOW64. Protected content and the secure desktop are not supported capture targets.
 
 ## Temporary ink
 
@@ -158,6 +172,10 @@ One overlay and CPU bitmap span the virtual desktop, including gaps between moni
 The renderer fills/replays/uploads the whole virtual bitmap on changes. Snapshot history and many stroke points can use substantial memory and slow drawing; extra screens and gaps increase bitmap cost. No idle redraw loop or GPU rewrite is introduced. Layouts larger than 32767 pixels on either axis are rejected to prevent signed mouse-coordinate wrapping, and surface allocation remains bounded. Physical mixed-DPI input and long-session responsiveness need user testing. Sharing/recording is deferred. Elevated applications and other topmost windows remain unverified. Exclusive fullscreen coverage is not guaranteed; secure desktop and lock screen are excluded.
 
 ## Verification
+
+The `Alt+wheel` lens-size follow-up passed the release build, formatting, diff whitespace checks and 209 release-mode tests, with the icon-generation test intentionally ignored. Added checks cover resize limits, aspect ratio and cursor focus at each size, unchanged magnification, Ctrl-over-Alt priority and independent partial wheel deltas. Strict Clippy still reports the existing color-swap warning below. Physical `Alt+wheel` input and visible resizing remain manual checks.
+
+The zoom lens passed debug/release builds, formatting and 207 release-mode tests, with the icon-generation test intentionally ignored. Run the suite with `cargo test --release -- --test-threads=1`. Zoom checks cover remapping and undo-key separation, signed and partial wheel routing, monitor aspect ratios, negative origins and edge focus, magnification limits, timer filtering, hidden native control initialization, transforms, host exclusion and repeated teardown. The hidden check verifies local focus and that the lens never becomes the foreground window; unrelated apps may change desktop foreground during the run. Clippy with `-D warnings` remains blocked by the existing `collapsible_match` warning in the color-swap action, reproduced on an untouched HEAD export. Physical input, live video capture, self-capture appearance, mixed-DPI transitions and visible desktop smoke remain untested.
 
 Remappable shortcuts, arrowhead scaling and config reload passed 190 release-mode tests, with the icon-generation test intentionally ignored, plus debug/release builds, formatting, Clippy and the smoke self-check. Checks cover every configurable binding, duplicate/type/range rejection, settings completion and file preservation, native registration swaps and rollback, native message routing, queued-hotkey cleanup with quit preservation, click-through release, active-gesture/history preservation, existing temporary ages, both arrow directions and short-arrow caps, updated help/tooltips/badges and tray command decoding. Offscreen remapped-menu previews were reviewed. Physical key delivery, tray selection and notification display, assistive technology and full desktop smoke remain untested. The full debug test run exceeded its 120-second limit during a native menu check; debug tests are not claimed passed.
 

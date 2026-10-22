@@ -34,6 +34,7 @@ const FUNCTION_TOGGLE: usize = 22;
 const PREVIOUS_TOOL: usize = 23;
 const PANEL: usize = 24;
 const TEMPORARY_PEN: usize = 25;
+const ZOOM: usize = 26;
 
 const PERMANENT_MODIFIERS: HOT_KEY_MODIFIERS =
     HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0);
@@ -48,7 +49,7 @@ const PERMANENT_KEYS: [Key; 3] = [
     (CLEAR, b'C' as u16, PERMANENT_MODIFIERS),
     (QUIT, b'Q' as u16, PERMANENT_MODIFIERS),
 ];
-const BASIC_KEYS: [Key; 18] = [
+const BASIC_KEYS: [Key; 19] = [
     (PEN, b'P' as u16, BARE_MODIFIERS),
     (TEMPORARY_PEN, b'S' as u16, BARE_MODIFIERS),
     (LINE, b'L' as u16, BARE_MODIFIERS),
@@ -67,6 +68,7 @@ const BASIC_KEYS: [Key; 18] = [
     (DEACTIVATE, VK_ESCAPE.0, BARE_MODIFIERS),
     (PREVIOUS_TOOL, b'Q' as u16, BARE_MODIFIERS),
     (PANEL, b'T' as u16, BARE_MODIFIERS),
+    (ZOOM, b'Z' as u16, BARE_MODIFIERS),
 ];
 const ADVANCED_KEYS: [Key; 3] = [
     (ARROW, b'A' as u16, BARE_MODIFIERS),
@@ -110,7 +112,7 @@ const NAMED_KEYS: &[(&str, u16)] = &[
 ];
 
 // Names follow the stable WM_HOTKEY action IDs used by posted-input checks.
-pub const SHORTCUT_NAMES: [&str; 25] = [
+pub const SHORTCUT_NAMES: [&str; 26] = [
     "toggle",
     "clear",
     "quit",
@@ -136,6 +138,7 @@ pub const SHORTCUT_NAMES: [&str; 25] = [
     "previous_tool",
     "menu",
     "smoke_pen",
+    "zoom",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -225,7 +228,7 @@ impl Shortcut {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Shortcuts([Shortcut; 25]);
+pub struct Shortcuts([Shortcut; SHORTCUT_NAMES.len()]);
 
 impl Default for Shortcuts {
     fn default() -> Self {
@@ -233,7 +236,7 @@ impl Default for Shortcuts {
             [Shortcut {
                 key: VK_F4.0,
                 modifiers: MOD_NOREPEAT,
-            }; 25],
+            }; SHORTCUT_NAMES.len()],
         );
         for (id, key, modifiers) in PERMANENT_KEYS
             .into_iter()
@@ -463,6 +466,7 @@ pub enum Action {
     Deactivate,
     PreviousTool,
     Panel,
+    Zoom,
 }
 
 pub fn action(id: usize) -> Option<Action> {
@@ -492,6 +496,7 @@ pub fn action(id: usize) -> Option<Action> {
         PREVIOUS_TOOL => Some(Action::PreviousTool),
         PANEL => Some(Action::Panel),
         TEMPORARY_PEN => Some(Action::TemporaryPen),
+        ZOOM => Some(Action::Zoom),
         _ => None,
     }
 }
@@ -546,7 +551,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1, 2, 3, 22]
         );
-        assert_eq!(defaults.keys(true).len(), 25);
+        assert_eq!(defaults.keys(true).len(), SHORTCUT_NAMES.len());
         for name in SHORTCUT_NAMES {
             let mut custom = defaults;
             custom.set(name, Shortcut::parse("Ctrl+Alt+Shift+F11").unwrap());
@@ -686,13 +691,36 @@ mod tests {
             Action::PreviousTool,
             Action::Panel,
             Action::TemporaryPen,
+            Action::Zoom,
         ];
         for (index, expected) in actions.into_iter().enumerate() {
             assert_eq!(action(index + 1), Some(expected));
         }
-        for id in [0, 26, usize::MAX] {
+        for id in [0, 27, usize::MAX] {
             assert_eq!(action(id), None);
         }
+    }
+
+    #[test]
+    fn zoom_is_remappable_drawing_only_and_distinct_from_undo() {
+        let mut shortcuts = Shortcuts::default();
+        assert_eq!(shortcuts.binding("zoom").label(), "Z");
+        assert!(!shortcuts.keys(false).iter().any(|(id, _, _)| *id == ZOOM));
+        assert!(
+            shortcuts
+                .keys(true)
+                .contains(&(ZOOM, b'Z' as u16, MOD_NOREPEAT))
+        );
+        assert_eq!(shortcuts.binding("undo").label(), "Ctrl+Z");
+        shortcuts.set("zoom", Shortcut::parse("Shift+Z").unwrap());
+        assert!(shortcuts.validate().is_ok());
+        assert!(
+            shortcuts
+                .keys(true)
+                .contains(&(ZOOM, b'Z' as u16, MOD_SHIFT | MOD_NOREPEAT))
+        );
+        shortcuts.set("zoom", shortcuts.binding("undo"));
+        assert!(shortcuts.validate().is_err());
     }
 
     #[test]
@@ -727,6 +755,7 @@ mod tests {
             (21, VK_ESCAPE.0),
             (23, b'Q' as u16),
             (24, b'T' as u16),
+            (26, b'Z' as u16),
             (16, b'A' as u16),
             (17, b'O' as u16),
             (18, b'E' as u16),
@@ -756,7 +785,7 @@ mod tests {
                 [4, 25]
                     .into_iter()
                     .chain(5..=15)
-                    .chain([20, 19, 21, 23, 24])
+                    .chain([20, 19, 21, 23, 24, 26])
                     .collect::<Vec<_>>(),
             ),
             (
@@ -764,7 +793,7 @@ mod tests {
                 [4, 25]
                     .into_iter()
                     .chain(5..=15)
-                    .chain([20, 19, 21, 23, 24])
+                    .chain([20, 19, 21, 23, 24, 26])
                     .chain(16..=18)
                     .collect(),
             ),
@@ -930,6 +959,7 @@ mod tests {
             "Escape",
             "Q",
             "T",
+            "Z",
             "A",
             "O",
             "E",

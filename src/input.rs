@@ -5,8 +5,8 @@ use windows::{
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Input::KeyboardAndMouse::{
-                GetAsyncKeyState, GetCapture, ReleaseCapture, SetCapture, VIRTUAL_KEY, VK_LBUTTON,
-                VK_RBUTTON,
+                GetAsyncKeyState, GetCapture, ReleaseCapture, SetCapture, VIRTUAL_KEY, VK_CONTROL,
+                VK_LBUTTON, VK_MENU, VK_RBUTTON,
             },
             WindowsAndMessaging::{
                 CallNextHookEx, GetSystemMetrics, HC_ACTION, HHOOK, KillTimer, MSG, MSLLHOOKSTRUCT,
@@ -22,6 +22,8 @@ use windows::{
 const DRAG_TIMER_ID: usize = 1;
 const EXPIRY_TIMER_ID: usize = 2;
 const WHEEL_EVENT: u32 = WM_APP + 43;
+const ZOOM_WHEEL_EVENT: u32 = WM_APP + 44;
+const ZOOM_RESIZE_EVENT: u32 = WM_APP + 45;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
@@ -31,6 +33,8 @@ pub enum Event {
     // Secondary-button release on the canvas; summons the radial menu.
     Context((i32, i32)),
     Wheel(i32),
+    ZoomWheel(i32),
+    ZoomResize(i32),
     Cancel,
     CheckRelease,
     Expire,
@@ -53,6 +57,8 @@ pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
         }),
         WM_LBUTTONUP => Some(Event::Up(point)),
         WM_RBUTTONUP => Some(Event::Context(point)),
+        ZOOM_WHEEL_EVENT => Some(Event::ZoomWheel(message.wParam.0 as i32)),
+        ZOOM_RESIZE_EVENT => Some(Event::ZoomResize(message.wParam.0 as i32)),
         WHEEL_EVENT => Some(Event::Wheel(message.wParam.0 as i32)),
         WM_CANCELMODE | WM_CAPTURECHANGED => Some(Event::Cancel),
         WM_TIMER if message.wParam.0 == DRAG_TIMER_ID => Some(Event::CheckRelease),
@@ -65,6 +71,23 @@ pub fn event(message: &MSG, hwnd: HWND) -> Option<Event> {
 struct WheelState {
     owner: HWND,
     pending: i32,
+    zoom_pending: i32,
+    resize_pending: i32,
+    zoom: bool,
+}
+
+impl WheelState {
+    fn steps(&mut self, delta: i16, control: bool, alt: bool) -> (i32, u32) {
+        // Ctrl wins when both modifiers are held. Keep fractional notches separate.
+        let (pending, message) = if self.zoom && control {
+            (&mut self.zoom_pending, ZOOM_WHEEL_EVENT)
+        } else if self.zoom && alt {
+            (&mut self.resize_pending, ZOOM_RESIZE_EVENT)
+        } else {
+            (&mut self.pending, WHEEL_EVENT)
+        };
+        (wheel_steps(pending, delta), message)
+    }
 }
 
 thread_local! {
@@ -92,8 +115,22 @@ impl MouseWheel {
                 0,
             )?
         };
-        WHEEL_STATE.set(WheelState { owner, pending: 0 });
+        WHEEL_STATE.set(WheelState {
+            owner,
+            ..Default::default()
+        });
         Ok(Self(hook))
+    }
+
+    pub fn set_zoom(active: bool) {
+        let mut state = WHEEL_STATE.get();
+        if state.zoom != active {
+            state.pending = 0;
+            state.zoom_pending = 0;
+            state.resize_pending = 0;
+            state.zoom = active;
+            WHEEL_STATE.set(state);
+        }
     }
 }
 
@@ -118,12 +155,15 @@ unsafe extern "system" fn wheel_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT
         let mut state = WHEEL_STATE.get();
         if !state.owner.is_invalid() {
             let data = unsafe { &*(l.0 as *const MSLLHOOKSTRUCT) };
-            let steps = wheel_steps(&mut state.pending, (data.mouseData >> 16) as i16);
+            // Sample the modifier at receipt, not when the queued event is handled.
+            let control = unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0;
+            let alt = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } < 0;
+            let (steps, message) = state.steps((data.mouseData >> 16) as i16, control, alt);
             if steps == 0
                 || unsafe {
                     PostMessageW(
                         Some(state.owner),
-                        WHEEL_EVENT,
+                        message,
                         WPARAM(steps as usize),
                         LPARAM::default(),
                     )
@@ -266,10 +306,45 @@ mod tests {
         for steps in [i32::MIN, -3, -1, 0, 1, 2, i32::MAX] {
             let msg = message(WHEEL_EVENT, steps as usize, (-200, 300));
             assert_eq!(event(&msg, msg.hwnd), Some(Event::Wheel(steps)));
+            let msg = message(ZOOM_WHEEL_EVENT, steps as usize, (0, 0));
+            assert_eq!(event(&msg, msg.hwnd), Some(Event::ZoomWheel(steps)));
+            assert_eq!(event(&msg, HWND::default()), None);
+            let msg = message(ZOOM_RESIZE_EVENT, steps as usize, (0, 0));
+            assert_eq!(event(&msg, msg.hwnd), Some(Event::ZoomResize(steps)));
+            assert_eq!(event(&msg, HWND::default()), None);
         }
         // Real wheel input is handled by the hook, never again by normal window routing.
         let msg = message(WM_MOUSEWHEEL, 120 << 16, (0, 0));
         assert_eq!(event(&msg, msg.hwnd), None);
+    }
+
+    #[test]
+    fn zoom_wheel_routes_modifiers_and_keeps_partial_deltas_separate() {
+        let mut state = WheelState::default();
+        for (control, alt) in [(false, false), (true, false), (false, true), (true, true)] {
+            assert_eq!(state.steps(120, control, alt), (1, WHEEL_EVENT));
+        }
+        state.zoom = true;
+        assert_eq!(state.steps(60, true, false), (0, ZOOM_WHEEL_EVENT));
+        assert_eq!(state.steps(60, false, false), (0, WHEEL_EVENT));
+        assert_eq!(state.steps(60, false, true), (0, ZOOM_RESIZE_EVENT));
+        assert_eq!(state.steps(60, true, true), (1, ZOOM_WHEEL_EVENT));
+        assert_eq!(state.steps(-240, true, false), (-2, ZOOM_WHEEL_EVENT));
+        assert_eq!(state.pending, 60);
+        assert_eq!(state.steps(60, false, true), (1, ZOOM_RESIZE_EVENT));
+        assert_eq!(state.steps(-240, false, true), (-2, ZOOM_RESIZE_EVENT));
+        assert_eq!(state.steps(60, false, false), (1, WHEEL_EVENT));
+        state.pending = 30;
+        state.zoom_pending = 90;
+        state.resize_pending = 60;
+        WHEEL_STATE.set(state);
+        MouseWheel::set_zoom(false);
+        let state = WHEEL_STATE.get();
+        assert!(!state.zoom);
+        assert_eq!(
+            (state.pending, state.zoom_pending, state.resize_pending),
+            (0, 0, 0)
+        );
     }
 
     #[test]
